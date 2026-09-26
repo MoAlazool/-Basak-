@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { UserCheck, Plus, CheckCircle, XCircle } from 'lucide-react';
+import { UserCheck, Plus, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 
 interface Supervisor {
   id: string;
@@ -57,8 +57,6 @@ export const SupervisorsPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      // Supervisor accounts are created by Admin.
-      // We insert into supervisors table (auth record created via Edge Function or manual provisioning)
       const { error } = await supabase.from('supervisors').insert({
         full_name: fullName.trim(),
         phone: phone.trim(),
@@ -78,12 +76,28 @@ export const SupervisorsPage: React.FC = () => {
     }
   };
 
+  const handleToggleActive = async (sup: Supervisor) => {
+    const { error } = await supabase
+      .from('supervisors')
+      .update({ is_active: !sup.is_active })
+      .eq('id', sup.id);
+    if (error) alert('فشل تغيير الحالة: ' + error.message);
+    else fetchData();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا المشرف؟')) return;
+    const { error } = await supabase.from('supervisors').delete().eq('id', id);
+    if (error) alert('فشل الحذف: ' + error.message);
+    else fetchData();
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">إدارة المشرفين</h1>
         <p className="text-sm text-slate-500">
-          إضافة مشرفي الباصات وتعيينهم للشركات والخطوط (إنشاء الحسابات بيد الإدارة حصراً)
+          إضافة مشرفي الباصات وتعيينهم للشركات (إنشاء الحسابات بيد الإدارة حصراً)
         </p>
       </div>
 
@@ -138,7 +152,7 @@ export const SupervisorsPage: React.FC = () => {
               className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
-              إضافة المشرف
+              {isSubmitting ? 'جاري الإضافة...' : 'إضافة المشرف'}
             </button>
           </div>
         </form>
@@ -160,20 +174,24 @@ export const SupervisorsPage: React.FC = () => {
                 <th className="p-4 font-bold">رقم الهاتف</th>
                 <th className="p-4 font-bold">الشركة</th>
                 <th className="p-4 font-bold">الحالة</th>
+                <th className="p-4 font-bold">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {supervisors.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50/80">
-                  <td className="p-4 font-semibold text-slate-800 flex items-center gap-3">
-                    <UserCheck className="h-5 w-5 text-slate-400" />
-                    {s.full_name}
+                  <td className="p-4 font-semibold text-slate-800">
+                    <div className="flex items-center gap-3">
+                      <UserCheck className="h-5 w-5 text-slate-400" />
+                      {s.full_name}
+                    </div>
                   </td>
                   <td className="p-4 text-slate-600">{s.phone}</td>
                   <td className="p-4 text-slate-600">{s.companies?.name || '-'}</td>
                   <td className="p-4">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
+                    <button
+                      onClick={() => handleToggleActive(s)}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition hover:opacity-80 ${
                         s.is_active
                           ? 'bg-emerald-50 text-emerald-700'
                           : 'bg-rose-50 text-rose-700'
@@ -181,7 +199,16 @@ export const SupervisorsPage: React.FC = () => {
                     >
                       {s.is_active ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
                       {s.is_active ? 'نشط' : 'معطل'}
-                    </span>
+                    </button>
+                  </td>
+                  <td className="p-4">
+                    <button
+                      onClick={() => handleDelete(s.id)}
+                      className="text-rose-400 hover:text-rose-600 transition"
+                      title="حذف المشرف"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
