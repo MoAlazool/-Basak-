@@ -41,14 +41,9 @@ class FloatingGlassNavBar extends StatelessWidget {
           label: 'الاشتراك',
         ),
         NavItem(
-          icon: LucideIcons.calendar,
-          activeIcon: LucideIcons.calendar,
-          label: 'الجدول',
-        ),
-        NavItem(
-          icon: LucideIcons.messageSquare,
-          activeIcon: LucideIcons.messageSquare,
-          label: 'المحادثة',
+          icon: LucideIcons.qrCode,
+          activeIcon: LucideIcons.qrCode,
+          label: 'رمز QR',
         ),
         NavItem(
           icon: LucideIcons.user,
@@ -62,7 +57,7 @@ class FloatingGlassNavBar extends StatelessWidget {
         NavItem(
           icon: LucideIcons.layoutDashboard,
           activeIcon: LucideIcons.layoutDashboard,
-          label: 'الرئيسية',
+          label: 'الركاب',
         ),
         NavItem(
           icon: LucideIcons.fileCheck,
@@ -75,14 +70,9 @@ class FloatingGlassNavBar extends StatelessWidget {
           label: 'مسح QR',
         ),
         NavItem(
-          icon: LucideIcons.messageSquare,
-          activeIcon: LucideIcons.messageSquare,
-          label: 'المحادثة',
-        ),
-        NavItem(
-          icon: LucideIcons.users,
-          activeIcon: LucideIcons.users,
-          label: 'الركاب',
+          icon: LucideIcons.user,
+          activeIcon: LucideIcons.user,
+          label: 'حسابي',
         ),
       ];
 

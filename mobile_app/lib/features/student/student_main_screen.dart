@@ -3,7 +3,6 @@ import '../../core/widgets/floating_glass_nav_bar.dart';
 import 'home/presentation/student_home_screen.dart';
 import 'subscription/presentation/subscription_screen.dart';
 import 'qr/presentation/student_qr_screen.dart';
-import 'chat/presentation/chat_screen.dart';
 import 'profile/presentation/profile_screen.dart';
 
 class StudentMainScreen extends StatefulWidget {
@@ -25,7 +24,6 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
       ),
       const SubscriptionScreen(),
       const StudentQrScreen(),
-      const ChatScreen(),
       const ProfileScreen(),
     ];
 
