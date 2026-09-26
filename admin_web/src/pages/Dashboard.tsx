@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Users, Bus, CreditCard, TrendingUp, AlertCircle } from 'lucide-react';
+import { Users, Bus, TrendingUp, AlertCircle } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
   const [stats, setStats] = useState({

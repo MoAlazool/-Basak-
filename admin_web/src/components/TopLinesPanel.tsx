@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, Bus, ChevronLeft } from 'lucide-react';
+import { Award, ChevronLeft } from 'lucide-react';
 
 interface TopLineItem {
   id: string;

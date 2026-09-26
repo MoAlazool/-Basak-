@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { BarChart3, TrendingUp, DollarSign, Users } from 'lucide-react';
+import { TrendingUp, DollarSign, Users } from 'lucide-react';
 
 interface ReportRow {
   lineId: string;
