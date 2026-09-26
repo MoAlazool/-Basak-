@@ -8,6 +8,8 @@ import {
   BarChart3,
   ShieldCheck,
   LogOut,
+  GraduationCap,
+  Users,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -18,12 +20,14 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onLogout }) => {
   const navItems = [
-    { id: 'overview',    name: 'نظرة عامة',       icon: LayoutDashboard },
-    { id: 'companies',   name: 'الشركات',          icon: Building2 },
-    { id: 'lines',       name: 'الخطوط والمحطات', icon: Bus },
-    { id: 'supervisors', name: 'المشرفون',         icon: UserCheck },
-    { id: 'receipts',   name: 'فحص الإيصالات',    icon: FileCheck2 },
-    { id: 'reports',     name: 'التقارير المالية', icon: BarChart3 },
+    { id: 'overview',     name: 'نظرة عامة',        icon: LayoutDashboard },
+    { id: 'companies',    name: 'الشركات',           icon: Building2 },
+    { id: 'universities', name: 'الجامعات والوجهات', icon: GraduationCap },
+    { id: 'lines',        name: 'الخطوط والمحطات',  icon: Bus },
+    { id: 'supervisors',  name: 'المشرفون',          icon: UserCheck },
+    { id: 'students',     name: 'إدارة الطلاب',      icon: Users },
+    { id: 'receipts',     name: 'فحص الإيصالات',     icon: FileCheck2 },
+    { id: 'reports',      name: 'التقارير المالية',  icon: BarChart3 },
   ];
 
   return (

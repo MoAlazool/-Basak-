@@ -68,20 +68,85 @@ class AuthRepository {
     required String password,
   }) async {
     String loginEmail = identifier.trim();
+    final cleanPhone = identifier.replaceAll(RegExp(r'[^0-9]'), '');
     if (!loginEmail.contains('@')) {
       loginEmail = phoneToAuthEmail(loginEmail);
     }
 
-    final response = await _client.auth.signInWithPassword(
-      email: loginEmail,
-      password: password,
-    );
+    try {
+      final response = await _client.auth.signInWithPassword(
+        email: loginEmail,
+        password: password,
+      );
 
-    if (response.user == null) {
-      throw Exception('تعذر تسجيل الدخول.');
+      if (response.user != null) {
+        return await detectUserRole(response.user!.id);
+      }
+    } catch (e) {
+      // 1. Check if supervisor exists in supervisors table with matching phone and password
+      try {
+        final supervisor = await _client
+            .from(SupabaseTables.supervisors)
+            .select('id, phone, password, is_active')
+            .eq('phone', cleanPhone)
+            .maybeSingle();
+
+        if (supervisor != null &&
+            supervisor['is_active'] == true &&
+            supervisor['password'] == password) {
+          // Provision Auth User session for supervisor
+          try {
+            final res = await _client.auth.signUp(
+              email: loginEmail,
+              password: password,
+            );
+            if (res.user != null) {
+              await _client.from(SupabaseTables.supervisors).update({
+                'id': res.user!.id,
+              }).eq('phone', cleanPhone);
+            }
+          } catch (_) {
+            // Already signed up, attempt signIn once more
+            try {
+              await _client.auth.signInWithPassword(email: loginEmail, password: password);
+            } catch (_) {}
+          }
+          return UserRole.supervisor;
+        }
+
+        // 2. Check if student exists in students table with matching phone and password
+        final student = await _client
+            .from(SupabaseTables.students)
+            .select('id, phone, password')
+            .eq('phone', cleanPhone)
+            .maybeSingle();
+
+        if (student != null && student['password'] == password) {
+          try {
+            final res = await _client.auth.signUp(
+              email: loginEmail,
+              password: password,
+            );
+            if (res.user != null) {
+              await _client.from(SupabaseTables.students).update({
+                'id': res.user!.id,
+              }).eq('phone', cleanPhone);
+            }
+          } catch (_) {
+            try {
+              await _client.auth.signInWithPassword(email: loginEmail, password: password);
+            } catch (_) {}
+          }
+          return UserRole.student;
+        }
+      } catch (innerErr) {
+        // Re-throw original auth error if DB fallback checks error out
+      }
+
+      rethrow;
     }
 
-    return await detectUserRole(response.user!.id);
+    return UserRole.unknown;
   }
 
   /// Detect role by checking tables
