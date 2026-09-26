@@ -12,12 +12,14 @@ class AuthState {
   final User? user;
   final UserRole role;
   final bool isLoading;
+  final bool isInitialLoading;
   final String? errorMessage;
 
   const AuthState({
     this.user,
     this.role = UserRole.unknown,
     this.isLoading = false,
+    this.isInitialLoading = false,
     this.errorMessage,
   });
 
@@ -30,12 +32,14 @@ class AuthState {
     User? user,
     UserRole? role,
     bool? isLoading,
+    bool? isInitialLoading,
     String? errorMessage,
   }) {
     return AuthState(
       user: user ?? this.user,
       role: role ?? this.role,
       isLoading: isLoading ?? this.isLoading,
+      isInitialLoading: isInitialLoading ?? this.isInitialLoading,
       errorMessage: errorMessage,
     );
   }
@@ -44,20 +48,21 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repo;
 
-  AuthNotifier(this._repo) : super(const AuthState()) {
+  AuthNotifier(this._repo) : super(const AuthState(isInitialLoading: true)) {
     _init();
   }
 
   Future<void> _init() async {
     final current = SupabaseService.currentUser;
     if (current != null) {
-      state = state.copyWith(isLoading: true);
       try {
         final role = await _repo.detectUserRole(current.id);
-        state = AuthState(user: current, role: role, isLoading: false);
+        state = AuthState(user: current, role: role, isInitialLoading: false);
       } catch (e) {
-        state = AuthState(user: current, role: UserRole.unknown, isLoading: false);
+        state = AuthState(user: current, role: UserRole.unknown, isInitialLoading: false);
       }
+    } else {
+      state = const AuthState(isInitialLoading: false);
     }
   }
 
@@ -75,7 +80,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         university: university,
         password: password,
       );
-      state = AuthState(user: user, role: UserRole.student, isLoading: false);
+      state = AuthState(user: user, role: UserRole.student, isLoading: false, isInitialLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
       rethrow;
@@ -96,6 +101,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: SupabaseService.currentUser,
         role: role,
         isLoading: false,
+        isInitialLoading: false,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
@@ -103,8 +109,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> deleteAccount() async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+  Future<void> deleteStudentAccount() async {
+    state = state.copyWith(isLoading: true);
     try {
       await _repo.deleteStudentAccount();
       state = const AuthState();
@@ -113,6 +119,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       rethrow;
     }
   }
+
+  Future<void> deleteAccount() async => deleteStudentAccount();
 
   Future<void> signOut() async {
     await _repo.signOut();

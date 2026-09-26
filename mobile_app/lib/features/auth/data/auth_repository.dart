@@ -26,40 +26,89 @@ class AuthRepository {
       throw Exception('يرجى إدخال الاسم الرباعي كاملاً (4 أجزاء).');
     }
 
-    final cleanPhone = phone.trim();
+    final cleanPhone = phone.trim().replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPhone.length < 10) {
+      throw Exception('يرجى إدخال رقم هاتف صحيح مكون من 11 رقماً.');
+    }
     final authEmail = phoneToAuthEmail(cleanPhone);
 
-    // 2. Create Auth User
-    final authResponse = await _client.auth.signUp(
-      email: authEmail,
-      password: password,
-      data: {
-        'role': 'student',
-        'phone': cleanPhone,
-        'full_name': fullName.trim(),
-      },
-    );
+    // 2. Check if student already exists in public.students table
+    try {
+      final existing = await _client
+          .from(SupabaseTables.students)
+          .select('id')
+          .eq('phone', cleanPhone)
+          .maybeSingle();
 
-    final user = authResponse.user;
-    if (user == null) {
-      throw Exception('فشل إنشاء الحساب، يرجى المحاولة مرة أخرى.');
+      if (existing != null) {
+        throw Exception('رقم الهاتف مسجل مسبقاً. يرجى تسجيل الدخول مباشرة.');
+      }
+    } catch (e) {
+      if (e.toString().contains('مسجل مسبقاً')) rethrow;
     }
 
-    // 3. Create Student Profile Record (phone is unique at DB level)
+    // 3. Create Auth User in Supabase Auth
+    User? user;
     try {
-      await _client.from(SupabaseTables.students).insert({
-        'id': user.id,
+      final authResponse = await _client.auth.signUp(
+        email: authEmail,
+        password: password,
+        data: {
+          'role': 'student',
+          'phone': cleanPhone,
+          'full_name': fullName.trim(),
+        },
+      );
+      user = authResponse.user;
+    } catch (authError) {
+      // If user already exists in auth or email rate limit was triggered, try sign in
+      try {
+        final signRes = await _client.auth.signInWithPassword(
+          email: authEmail,
+          password: password,
+        );
+        user = signRes.user;
+      } catch (_) {}
+    }
+
+    final studentId = user?.id ?? SupabaseService.currentUser?.id;
+
+    // 4. Create Student Profile Record (phone is unique at DB level)
+    try {
+      final Map<String, dynamic> record = {
         'phone': cleanPhone,
         'full_name': fullName.trim(),
         'university': university.trim(),
-      });
+        'password': password,
+      };
+      if (studentId != null) {
+        record['id'] = studentId;
+      }
+
+      await _client.from(SupabaseTables.students).insert(record);
     } catch (e) {
-      // If student table insert fails (e.g. duplicate phone), sign out
-      await _client.auth.signOut();
-      rethrow;
+      if (e.toString().contains('duplicate') || e.toString().contains('unique')) {
+        throw Exception('رقم الهاتف مسجل مسبقاً في النظام.');
+      }
+      throw Exception('تعذر حفظ بيانات الطالب في قاعدة البيانات: $e');
     }
 
-    return user;
+    // 5. Ensure active session
+    if (_client.auth.currentUser == null) {
+      try {
+        await _client.auth.signInWithPassword(
+          email: authEmail,
+          password: password,
+        );
+      } catch (_) {}
+    }
+
+    final finalUser = _client.auth.currentUser ?? user;
+    if (finalUser == null) {
+      throw Exception('تم إنشاء الحساب بنجاح! يرجى التبديل لتبويب تسجيل الدخول الآن.');
+    }
+
+    return finalUser;
   }
 
   /// Sign In with Phone & Password (or Email for Admin)

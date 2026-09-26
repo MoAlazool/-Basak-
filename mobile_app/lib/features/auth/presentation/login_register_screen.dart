@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_container.dart';
@@ -25,8 +25,10 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
 
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
+  String? _errorMessage;
 
   Future<void> _submit() async {
+    setState(() => _errorMessage = null);
     if (!_formKey.currentState!.validate()) return;
 
     final phone = _phoneController.text.trim();
@@ -47,11 +49,16 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
             );
       }
     } catch (e) {
+      final cleanMsg = e.toString()
+          .replaceAll('Exception: ', '')
+          .replaceAll('AuthException: ', '');
       if (mounted) {
+        setState(() => _errorMessage = cleanMsg);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(cleanMsg),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -99,7 +106,10 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
                         children: [
                           Expanded(
                             child: GestureDetector(
-                              onTap: () => setState(() => _isLogin = true),
+                              onTap: () => setState(() {
+                                _isLogin = true;
+                                _errorMessage = null;
+                              }),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 10),
                                 decoration: BoxDecoration(
@@ -120,7 +130,10 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
                           ),
                           Expanded(
                             child: GestureDetector(
-                              onTap: () => setState(() => _isLogin = false),
+                              onTap: () => setState(() {
+                                _isLogin = false;
+                                _errorMessage = null;
+                              }),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 10),
                                 decoration: BoxDecoration(
@@ -201,7 +214,36 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
                         ),
                         validator: (v) => (v == null || v.length < 6) ? 'كلمة المرور 6 أحرف على الأقل' : null,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
+
+                      // Error message banner
+                      if (_errorMessage != null) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(LucideIcons.alertCircle, color: AppColors.error, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: AppTextStyles.bodyMedium.copyWith(
+                                    color: AppColors.error,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
                       // Submit Button
                       ElevatedButton(

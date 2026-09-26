@@ -34,7 +34,7 @@ dependencies:
 
   # UI Enhancement
   google_fonts: ^6.2.1
-  lucide_icons: ^0.257.0
+  lucide_icons_flutter: ^3.1.20
 
 dev_dependencies:
   flutter_test:
