@@ -1,0 +1,45 @@
+name: basak_mobile
+description: "University Bus Subscription System (باصك - Basak) - Flutter Mobile Client for Students and Supervisors"
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+  flutter: ">=3.16.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Backend & Network
+  supabase_flutter: ^2.8.0
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # QR Code & Scanning
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.0
+
+  # Image & File Handling (Receipt uploads)
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
+
+  # Local Storage & Utilities
+  flutter_secure_storage: ^9.2.2
+  intl: ^0.20.3
+  uuid: ^4.5.1
+
+  # UI Enhancement
+  google_fonts: ^6.2.1
+  lucide_icons: ^0.257.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --blue: #7EC8E3;
+  --blue-light: #D6EEF9;
+  --blue-deep: #3E8FBF;
+  --ink: #1F2937;
+  --ink-soft: #5B6B7A;
+  --bg: #F3FAFD;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', 'Cairo', system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 10% 10%, #EAF7FD 0%, #F3FAFD 45%, #FFFFFF 100%);
+  min-height: 100vh;
+}
+
+/* Glass panel recipe from approved mockup */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(126, 200, 227, 0.25);
+  border-radius: 22px;
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.70);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 16px rgba(126, 200, 227, 0.18);
+  border-radius: 9999px;
+}
+
+/* Status Pills */
+.pill-active, .pill-approved {
+  background-color: #DDF3E6;
+  color: #2E9E5B;
+  font-weight: 700;
+  font-size: 11.5px;
+  border-radius: 9999px;
+  padding: 3px 10px;
+}
+
+.pill-pending, .pill-new {
+  background-color: #FFF1D6;
+  color: #B8860B;
+  font-weight: 700;
+  font-size: 11.5px;
+  border-radius: 9999px;
+  padding: 3px 10px;
+}
+
+.pill-rejected {
+  background-color: #FEE2E2;
+  color: #DC2626;
+  font-weight: 700;
+  font-size: 11.5px;
+  border-radius: 9999px;
+  padding: 3px 10px;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #A8D8F0;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7EC8E3;
+}
