@@ -44,3 +44,6 @@ dist/
 # Sensitive environment files
 .env.local
 .env.*.local
+
+# Supabase CLI local state
+supabase/.temp/

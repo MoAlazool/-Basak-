@@ -24,31 +24,41 @@ export function App() {
   // Restore only a real Supabase session whose user is listed as an admin.
   useEffect(() => {
     let mounted = true;
+    // Every auth change bumps the generation. A profile lookup that resolves after
+    // a newer change (e.g. sign-out) is discarded, otherwise the dashboard would
+    // render without a session and every RLS query would silently return [].
+    let generation = 0;
+
+    const applySession = async (userId: string | null) => {
+      const current = ++generation;
+      if (!userId) {
+        if (mounted) setAdmin(null);
+        return;
+      }
+      const profile = await loadAdminProfile(userId);
+      if (!mounted || current !== generation) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted || current !== generation) return;
+      if (profile && session?.user.id === userId) {
+        setAdmin(profile);
+      } else {
+        setAdmin(null);
+        if (session) await supabase.auth.signOut();
+      }
+    };
+
     const restore = async () => {
       if (/type=(recovery|invite)/.test(window.location.hash)) setRecoveryMode(true);
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const profile = await loadAdminProfile(session.user.id);
-        if (profile && mounted) setAdmin(profile);
-        else await supabase.auth.signOut();
-      }
+      await applySession(session?.user.id ?? null);
       if (mounted) setAuthLoading(false);
     };
     void restore();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
-      if (!session) {
-        if (mounted) setAdmin(null);
-        return;
-      }
-      void Promise.resolve().then(async () => {
-        const profile = await loadAdminProfile(session.user.id);
-        if (profile && mounted) setAdmin(profile);
-        else if (mounted) {
-          setAdmin(null);
-          await supabase.auth.signOut();
-        }
-      });
+      if (event === 'TOKEN_REFRESHED') return;
+      // Supabase calls must not run inside this callback (auth lock), so defer.
+      setTimeout(() => { void applySession(session?.user.id ?? null); }, 0);
     });
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);

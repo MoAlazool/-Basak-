@@ -15,3 +15,9 @@ verify_jwt = false
 
 [functions.student-delete-account]
 verify_jwt = false
+
+[functions.admin-create-supervisor]
+verify_jwt = false
+
+[functions.admin-delete-supervisor]
+verify_jwt = false

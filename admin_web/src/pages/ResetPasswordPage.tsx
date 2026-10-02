@@ -31,7 +31,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onComplete
       if (!session) throw new Error('رابط الاستعادة انتهت صلاحيته. ارجع لصفحة الدخول واطلب رابطاً جديداً.');
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
-      await supabase.auth.signOut();
+      // Keep the verified session: the admin continues straight into the dashboard.
       window.history.replaceState({}, document.title, window.location.pathname);
       onComplete();
     } catch (resetError) {

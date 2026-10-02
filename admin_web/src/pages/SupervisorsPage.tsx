@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
 import { useAdminScope } from '../lib/adminScope';
-import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Key, Eye, EyeOff } from 'lucide-react';
+import { invokeEdgeFunction } from '../lib/edgeFunctions';
+import { UserCheck, Plus, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 
 interface Supervisor {
   id: string;
   phone: string;
   full_name: string;
   company_id: string;
-  password?: string;
   is_active: boolean;
   created_at: string;
   companies?: { name: string };
@@ -20,12 +19,11 @@ export const SupervisorsPage: React.FC = () => {
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   // New supervisor form
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
   const [companyId, setCompanyId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -38,10 +36,10 @@ export const SupervisorsPage: React.FC = () => {
       setLoading(true);
       const { data: supData, error: sError } = await supabase
         .from('supervisors')
-        .select(`*, companies(name)`)
+        .select('id, phone, full_name, company_id, is_active, created_at, companies(name)')
         .order('created_at', { ascending: false });
       if (sError) throw sError;
-      setSupervisors(supData || []);
+      setSupervisors((supData || []) as unknown as Supervisor[]);
 
       if (admin.role === 'company_admin' && admin.company_id) {
         setCompanies([{ id: admin.company_id, name: admin.companyName || '' }]);
@@ -62,65 +60,29 @@ export const SupervisorsPage: React.FC = () => {
 
   const handleAddSupervisor = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
-    const cleanPass = password.trim() || '123456';
-
-    if (!fullName.trim() || !cleanPhone || !companyId) {
+    if (!fullName.trim() || !phone.trim() || !companyId) {
       alert('يرجى ملء جميع الحقول المطلوبة.');
+      return;
+    }
+    if (password.trim().length < 6) {
+      alert('كلمة المرور يجب ألا تقل عن 6 أحرف.');
       return;
     }
 
     try {
       setIsSubmitting(true);
-
-      // 1. Try to create Supabase Auth User with a standalone client so it doesn't disturb admin session
-      let authUserId: string | null = null;
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        });
-
-        const { data: authData } = await authClient.auth.signUp({
-          email: `${cleanPhone}@busak.app`,
-          password: cleanPass,
-          options: {
-            data: {
-              role: 'supervisor',
-              full_name: fullName.trim(),
-              phone: cleanPhone,
-            },
-          },
-        });
-        if (authData.user?.id) {
-          authUserId = authData.user.id;
-        }
-      } catch (authErr) {
-        console.warn('Note: Auth signup notice (table insert will still proceed):', authErr);
-      }
-
-      // 2. Insert into supervisors table with password and matching id if available
-      const insertPayload: any = {
-        full_name: fullName.trim(),
-        phone: cleanPhone,
-        company_id: companyId,
-        password: cleanPass,
-        is_active: true,
-      };
-
-      if (authUserId) {
-        insertPayload.id = authUserId;
-      }
-
-      const { error } = await supabase.from('supervisors').insert(insertPayload);
-      if (error) throw error;
-
+      // Server-side creation: confirmed Auth account + company-scoped row, no stored password.
+      await invokeEdgeFunction('admin-create-supervisor', {
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        password: password.trim(),
+        companyId,
+      });
       setFullName('');
       setPhone('');
-      setPassword('123456');
+      setPassword('');
       fetchData();
-      alert('تمت إضافة المشرف بنجاح وتعيين كلمة المرور لتسجيل الدخول في التطبيق!');
+      alert('تمت إضافة المشرف. سلّمه رقم الهاتف وكلمة المرور لتسجيل الدخول في التطبيق (لا تُحفظ كلمة المرور في النظام).');
     } catch (err: any) {
       alert('فشل إضافة المشرف: ' + err.message);
     } finally {
@@ -138,17 +100,13 @@ export const SupervisorsPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`هل أنت متأكد من حذف المشرف "${name}"؟`)) return;
-    const { error } = await supabase.from('supervisors').delete().eq('id', id);
-    if (error) alert('فشل الحذف: ' + error.message);
-    else fetchData();
-  };
-
-  const togglePasswordVisibility = (id: string) => {
-    setVisiblePasswords((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
+    if (!confirm(`هل أنت متأكد من حذف المشرف "${name}"؟ سيتم حذف حساب الدخول الخاص به أيضاً.`)) return;
+    try {
+      await invokeEdgeFunction('admin-delete-supervisor', { supervisorId: id });
+      fetchData();
+    } catch (err: any) {
+      alert('فشل الحذف: ' + err.message);
+    }
   };
 
   return (
@@ -156,7 +114,7 @@ export const SupervisorsPage: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-slate-800">إدارة المشرفين</h1>
         <p className="text-sm text-slate-500">
-          إضافة مشرفي الباصات، تعيين شركاتهم، وتحديد كلمات المرور التي يدخلون بها لتطبيق الهاتف
+          إضافة مشرفي الباصات وتعيين شركاتهم. كلمة المرور تُسلَّم للمشرف ولا تُحفظ أو تُعرض في النظام
         </p>
       </div>
 
@@ -192,7 +150,9 @@ export const SupervisorsPage: React.FC = () => {
             <label className="text-xs font-semibold text-slate-500">كلمة المرور لتطبيق الهاتف</label>
             <input
               type="text"
-              placeholder="مثال: 123456"
+              autoComplete="new-password"
+              minLength={6}
+              placeholder="6 أحرف على الأقل"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -243,7 +203,6 @@ export const SupervisorsPage: React.FC = () => {
               <tr>
                 <th className="p-4 font-bold">اسم المشرف</th>
                 <th className="p-4 font-bold">رقم الهاتف</th>
-                <th className="p-4 font-bold">كلمة المرور</th>
                 <th className="p-4 font-bold">الشركة</th>
                 <th className="p-4 font-bold">الحالة</th>
                 <th className="p-4 font-bold">إجراءات</th>
@@ -251,7 +210,6 @@ export const SupervisorsPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {supervisors.map((s) => {
-                const isPassVisible = visiblePasswords[s.id];
                 return (
                   <tr key={s.id} className="hover:bg-slate-50/80">
                     <td className="p-4 font-semibold text-slate-800">
@@ -261,19 +219,6 @@ export const SupervisorsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4 text-slate-600 font-mono text-xs">{s.phone}</td>
-                    <td className="p-4">
-                      <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono">
-                        <Key className="h-3 w-3 text-slate-400" />
-                        <span>{isPassVisible ? (s.password || '123456') : '••••••'}</span>
-                        <button
-                          type="button"
-                          onClick={() => togglePasswordVisibility(s.id)}
-                          className="text-slate-400 hover:text-slate-600 transition ml-1"
-                        >
-                          {isPassVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        </button>
-                      </div>
-                    </td>
                     <td className="p-4 text-slate-600">{s.companies?.name || '-'}</td>
                     <td className="p-4">
                       <button
