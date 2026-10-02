@@ -19,13 +19,13 @@ export function App() {
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [authLoading, setAuthLoading] = useState(true);
-  const [recoveryMode, setRecoveryMode] = useState(() => window.location.hash.includes('type=recovery'));
+  const [recoveryMode, setRecoveryMode] = useState(() => /type=(recovery|invite)/.test(window.location.hash));
 
   // Restore only a real Supabase session whose user is listed as an admin.
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
-      if (window.location.hash.includes('type=recovery')) setRecoveryMode(true);
+      if (/type=(recovery|invite)/.test(window.location.hash)) setRecoveryMode(true);
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         const profile = await loadAdminProfile(session.user.id);
@@ -88,8 +88,8 @@ export function App() {
       >
         <div className="mx-auto max-w-[1400px] p-4 sm:p-6 space-y-0">
           {activeTab === 'overview' && <OverviewPage />}
-          {activeTab === 'companies' && <CompaniesPage />}
-          {activeTab === 'company-admins' && <CompanyAdminsPage />}
+          {activeTab === 'companies' && admin.role === 'super_admin' && <CompaniesPage />}
+          {activeTab === 'company-admins' && admin.role === 'super_admin' && <CompanyAdminsPage />}
           {activeTab === 'universities' && admin.role === 'super_admin' && <UniversitiesPage />}
           {activeTab === 'lines' && <LinesPage />}
           {activeTab === 'supervisors' && <SupervisorsPage />}

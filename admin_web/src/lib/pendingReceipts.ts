@@ -4,10 +4,17 @@ import { supabase } from './supabase';
 export interface PendingReceiptRow {
   id: string;
   subscriptionId: string;
+  studentId: string;
   studentName: string;
   studentPhone: string;
   university: string;
+  college: string;
+  companyId: string;
+  companyName: string;
   lineName: string;
+  stationName: string;
+  departureTime: string;
+  returnTime: string;
   subscriptionType: string;
   price: number;
   imagePath: string | null;
@@ -64,18 +71,45 @@ export async function createReceiptImageUrl(reference: string | null | undefined
   return data.signedUrl;
 }
 
-export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
-  const { data, error } = await supabase.from('receipts').select(`
-    id, image_url, attempt_number, created_at, subscription_id,
-    subscriptions(
-      id, type, price,
-      students(full_name, phone, university),
-      lines(name)
-    )
-  `).eq('status', 'pending').order('created_at', { ascending: true });
-  if (error) throw error;
+type Row = Record<string, any>;
+const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
+const byId = (rows: Row[] | null | undefined) => new Map((rows || []).map((row) => [row.id as string, row]));
+const uniq = (values: (string | null | undefined)[]) => [...new Set(values.filter((value): value is string => !!value))];
+const hhmm = (value?: string | null) => (value ? String(value).slice(0, 5) : '');
 
-  return Promise.all((data || []).map(async (receipt: any) => {
+/**
+ * Loads pending receipts and joins student / company / line / station details with
+ * separate scoped queries. Nested embeds silently returned null when a relation
+ * was ambiguous or blocked, which left the review table without student data.
+ */
+export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
+  const { data: receiptRows, error } = await supabase.from('receipts')
+    .select('id, image_url, attempt_number, created_at, subscription_id')
+    .eq('status', 'pending').order('created_at', { ascending: true });
+  if (error) throw error;
+  const receipts = (receiptRows || []) as Row[];
+  if (!receipts.length) return [];
+
+  const { data: subRows, error: subError } = await supabase.from('subscriptions')
+    .select('id, type, price, student_id, line_id, station_id, departure_time, return_time')
+    .in('id', uniq(receipts.map((r) => r.subscription_id)));
+  if (subError) throw subError;
+  const subscriptions = byId(subRows as Row[]);
+  const subs = [...subscriptions.values()];
+
+  const [studentsRes, linesRes, stationsRes] = await Promise.all([
+    supabase.from('students').select('id, full_name, phone, university, college').in('id', uniq(subs.map((x) => x.student_id))),
+    supabase.from('lines').select('id, name, company_id, companies(name)').in('id', uniq(subs.map((x) => x.line_id))),
+    supabase.from('stations').select('id, name').in('id', uniq(subs.map((x) => x.station_id))),
+  ]);
+  if (studentsRes.error) throw studentsRes.error;
+  if (linesRes.error) throw linesRes.error;
+  if (stationsRes.error) throw stationsRes.error;
+  const students = byId(studentsRes.data as Row[]);
+  const lines = byId(linesRes.data as Row[]);
+  const stations = byId(stationsRes.data as Row[]);
+
+  return Promise.all(receipts.map(async (receipt) => {
     const imagePath = normalizeReceiptStoragePath(receipt.image_url);
     let imageUrl: string | null = null;
     try {
@@ -85,15 +119,24 @@ export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
       console.warn(`Could not create a preview URL for receipt ${receipt.id}:`, imageError);
     }
 
-    const subscription = receipt.subscriptions;
-    const student = subscription?.students;
+    const subscription = subscriptions.get(receipt.subscription_id);
+    const student = subscription ? students.get(subscription.student_id) : undefined;
+    const line = subscription ? lines.get(subscription.line_id) : undefined;
+    const station = subscription ? stations.get(subscription.station_id) : undefined;
     return {
       id: receipt.id,
       subscriptionId: receipt.subscription_id,
-      studentName: student?.full_name || 'طالب جديد',
-      studentPhone: student?.phone || '-',
-      university: student?.university || 'الجامعة',
-      lineName: subscription?.lines?.name || '-',
+      studentId: subscription?.student_id || '',
+      studentName: student?.full_name || 'بيانات الطالب غير متاحة',
+      studentPhone: student?.phone || '—',
+      university: student?.university || '—',
+      college: student?.college && student.college !== 'غير محدد' ? student.college : '',
+      companyId: line?.company_id || '',
+      companyName: one<Row>(line?.companies)?.name || '—',
+      lineName: line?.name || '—',
+      stationName: station?.name || '—',
+      departureTime: hhmm(subscription?.departure_time),
+      returnTime: hhmm(subscription?.return_time),
       subscriptionType: subscription?.type || 'termly',
       price: Number(subscription?.price || 0),
       imagePath,

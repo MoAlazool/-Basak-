@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Mail, Plus, ShieldCheck, UserRound } from 'lucide-react';
+import { Building2, Mail, Plus, ShieldCheck, UserRound, KeyRound } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { invokeEdgeFunction } from '../lib/edgeFunctions';
 
 interface Company { id: string; name: string; }
 interface CompanyAdmin { id: string; email: string; full_name: string; company_id: string; created_at: string; }
@@ -11,6 +12,8 @@ export const CompanyAdminsPage: React.FC = () => {
   const [companyId, setCompanyId] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -35,17 +38,23 @@ export const CompanyAdminsPage: React.FC = () => {
   const createAdmin = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!companyId) { setError('أضف شركة وفعّلها أولاً.'); return; }
+    if (password && password.length < 8) { setError('كلمة المرور يجب ألا تقل عن 8 أحرف.'); return; }
     setSubmitting(true);
     setError('');
-    const { error: invokeError } = await supabase.functions.invoke('admin-create-company-admin', {
-      body: { companyId, fullName: fullName.trim(), email: email.trim() },
-    });
-    if (invokeError) {
-      setError(invokeError.message || 'تعذر إنشاء مدير الشركة.');
-    } else {
+    setNotice('');
+    try {
+      const result = await invokeEdgeFunction<{ invited?: boolean }>('admin-create-company-admin', {
+        companyId, fullName: fullName.trim(), email: email.trim(), password: password || undefined,
+      });
+      setNotice(result?.invited
+        ? 'تم إرسال دعوة بالبريد. يفتح المدير الرابط ويختار كلمة المرور.'
+        : 'تم إنشاء الحساب. يمكن للمدير تسجيل الدخول الآن بالبريد وكلمة المرور.');
       setFullName('');
       setEmail('');
+      setPassword('');
       await load();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'تعذر إنشاء مدير الشركة.');
     }
     setSubmitting(false);
   };
@@ -62,7 +71,7 @@ export const CompanyAdminsPage: React.FC = () => {
         {companies.length === 0 ? (
           <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">لا توجد شركات مفعّلة. أضف شركة أولاً.</p>
         ) : (
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-semibold text-slate-500">الشركة
               <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800">
                 {companies.map((company) => <option value={company.id} key={company.id}>{company.name}</option>)}
@@ -74,11 +83,15 @@ export const CompanyAdminsPage: React.FC = () => {
             <label className="text-xs font-semibold text-slate-500">البريد الإلكتروني
               <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800" placeholder="manager@example.com" />
             </label>
+            <label className="text-xs font-semibold text-slate-500">كلمة المرور (اختياري)
+              <input type="text" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800" placeholder="8 أحرف على الأقل — أو اتركها لإرسال دعوة" />
+            </label>
           </div>
         )}
+         {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
         {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
         <button disabled={submitting || companies.length === 0} className="flex items-center gap-2 rounded-xl bg-sky-700 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">
-          <Mail className="h-4 w-4" />{submitting ? 'جاري إرسال الدعوة...' : 'إرسال دعوة وتعيين الشركة'}
+          {password ? <KeyRound className="h-4 w-4" /> : <Mail className="h-4 w-4" />}{submitting ? 'جاري الإنشاء...' : password ? 'إنشاء الحساب وتعيين الشركة' : 'إرسال دعوة وتعيين الشركة'}
         </button>
       </form>
 
@@ -100,7 +113,7 @@ export const CompanyAdminsPage: React.FC = () => {
           </div>
         )}
       </div>
-      <p className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 text-emerald-600" />لا تُعرض كلمة مرور المدير هنا؛ يعيّنها من رابط الدعوة.</p>
+      <p className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 text-emerald-600" />لا تُحفظ كلمة المرور في قاعدة البيانات. سلّمها للمدير مباشرة، أو اتركها فارغة ليختارها من رابط الدعوة (يتطلب SMTP مخصص).</p>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { corsHeaders, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
 
   try {
@@ -15,6 +15,8 @@ Deno.serve(async (request: Request) => {
     const lineId = String(body.lineId ?? '');
     const stationId = String(body.stationId ?? '');
     const subscriptionType = String(body.subscriptionType ?? 'termly');
+    const requestedDeparture = String(body.departureTime ?? '').trim();
+    const requestedReturn = String(body.returnTime ?? '').trim();
     if (fullName.split(/\s+/).length < 4 || phone.length < 10 || !university || password.length < 6 || !lineId || !stationId || !['termly', 'yearly', 'daily'].includes(subscriptionType)) {
       return jsonResponse({ error: 'أدخل الاسم الرباعي ورقم الهاتف والجامعة والخط والمحطة وكلمة مرور صحيحة.' }, 400);
     }
@@ -27,9 +29,19 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: 'الخط غير تابع للشركة المخصصة لحسابك أو غير نشط.' }, 403);
     }
     const { data: station, error: stationError } = await serviceClient.from('stations')
-      .select('id').eq('id', stationId).eq('line_id', lineId).eq('is_active', true).maybeSingle();
+      .select('id,departure_times,return_times').eq('id', stationId).eq('line_id', lineId).eq('is_active', true).maybeSingle();
     if (stationError) throw stationError;
     if (!station) return jsonResponse({ error: 'المحطة غير تابعة للخط أو غير نشطة.' }, 400);
+
+    // The DB trigger requires a departure/return time that exists on the station.
+    const normalize = (time: string) => time.slice(0, 5);
+    const departureTimes: string[] = (station.departure_times ?? []).map(String);
+    const returnTimes: string[] = (station.return_times ?? []).map(String);
+    if (!departureTimes.length || !returnTimes.length) {
+      return jsonResponse({ error: 'المحطة ليس لها مواعيد ذهاب وعودة. أضف المواعيد من صفحة الخطوط أولاً.' }, 400);
+    }
+    const departureTime = departureTimes.find((t) => normalize(t) === normalize(requestedDeparture)) ?? departureTimes[0];
+    const returnTime = returnTimes.find((t) => normalize(t) === normalize(requestedReturn)) ?? returnTimes[0];
 
     const priceColumn = { termly: 'price_termly', yearly: 'price_yearly', daily: 'price_daily' }[subscriptionType] as 'price_termly' | 'price_yearly' | 'price_daily';
 
@@ -40,7 +52,12 @@ Deno.serve(async (request: Request) => {
       email_confirm: true,
       user_metadata: { role: 'student', phone, full_name: fullName },
     });
-    if (createError || !created.user) throw createError ?? new Error('تعذر إنشاء حساب الطالب.');
+    if (createError || !created.user) {
+      if (createError && /already|registered|exists/i.test(createError.message)) {
+        return jsonResponse({ error: 'رقم الهاتف مسجل بالفعل لحساب آخر.' }, 409);
+      }
+      throw createError ?? new Error('تعذر إنشاء حساب الطالب.');
+    }
 
     const { error: profileError } = await serviceClient.from('students').insert({
       id: created.user.id,
@@ -58,6 +75,8 @@ Deno.serve(async (request: Request) => {
       line_id: line.id,
       station_id: station.id,
       type: subscriptionType,
+      departure_time: departureTime,
+      return_time: returnTime,
       status: 'pending_payment',
       price: Number(line[priceColumn]),
     });

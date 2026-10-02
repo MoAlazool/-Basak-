@@ -1,9 +1,18 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { FileCheck, Check, X, Eye, AlertOctagon, Clock } from 'lucide-react';
+import { FileCheck, Check, X, Eye, AlertOctagon, Clock, Building2, MapPin, Phone, GraduationCap, Search } from 'lucide-react';
 import { createReceiptImageUrl, type PendingReceiptRow } from '../lib/pendingReceipts';
 
 export type { PendingReceiptRow } from '../lib/pendingReceipts';
+
+const typeLabels: Record<string, string> = { termly: 'فصلي (ترم)', yearly: 'سنوي', daily: 'يومي' };
+const formatUpload = (iso: string) => {
+  const date = new Date(iso);
+  return {
+    day: date.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' }),
+    time: date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+  };
+};
 
 interface PendingReceiptsProps {
   receipts: PendingReceiptRow[];
@@ -24,6 +33,22 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   const [previewReceipt, setPreviewReceipt] = useState<PendingReceiptRow | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('all');
+  const [query, setQuery] = useState('');
+
+  const companyOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    receipts.forEach((row) => { if (row.companyId) map.set(row.companyId, row.companyName); });
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [receipts]);
+
+  const visibleReceipts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return receipts.filter((row) =>
+      (companyFilter === 'all' || row.companyId === companyFilter) &&
+      (!q || [row.studentName, row.studentPhone, row.lineName, row.companyName, row.university]
+        .some((value) => value.toLowerCase().includes(q))));
+  }, [receipts, companyFilter, query]);
 
   const openReceiptPreview = async (row: PendingReceiptRow) => {
     setPreviewReceipt(row);
@@ -117,6 +142,21 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
         </span>
       </div>
 
+      {receipts.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث باسم الطالب، الهاتف، الخط أو الشركة..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-xs focus:border-[#7EC8E3] focus:outline-none" />
+          </div>
+          {companyOptions.length > 1 && (
+            <select aria-label="تصفية حسب الشركة" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+              <option value="all">كل الشركات</option>
+              {companyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       <div className="mt-4 overflow-x-auto">
         {loading ? (
@@ -129,21 +169,22 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
             <h3 className="text-sm font-bold text-[#1F2937]">لا توجد إيصالات معلقة حالياً</h3>
             <p className="text-xs text-[#5B6B7A] mt-1">تمت مراجعة واعتماد كافة طلبات الاشتراكات بنجاح.</p>
           </div>
+        ) : visibleReceipts.length === 0 ? (
+          <div className="py-10 text-center text-sm text-[#5B6B7A]">لا توجد إيصالات مطابقة للبحث.</div>
         ) : (
-          <table className="w-full text-right text-[13.5px]">
+          <table className="w-full min-w-[920px] text-right text-[13.5px]">
             <thead className="border-b border-slate-100 text-[#5B6B7A] text-[12px] font-bold uppercase">
               <tr>
                 <th className="py-3 px-4">الطالب</th>
-                <th className="py-3 px-4">خط السير</th>
-                <th className="py-3 px-4">نوع الاشتراك</th>
-                <th className="py-3 px-4">المبلغ</th>
+                <th className="py-3 px-4">الشركة وخط السير</th>
+                <th className="py-3 px-4">الاشتراك والمبلغ</th>
                 <th className="py-3 px-4">المحاولة</th>
                 <th className="py-3 px-4">وقت الرفع</th>
                 <th className="py-3 px-4 text-center">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {receipts.map((row) => {
+              {visibleReceipts.map((row) => {
                 const isProcessing = processingId === row.id;
                 return (
                   <tr
@@ -173,28 +214,30 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                             <Eye className="h-4 w-4 text-[#5B6B7A] group-hover:text-[#3E8FBF]" />
                           )}
                         </button>
-                        <div>
+                        <div className="min-w-0 space-y-0.5">
                           <p className="font-bold text-[#1F2937] leading-tight">{row.studentName}</p>
-                          <p className="text-[11.5px] text-[#5B6B7A]">{row.studentPhone} • {row.university}</p>
+                          <p className="flex items-center gap-1 text-[11.5px] text-[#5B6B7A]" dir="rtl"><Phone className="h-3 w-3" /><span dir="ltr">{row.studentPhone}</span></p>
+                          <p className="flex items-center gap-1 text-[11.5px] text-[#5B6B7A]"><GraduationCap className="h-3 w-3" />{row.university}{row.college ? ` • ${row.college}` : ''}</p>
                         </div>
                       </div>
                     </td>
 
-                    {/* Line */}
-                    <td className="py-3.5 px-4 font-semibold text-[#1F2937]">
-                      {row.lineName}
-                    </td>
-
-                    {/* Subscription Type */}
+                    {/* Company / Line / Station */}
                     <td className="py-3.5 px-4">
-                      <span className="pill-new">
-                        {row.subscriptionType === 'yearly' ? 'سنوي' : 'فصلي (ترم)'}
-                      </span>
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11.5px] font-bold text-sky-700"><Building2 className="h-3 w-3" />{row.companyName}</span>
+                        <p className="font-semibold text-[#1F2937]">{row.lineName}</p>
+                        <p className="flex items-center gap-1 text-[11.5px] text-[#5B6B7A]"><MapPin className="h-3 w-3" />{row.stationName}</p>
+                        {(row.departureTime || row.returnTime) && (
+                          <p className="text-[11px] text-[#5B6B7A]">ذهاب <span dir="ltr">{row.departureTime || '—'}</span> • عودة <span dir="ltr">{row.returnTime || '—'}</span></p>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Price */}
-                    <td className="py-3.5 px-4 font-extrabold text-[#3E8FBF]">
-                      {row.price} ج.م
+                    {/* Subscription Type + Price */}
+                    <td className="py-3.5 px-4">
+                      <span className="pill-new">{typeLabels[row.subscriptionType] || row.subscriptionType}</span>
+                      <p className="mt-1 font-extrabold text-[#3E8FBF]">{row.price.toLocaleString('ar-EG')} ج.م</p>
                     </td>
 
                     {/* Attempt number */}
@@ -206,7 +249,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                     <td className="py-3.5 px-4 text-[#5B6B7A] text-[12px]">
                       <div className="flex items-center gap-1.5">
                         <Clock className="h-3.5 w-3.5 text-slate-400" />
-                        <span>{new Date(row.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{formatUpload(row.createdAt).day} — {formatUpload(row.createdAt).time}</span>
                       </div>
                     </td>
 
@@ -292,7 +335,10 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
         >
           <div className="glass-panel p-4 max-w-lg w-full bg-white">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-bold text-[#1F2937]">معاينة إيصال التحويل</span>
+              <div>
+                <span className="text-sm font-bold text-[#1F2937]">إيصال {previewReceipt.studentName}</span>
+                <p className="text-[11.5px] text-[#5B6B7A]">{previewReceipt.companyName} • {previewReceipt.lineName} • {typeLabels[previewReceipt.subscriptionType] || previewReceipt.subscriptionType} • {previewReceipt.price.toLocaleString('ar-EG')} ج.م</p>
+              </div>
               <button onClick={() => setPreviewReceipt(null)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>

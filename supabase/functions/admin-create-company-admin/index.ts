@@ -1,7 +1,7 @@
 import { corsHeaders, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
 
   try {
@@ -10,8 +10,12 @@ Deno.serve(async (request: Request) => {
     const email = String(body.email ?? '').trim().toLowerCase();
     const fullName = String(body.fullName ?? '').trim();
     const companyId = String(body.companyId ?? '').trim();
+    const password = String(body.password ?? '');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !fullName || !companyId) {
       return jsonResponse({ error: 'أدخل الاسم والبريد الإلكتروني والشركة.' }, 400);
+    }
+    if (password && password.length < 8) {
+      return jsonResponse({ error: 'كلمة المرور يجب ألا تقل عن 8 أحرف.' }, 400);
     }
 
     const { data: company, error: companyError } = await serviceClient
@@ -24,13 +28,40 @@ Deno.serve(async (request: Request) => {
     if (existingError) throw existingError;
     if (existingAdmin) return jsonResponse({ error: 'هذا البريد مسجل بالفعل كمسؤول.' }, 409);
 
-    const { data: invited, error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
-      data: { role: 'company_admin', company_id: companyId, full_name: fullName },
-    });
-    if (inviteError || !invited.user) throw inviteError ?? new Error('تعذر إرسال دعوة مدير الشركة.');
+    const metadata = { role: 'company_admin', company_id: companyId, full_name: fullName };
+    let authUserId: string;
+    let invited = false;
+
+    if (password) {
+      // Direct creation: works without a custom SMTP server.
+      const { data, error } = await serviceClient.auth.admin.createUser({
+        email, password, email_confirm: true, user_metadata: metadata,
+      });
+      if (error || !data.user) {
+        if (error && /already|registered|exists/i.test(error.message)) {
+          return jsonResponse({ error: 'هذا البريد مستخدم بالفعل لحساب آخر.' }, 409);
+        }
+        throw error ?? new Error('تعذر إنشاء حساب مدير الشركة.');
+      }
+      authUserId = data.user.id;
+    } else {
+      // Invitation e-mail: requires custom SMTP (Supabase default SMTP only mails project members).
+      const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+        data: metadata,
+        redirectTo: request.headers.get('origin') ?? undefined,
+      });
+      if (error || !data.user) {
+        throw new Error(
+          `تعذر إرسال الدعوة بالبريد (${error?.message ?? 'خطأ غير معروف'}). ` +
+          'اكتب كلمة مرور لإنشاء الحساب مباشرة، أو فعّل SMTP مخصص في إعدادات Supabase.',
+        );
+      }
+      authUserId = data.user.id;
+      invited = true;
+    }
 
     const { error: adminError } = await serviceClient.from('admins').insert({
-      id: invited.user.id,
+      id: authUserId,
       email,
       full_name: fullName,
       role: 'company_admin',
@@ -38,10 +69,10 @@ Deno.serve(async (request: Request) => {
       created_by_admin_id: user.id,
     });
     if (adminError) {
-      await serviceClient.auth.admin.deleteUser(invited.user.id);
+      await serviceClient.auth.admin.deleteUser(authUserId);
       throw adminError;
     }
-    return jsonResponse({ id: invited.user.id, invited: true });
+    return jsonResponse({ id: authUserId, invited });
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : 'تعذر إنشاء مدير الشركة.' }, 400);
   }

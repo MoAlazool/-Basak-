@@ -1,0 +1,17 @@
+# Minimal Supabase CLI config used for deploying Edge Functions.
+project_id = "hnwpkkryxovhmsrokdsd"
+
+# These functions verify the caller themselves (auth.getUser + admins table),
+# so the gateway JWT check is disabled. This also lets the browser CORS
+# preflight (OPTIONS, sent without a token) reach the function.
+[functions.admin-create-company-admin]
+verify_jwt = false
+
+[functions.admin-create-student]
+verify_jwt = false
+
+[functions.admin-delete-student]
+verify_jwt = false
+
+[functions.student-delete-account]
+verify_jwt = false

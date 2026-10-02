@@ -21,7 +21,7 @@ async function removeStudentFiles(service: SupabaseClient, studentId: string) {
 }
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
 
   try {
