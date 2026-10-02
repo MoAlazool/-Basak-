@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAdminScope } from '../lib/adminScope';
 import { MapPin, Plus, Clock, ChevronDown, ChevronUp, Power, Pencil, Save, X } from 'lucide-react';
 
 interface Station {
@@ -99,6 +100,7 @@ const TimeListEditor: React.FC<TimeListEditorProps> = ({ label, color, times, on
 
 // ── Main Page ─────────────────────────────────────────────────────
 export const LinesPage: React.FC = () => {
+  const admin = useAdminScope();
   const [lines, setLines] = useState<Line[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,12 +134,18 @@ export const LinesPage: React.FC = () => {
       if (!linesData) throw new Error('لم تُرجع قاعدة البيانات قائمة الخطوط.');
       setLines(linesData || []);
 
-      const { data: compData, error: cError } = await supabase
-        .from('companies').select('id, name').eq('is_active', true);
-      if (cError) throw cError;
-      if (!compData) throw new Error('لم تُرجع قاعدة البيانات قائمة الشركات.');
-      setCompanies(compData || []);
-      if (compData && compData.length > 0) setSelectedCompanyId(compData[0].id);
+      if (admin.role === 'company_admin' && admin.company_id) {
+        const ownCompany = [{ id: admin.company_id, name: admin.companyName || '' }];
+        setCompanies(ownCompany);
+        setSelectedCompanyId(admin.company_id);
+      } else {
+        const { data: compData, error: cError } = await supabase
+          .from('companies').select('id, name').eq('is_active', true);
+        if (cError) throw cError;
+        if (!compData) throw new Error('لم تُرجع قاعدة البيانات قائمة الشركات.');
+        setCompanies(compData || []);
+        if (compData && compData.length > 0) setSelectedCompanyId(compData[0].id);
+      }
     } catch (err) {
       console.error('Error fetching lines data:', err);
       setPageError(err instanceof Error ? err.message : 'تعذر تحميل الخطوط والمحطات.');
@@ -276,13 +284,13 @@ export const LinesPage: React.FC = () => {
               value={lineName} onChange={(e) => setLineName(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
           </div>
-          <div>
+          {admin.role === 'super_admin' && <div>
             <label className="text-xs font-semibold text-slate-500">الشركة المشغلة</label>
             <select value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required>
               {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
+          </div>}
           <div>
             <label className="text-xs font-semibold text-slate-500">سعر الترم (ج.م)</label>
             <input type="number" value={priceTermly} onChange={(e) => setPriceTermly(e.target.value)}

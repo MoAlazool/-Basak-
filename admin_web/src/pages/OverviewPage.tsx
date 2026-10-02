@@ -30,6 +30,17 @@ function cairoWeekdayName(dateKey: string): string {
   return daysArabic[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
 }
 
+async function loadAll<T>(loadPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await loadPage(offset, offset + 999);
+    if (error) throw new Error(error.message);
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < 1000) return rows;
+  }
+}
+
 export const OverviewPage: React.FC = () => {
   const [stats, setStats] = useState({
     activeStudents: 0,
@@ -59,18 +70,14 @@ export const OverviewPage: React.FC = () => {
 
       // 1. Stats Queries
       // Active subscriptions count
-      const { count: activeSubsCount, data: activeSubs } = await supabase
-        .from('subscriptions')
-        .select('price', { count: 'exact' })
-        .eq('status', 'active');
-
-      const { data: archivedRevenue, error: archivedError } = await supabase
-        .from('deleted_student_revenue')
-        .select('amount');
-      if (archivedError) throw archivedError;
+      const [activeSubs, archivedRevenue] = await Promise.all([
+        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status')
+          .eq('status', 'active').range(from, to)),
+        loadAll(async (from, to) => await supabase.from('deleted_student_revenue').select('amount').range(from, to)),
+      ]);
       const totalRevenue =
-        (activeSubs || []).reduce((sum, item) => sum + Number(item.price || 0), 0) +
-        (archivedRevenue || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        activeSubs.reduce((sum, item: any) => sum + Number(item.price || 0), 0) +
+        archivedRevenue.reduce((sum, item: any) => sum + Number(item.amount || 0), 0);
 
       // Companies count
       const { count: compCount } = await supabase
@@ -116,28 +123,32 @@ export const OverviewPage: React.FC = () => {
       // unavailable if the database could not provide an exact count.
 
       setStats({
-        activeStudents: activeSubsCount || 0,
+        activeStudents: activeSubs.length,
         ridingToday: ridersTodayCount,
         companiesCount: compCount || 0,
         monthlyRevenue: totalRevenue || 0,
       });
 
       // 2. Top Lines Query
-      const { data: linesData } = await supabase
+      const { data: linesData, error: linesError } = await supabase
         .from('lines')
-        .select(`
-          id, name, is_active,
-          companies(name),
-          subscriptions(id, status)
-        `)
+        .select('id,name,is_active,companies(name)')
         .order('name');
+      if (linesError) throw linesError;
+
+      const topLineSubs = await loadAll(async (from, to) => await supabase.from('subscriptions')
+        .select('line_id,status').eq('status', 'active').range(from, to));
+      const activeCountByLine = new Map<string, number>();
+      for (const subscription of topLineSubs as any[]) {
+        activeCountByLine.set(subscription.line_id, (activeCountByLine.get(subscription.line_id) || 0) + 1);
+      }
 
       const formattedTopLines = (linesData || []).map((l: any) => {
-        const activeSubscribers = (l.subscriptions || []).filter((s: any) => s.status === 'active').length;
+        const activeSubscribers = activeCountByLine.get(l.id) || 0;
         return {
           id: l.id,
           name: l.name,
-          companyName: l.companies?.name || 'شركة معتمدة',
+          companyName: l.companies?.name || '—',
           subscriberCount: activeSubscribers,
           isActive: l.is_active,
         };

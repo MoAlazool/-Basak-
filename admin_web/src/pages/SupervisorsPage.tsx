@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
+import { useAdminScope } from '../lib/adminScope';
 import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Key, Eye, EyeOff } from 'lucide-react';
 
 interface Supervisor {
@@ -15,6 +16,7 @@ interface Supervisor {
 }
 
 export const SupervisorsPage: React.FC = () => {
+  const admin = useAdminScope();
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,13 +43,16 @@ export const SupervisorsPage: React.FC = () => {
       if (sError) throw sError;
       setSupervisors(supData || []);
 
-      const { data: compData, error: cError } = await supabase
-        .from('companies')
-        .select('id, name')
-        .eq('is_active', true);
-      if (cError) throw cError;
-      setCompanies(compData || []);
-      if (compData && compData.length > 0) setCompanyId(compData[0].id);
+      if (admin.role === 'company_admin' && admin.company_id) {
+        setCompanies([{ id: admin.company_id, name: admin.companyName || '' }]);
+        setCompanyId(admin.company_id);
+      } else {
+        const { data: compData, error: cError } = await supabase
+          .from('companies').select('id, name').eq('is_active', true);
+        if (cError) throw cError;
+        setCompanies(compData || []);
+        if (compData && compData.length > 0) setCompanyId(compData[0].id);
+      }
     } catch (err) {
       console.error('Error fetching supervisors:', err);
     } finally {
@@ -195,7 +200,7 @@ export const SupervisorsPage: React.FC = () => {
             />
           </div>
 
-          <div>
+          {admin.role === 'super_admin' && <div>
             <label className="text-xs font-semibold text-slate-500">الشركة التابع لها</label>
             <select
               value={companyId}
@@ -209,7 +214,7 @@ export const SupervisorsPage: React.FC = () => {
                 </option>
               ))}
             </select>
-          </div>
+          </div>}
 
           <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
             <button

@@ -16,13 +16,17 @@ interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   onLogout: () => void;
+  role: 'super_admin' | 'company_admin';
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onLogout, role }) => {
   const navItems = [
     { id: 'overview',     name: 'نظرة عامة',        icon: LayoutDashboard },
-    { id: 'companies',    name: 'الشركات',           icon: Building2 },
-    { id: 'universities', name: 'الجامعات والوجهات', icon: GraduationCap },
+    ...(role === 'super_admin' ? [
+      { id: 'companies',    name: 'الشركات',           icon: Building2 },
+      { id: 'company-admins', name: 'مديرو الشركات',    icon: ShieldCheck },
+      { id: 'universities', name: 'الجامعات والوجهات', icon: GraduationCap },
+    ] : []),
     { id: 'lines',        name: 'الخطوط والمحطات',  icon: Bus },
     { id: 'supervisors',  name: 'المشرفون',          icon: UserCheck },
     { id: 'students',     name: 'إدارة الطلاب',      icon: Users },

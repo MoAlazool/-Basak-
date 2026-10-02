@@ -2,44 +2,50 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { OverviewPage } from './pages/OverviewPage';
 import { CompaniesPage } from './pages/CompaniesPage';
+import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 import { LinesPage } from './pages/LinesPage';
 import { SupervisorsPage } from './pages/SupervisorsPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { LoginPage } from './pages/LoginPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { PendingReceiptsTable } from './components/PendingReceiptsTable';
 import { supabase } from './lib/supabase';
 import { usePendingReceipts } from './lib/pendingReceipts';
+import { AdminProfile, AdminScopeProvider } from './lib/adminScope';
 
 export function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [admin, setAdmin] = useState<AdminProfile | null>(null);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [authLoading, setAuthLoading] = useState(true);
+  const [recoveryMode, setRecoveryMode] = useState(() => window.location.hash.includes('type=recovery'));
 
   // Restore only a real Supabase session whose user is listed as an admin.
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
+      if (window.location.hash.includes('type=recovery')) setRecoveryMode(true);
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const { data, error } = await supabase.from('admins').select('id').eq('id', session.user.id).maybeSingle();
-        if (!error && data && mounted) setIsLoggedIn(true);
+        const profile = await loadAdminProfile(session.user.id);
+        if (profile && mounted) setAdmin(profile);
         else await supabase.auth.signOut();
       }
       if (mounted) setAuthLoading(false);
     };
     void restore();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
       if (!session) {
-        if (mounted) setIsLoggedIn(false);
+        if (mounted) setAdmin(null);
         return;
       }
       void Promise.resolve().then(async () => {
-        const { data, error } = await supabase.from('admins').select('id').eq('id', session.user.id).maybeSingle();
-        if (!error && data && mounted) setIsLoggedIn(true);
+        const profile = await loadAdminProfile(session.user.id);
+        if (profile && mounted) setAdmin(profile);
         else if (mounted) {
-          setIsLoggedIn(false);
+          setAdmin(null);
           await supabase.auth.signOut();
         }
       });
@@ -47,21 +53,29 @@ export function App() {
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
+  useEffect(() => {
+    if (admin?.role === 'company_admin' && ['companies', 'company-admins', 'universities'].includes(activeTab)) {
+      setActiveTab('overview');
+    }
+  }, [admin, activeTab]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setIsLoggedIn(false);
+    setAdmin(null);
   };
 
   if (authLoading) return <div className="min-h-screen grid place-items-center" dir="rtl">جاري التحقق من الجلسة...</div>;
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
+  if (recoveryMode) return <ResetPasswordPage onComplete={() => setRecoveryMode(false)} />;
+  if (!admin) {
+    return <LoginPage onLogin={setAdmin} />;
   }
 
   return (
+    <AdminScopeProvider admin={admin}>
     <div className="flex min-h-screen" dir="rtl">
       {/* ── Desktop Sidebar (hidden on mobile) ─────── */}
       <div className="hidden md:flex">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} role={admin.role} />
       </div>
 
       {/* ── Main Content ────────────────────────────── */}
@@ -75,7 +89,8 @@ export function App() {
         <div className="mx-auto max-w-[1400px] p-4 sm:p-6 space-y-0">
           {activeTab === 'overview' && <OverviewPage />}
           {activeTab === 'companies' && <CompaniesPage />}
-          {activeTab === 'universities' && <UniversitiesPage />}
+          {activeTab === 'company-admins' && <CompanyAdminsPage />}
+          {activeTab === 'universities' && admin.role === 'super_admin' && <UniversitiesPage />}
           {activeTab === 'lines' && <LinesPage />}
           {activeTab === 'supervisors' && <SupervisorsPage />}
           {activeTab === 'students' && <StudentsPage />}
@@ -90,9 +105,22 @@ export function App() {
       </main>
 
       {/* ── Mobile Bottom Navigation Bar ───────────── */}
-      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} role={admin.role} />
     </div>
+    </AdminScopeProvider>
   );
+}
+
+async function loadAdminProfile(userId: string): Promise<AdminProfile | null> {
+  const { data, error } = await supabase.from('admins')
+    .select('id,email,full_name,role,company_id').eq('id', userId).maybeSingle();
+  if (error || !data) return null;
+  let companyName: string | null = null;
+  if (data.company_id) {
+    const { data: company } = await supabase.from('companies').select('name').eq('id', data.company_id).maybeSingle();
+    companyName = company?.name ?? null;
+  }
+  return { ...data, role: data.role, companyName } as AdminProfile;
 }
 
 const AdminReceiptsQueue: React.FC = () => {
@@ -112,12 +140,17 @@ interface MobileNavProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   onLogout: () => void;
+  role: 'super_admin' | 'company_admin';
 }
 
-const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, onLogout }) => {
+const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, onLogout, role }) => {
   const items = [
     { id: 'overview',     icon: LayoutDashboard, label: 'الرئيسية' },
-    { id: 'universities', icon: GraduationCap,   label: 'الجامعات' },
+    ...(role === 'super_admin' ? [
+      { id: 'companies', icon: Building2, label: 'الشركات' },
+      { id: 'company-admins', icon: GraduationCap, label: 'مديرو الشركات' },
+      { id: 'universities', icon: GraduationCap, label: 'الجامعات' },
+    ] : []),
     { id: 'lines',        icon: Bus,             label: 'الخطوط'   },
     { id: 'supervisors',  icon: UserCheck,       label: 'المشرفون' },
     { id: 'students',     icon: Users,           label: 'الطلاب'   },

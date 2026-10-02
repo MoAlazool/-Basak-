@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Bus, Eye, EyeOff, ShieldCheck, LogIn } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { AdminProfile } from '../lib/adminScope';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (admin: AdminProfile) => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
@@ -12,6 +13,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetNotice, setResetNotice] = useState('');
+
+  const handlePasswordReset = async () => {
+    setError('');
+    setResetNotice('');
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError('اكتب البريد الإلكتروني أولاً لإرسال رابط الاستعادة.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: window.location.origin,
+      });
+      if (resetError) throw resetError;
+      setResetNotice('لو البريد مسجل، هيوصلك رابط استعادة. افتحه واختر كلمة مرور جديدة.');
+    } catch {
+      setError('تعذر إرسال رابط الاستعادة. حاول مرة أخرى بعد قليل.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,13 +45,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) throw signInError;
-      const { data: admin, error: adminError } = await supabase.from('admins').select('id').eq('id', data.user.id).maybeSingle();
+      const { data: admin, error: adminError } = await supabase.from('admins').select('id,email,full_name,role,company_id').eq('id', data.user.id).maybeSingle();
       if (adminError) throw adminError;
       if (!admin) {
         await supabase.auth.signOut();
         throw new Error('هذا الحساب غير مسجل كمسؤول في النظام.');
       }
-      onLogin();
+      let companyName: string | null = null;
+      if (admin.company_id) {
+        const { data: company } = await supabase.from('companies').select('name').eq('id', admin.company_id).maybeSingle();
+        companyName = company?.name ?? null;
+      }
+      onLogin({ ...admin, role: admin.role, companyName } as AdminProfile);
     } catch (err) {
       const message = err instanceof Error ? err.message.toLowerCase() : '';
       if (
@@ -132,7 +161,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              <button type="button" onClick={() => void handlePasswordReset()} disabled={loading} className="mt-2 text-xs font-bold text-[#287D9A] underline-offset-2 hover:underline disabled:opacity-50">
+                نسيت كلمة المرور؟ أرسل رابط استعادة
+              </button>
             </div>
+
+            {resetNotice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">{resetNotice}</p>}
 
             {/* Error */}
             {error && (

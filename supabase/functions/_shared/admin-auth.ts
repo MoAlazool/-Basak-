@@ -22,10 +22,16 @@ export async function requireAdmin(request: Request) {
 
   const serviceClient = createClient(url, serviceKey, { auth: { persistSession: false } });
   const { data: admin, error: adminError } = await serviceClient
-    .from('admins').select('id').eq('id', user.id).maybeSingle();
+    .from('admins').select('id,role,company_id').eq('id', user.id).maybeSingle();
   if (adminError || !admin) throw new Error('هذا الإجراء متاح للمسؤولين فقط.');
 
-  return { user, serviceClient };
+  return { user, admin, serviceClient };
+}
+
+export async function requireSuperAdmin(request: Request) {
+  const context = await requireAdmin(request);
+  if (context.admin.role !== 'super_admin') throw new Error('هذا الإجراء متاح لمدير النظام فقط.');
+  return context;
 }
 
 export function jsonResponse(body: unknown, status = 200) {

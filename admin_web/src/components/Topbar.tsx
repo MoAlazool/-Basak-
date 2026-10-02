@@ -1,5 +1,6 @@
 import React from 'react';
 import { User, Bell, Calendar } from 'lucide-react';
+import { useAdminScope } from '../lib/adminScope';
 
 interface TopbarProps {
   title: string;
@@ -7,6 +8,7 @@ interface TopbarProps {
 }
 
 export const Topbar: React.FC<TopbarProps> = ({ title, subtitle }) => {
+  const admin = useAdminScope();
   const todayDate = new Date().toLocaleDateString('ar-EG', {
     weekday: 'long',
     year: 'numeric',
@@ -38,8 +40,8 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle }) => {
             <User className="h-4 w-4" />
           </div>
           <div className="text-right">
-            <p className="text-[13px] font-bold text-[#1F2937] leading-none">مدير النظام</p>
-            <p className="text-[11px] font-medium text-[#3E8FBF] mt-0.5">Super Admin</p>
+            <p className="text-[13px] font-bold text-[#1F2937] leading-none">{admin.companyName || admin.full_name || 'مدير النظام'}</p>
+            <p className="text-[11px] font-medium text-[#3E8FBF] mt-0.5">{admin.role === 'super_admin' ? 'Super Admin' : 'مدير الشركة'}</p>
           </div>
         </div>
       </div>

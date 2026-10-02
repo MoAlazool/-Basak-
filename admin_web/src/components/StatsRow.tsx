@@ -1,5 +1,6 @@
 import React from 'react';
 import { Users, Bus, Building2, Wallet } from 'lucide-react';
+import { useAdminScope } from '../lib/adminScope';
 
 interface StatsProps {
   activeStudents: number;
@@ -16,6 +17,7 @@ export const StatsRow: React.FC<StatsProps> = ({
   monthlyRevenue,
   loading,
 }) => {
+  const admin = useAdminScope();
   const cards = [
     {
       label: 'الاشتراكات النشطة',
@@ -37,7 +39,7 @@ export const StatsRow: React.FC<StatsProps> = ({
       iconBg: 'bg-[#DDF3E6]',
       iconColor: 'text-[#2E9E5B]',
     },
-    {
+    ...(admin.role === 'super_admin' ? [{
       label: 'شركات النقل المفعّلة',
       value: companiesCount,
       displayValue: companiesCount.toLocaleString('ar-EG'),
@@ -46,7 +48,7 @@ export const StatsRow: React.FC<StatsProps> = ({
       icon: Building2,
       iconBg: 'bg-[#FFF1D6]',
       iconColor: 'text-[#B8860B]',
-    },
+    }] : []),
     {
       label: 'إجمالي الإيرادات المسجلة',
       value: monthlyRevenue,

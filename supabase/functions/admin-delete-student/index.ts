@@ -1,35 +1,5 @@
-import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
-async function requireAdmin(request: Request) {
-  const token = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
-  if (!token) throw new Error('جلسة الدخول غير صالحة.');
-  const url = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !anonKey || !serviceKey) throw new Error('إعدادات وظيفة الإدارة غير مكتملة.');
-
-  const authClient = createClient(url, anonKey, { auth: { persistSession: false } });
-  const { data: { user }, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !user) throw new Error('جلسة الدخول غير صالحة.');
-  const serviceClient = createClient(url, serviceKey, { auth: { persistSession: false } });
-  const { data: admin, error: adminError } = await serviceClient
-    .from('admins').select('id').eq('id', user.id).maybeSingle();
-  if (adminError || !admin) throw new Error('هذا الإجراء متاح للمسؤولين فقط.');
-  return serviceClient;
-}
+import { corsHeaders, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 async function removeStudentFiles(service: SupabaseClient, studentId: string) {
   for (const bucket of ['student-avatars', 'receipts']) {
@@ -55,7 +25,7 @@ Deno.serve(async (request: Request) => {
   if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
 
   try {
-    const serviceClient = await requireAdmin(request);
+    const { admin, serviceClient } = await requireAdmin(request);
     const { studentId } = await request.json();
     if (typeof studentId !== 'string' || !studentId) {
       return jsonResponse({ error: 'معرّف الطالب غير صحيح.' }, 400);
@@ -65,6 +35,24 @@ Deno.serve(async (request: Request) => {
       .from('students').select('id').eq('id', studentId).maybeSingle();
     if (lookupError) throw lookupError;
     if (!profile) return jsonResponse({ error: 'الطالب غير موجود.' }, 404);
+
+    if (admin.role === 'company_admin') {
+      const { data: ownedLines, error: linesError } = await serviceClient.from('lines')
+        .select('id').eq('company_id', admin.company_id);
+      if (linesError) throw linesError;
+      const companyLineIds = (ownedLines || []).map((line) => line.id);
+      const { data: otherCompanySubs, error: subscriptionsError } = await serviceClient.from('subscriptions')
+        .select('line_id,lines!inner(company_id)').eq('student_id', studentId)
+        .neq('lines.company_id', admin.company_id || '');
+      if (subscriptionsError) throw subscriptionsError;
+      if ((otherCompanySubs || []).length > 0 || companyLineIds.length === 0) {
+        return jsonResponse({ error: 'لا يمكن حذف حساب طالب مرتبط بخطوط شركة أخرى. استخدم إدارة حالة اشتراك شركتك.' }, 403);
+      }
+      const { count, error: ownershipError } = await serviceClient.from('subscriptions')
+        .select('id', { count: 'exact', head: true }).eq('student_id', studentId).in('line_id', companyLineIds);
+      if (ownershipError) throw ownershipError;
+      if (!count) return jsonResponse({ error: 'الطالب ليس مشتركاً في خطوط شركتك.' }, 403);
+    }
 
     await removeStudentFiles(serviceClient, profile.id);
 
