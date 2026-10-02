@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAdminScope } from '../lib/adminScope';
-import { MapPin, Plus, Clock, ChevronDown, ChevronUp, Power, Pencil, Save, X } from 'lucide-react';
+import { MapPin, Plus, Clock, ChevronDown, ChevronUp, Power, Pencil, Save, X, GraduationCap, Trash2 } from 'lucide-react';
 
 interface Station {
   id: string;
@@ -19,6 +19,26 @@ interface StationForm {
   return_times: string[];
 }
 
+interface UniversitySchedule {
+  id: string;
+  university_id: string;
+  departure_time: string;
+  return_time: string;
+  is_active: boolean;
+  universities?: { name: string } | null;
+}
+
+interface ScheduleDraft {
+  university_id: string;
+  departure_time: string;
+  return_time: string;
+}
+
+const emptyScheduleDraft = (): ScheduleDraft => ({ university_id: '', departure_time: '', return_time: '' });
+
+const activeSchedules = (line?: Line): UniversitySchedule[] =>
+  (line?.line_university_schedules ?? []).filter((schedule) => schedule.is_active);
+
 interface Line {
   id: string;
   name: string;
@@ -29,6 +49,7 @@ interface Line {
   is_active: boolean;
   companies?: { name: string };
   stations?: Station[];
+  line_university_schedules?: UniversitySchedule[];
 }
 
 // ── Helper: editable list of time inputs ──────────────────────────
@@ -98,6 +119,38 @@ const TimeListEditor: React.FC<TimeListEditorProps> = ({ label, color, times, on
   );
 };
 
+// ── Helper: one university + departure/return time row ────────────
+interface ScheduleRowEditorProps {
+  universities: { id: string; name: string }[];
+  value: ScheduleDraft;
+  takenIds: string[];
+  onChange: (patch: Partial<ScheduleDraft>) => void;
+  onRemove?: () => void;
+}
+
+const ScheduleRowEditor: React.FC<ScheduleRowEditorProps> = ({ universities, value, takenIds, onChange, onRemove }) => (
+  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr_auto] items-center">
+    <select value={value.university_id} onChange={(e) => onChange({ university_id: e.target.value })}
+      aria-label="الجامعة" className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
+      <option value="">اختر الجامعة</option>
+      {universities.map((university) => (
+        <option key={university.id} value={university.id} disabled={takenIds.includes(university.id)}>{university.name}</option>
+      ))}
+    </select>
+    <label className="flex items-center gap-1 text-[11px] text-emerald-700">ذهاب
+      <input type="time" value={value.departure_time} onChange={(e) => onChange({ departure_time: e.target.value })}
+        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs" />
+    </label>
+    <label className="flex items-center gap-1 text-[11px] text-amber-700">عودة
+      <input type="time" value={value.return_time} onChange={(e) => onChange({ return_time: e.target.value })}
+        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs" />
+    </label>
+    {onRemove ? (
+      <button type="button" onClick={onRemove} className="text-slate-400 hover:text-rose-500" title="إزالة"><X className="h-4 w-4" /></button>
+    ) : <span />}
+  </div>
+);
+
 // ── Main Page ─────────────────────────────────────────────────────
 export const LinesPage: React.FC = () => {
   const admin = useAdminScope();
@@ -117,6 +170,13 @@ export const LinesPage: React.FC = () => {
   const [priceDaily, setPriceDaily] = useState('50');
   const [lineSubmitting, setLineSubmitting] = useState(false);
 
+  // Universities served by the new line, each with its own trip time
+  const [universities, setUniversities] = useState<{ id: string; name: string }[]>([]);
+  const [newLineSchedules, setNewLineSchedules] = useState<ScheduleDraft[]>([]);
+  const [scheduleForms, setScheduleForms] = useState<Record<string, ScheduleDraft>>({});
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleDraft | null>(null);
+
   // Station forms (per line)
   const [stationForms, setStationForms] = useState<Record<string, StationForm>>({});
 
@@ -128,11 +188,17 @@ export const LinesPage: React.FC = () => {
       setLoading(true);
       const { data: linesData, error: lError } = await supabase
         .from('lines')
-        .select(`*, companies(name), stations(id, name, order_index, departure_times, return_times, is_active)`)
+        .select(`*, companies(name), stations(id, name, order_index, departure_times, return_times, is_active),
+          line_university_schedules(id, university_id, departure_time, return_time, is_active, universities(name))`)
         .order('name');
       if (lError) throw lError;
       if (!linesData) throw new Error('لم تُرجع قاعدة البيانات قائمة الخطوط.');
-      setLines(linesData || []);
+      setLines((linesData || []) as unknown as Line[]);
+
+      const { data: uniData, error: uError } = await supabase
+        .from('universities').select('id, name').eq('is_active', true).order('name');
+      if (uError) throw uError;
+      setUniversities(uniData || []);
 
       if (admin.role === 'company_admin' && admin.company_id) {
         const ownCompany = [{ id: admin.company_id, name: admin.companyName || '' }];
@@ -157,18 +223,29 @@ export const LinesPage: React.FC = () => {
   const handleCreateLine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lineName.trim() || !selectedCompanyId) return;
+    const schedules = newLineSchedules.filter((row) => row.university_id || row.departure_time || row.return_time);
+    const scheduleError = validateSchedules(schedules);
+    if (scheduleError) { alert(scheduleError); return; }
     try {
       setLineSubmitting(true);
-      const { error } = await supabase.from('lines').insert({
+      const { data: created, error } = await supabase.from('lines').insert({
         company_id: selectedCompanyId,
         name: lineName.trim(),
         price_termly: parseFloat(priceTermly),
         price_yearly: parseFloat(priceYearly),
         price_daily: parseFloat(priceDaily),
         is_active: true,
-      });
+      }).select('id').single();
       if (error) throw error;
+      if (schedules.length > 0) {
+        const { error: schedulesError } = await supabase.from('line_university_schedules')
+          .insert(schedules.map((row) => ({ ...row, line_id: created.id })));
+        if (schedulesError) {
+          alert('تم حفظ الخط لكن تعذر حفظ مواعيد الجامعات: ' + schedulesError.message + ' — أضفها من بطاقة الخط.');
+        }
+      }
       setLineName('');
+      setNewLineSchedules([]);
       fetchData();
     } catch (err: any) {
       alert('فشل إضافة الخط: ' + err.message);
@@ -187,8 +264,8 @@ export const LinesPage: React.FC = () => {
     // Filter out empty time strings
     const depTimes = (form.departure_times || []).filter((t) => t.trim()).sort();
     const retTimes = (form.return_times || []).filter((t) => t.trim()).sort();
-    if (depTimes.length === 0 || retTimes.length === 0) {
-      alert('أضف موعد ذهاب واحدًا وموعد عودة واحدًا على الأقل.');
+    if (activeSchedules(line).length === 0 && (depTimes.length === 0 || retTimes.length === 0)) {
+      alert('أضف موعد ذهاب واحدًا وموعد عودة واحدًا على الأقل، أو أضف جامعات بمواعيدها لهذا الخط.');
       return;
     }
 
@@ -198,8 +275,8 @@ export const LinesPage: React.FC = () => {
       order_index: nextOrder,
       departure_times: depTimes,
       return_times: retTimes,
-      departure_time: depTimes[0],
-      return_time: retTimes[0],
+      departure_time: depTimes[0] ?? null,
+      return_time: retTimes[0] ?? null,
     });
 
     if (error) {
@@ -242,16 +319,77 @@ export const LinesPage: React.FC = () => {
     if (!editingStation?.name.trim()) { alert('اسم المحطة مطلوب.'); return; }
     const departureTimes = editingStation.departure_times.filter(Boolean).sort();
     const returnTimes = editingStation.return_times.filter(Boolean).sort();
-    if (!departureTimes.length || !returnTimes.length) { alert('أضف موعد ذهاب وموعد عودة على الأقل.'); return; }
+    const stationLine = lines.find((line) => line.stations?.some((station) => station.id === stationId));
+    if (activeSchedules(stationLine).length === 0 && (!departureTimes.length || !returnTimes.length)) {
+      alert('أضف موعد ذهاب وموعد عودة على الأقل.'); return;
+    }
     const { error } = await supabase.from('stations').update({
       name: editingStation.name.trim(),
       departure_times: departureTimes,
       return_times: returnTimes,
-      departure_time: departureTimes[0],
-      return_time: returnTimes[0],
+      departure_time: departureTimes[0] ?? null,
+      return_time: returnTimes[0] ?? null,
     }).eq('id', stationId).select('id').single();
     if (error) alert('فشل حفظ مواعيد المحطة: ' + error.message);
     else { setEditingStationId(null); setEditingStation(null); fetchData(); }
+  };
+
+  const validateSchedules = (rows: ScheduleDraft[]): string | null => {
+    for (const row of rows) {
+      if (!row.university_id || !row.departure_time || !row.return_time) {
+        return 'لكل جامعة اختر الجامعة وموعد الذهاب وموعد العودة.';
+      }
+    }
+    const ids = rows.map((row) => row.university_id);
+    if (new Set(ids).size !== ids.length) return 'لا يمكن تكرار نفس الجامعة في نفس الخط. عدّل موعدها بدلاً من ذلك.';
+    return null;
+  };
+
+  const getScheduleForm = (lineId: string): ScheduleDraft => scheduleForms[lineId] ?? emptyScheduleDraft();
+  const updateScheduleForm = (lineId: string, patch: Partial<ScheduleDraft>) =>
+    setScheduleForms((prev) => ({ ...prev, [lineId]: { ...getScheduleForm(lineId), ...patch } }));
+
+  const handleAddSchedule = async (lineId: string) => {
+    const draft = getScheduleForm(lineId);
+    const error = validateSchedules([draft]);
+    if (error) { alert(error); return; }
+    const { error: insertError } = await supabase.from('line_university_schedules').insert({ ...draft, line_id: lineId });
+    if (insertError) {
+      alert(insertError.message.includes('line_university_schedules_unique')
+        ? 'هذه الجامعة مضافة بالفعل لهذا الخط. عدّل موعدها بدلاً من إضافتها مرة أخرى.'
+        : 'فشل إضافة موعد الجامعة: ' + insertError.message);
+      return;
+    }
+    setScheduleForms((prev) => ({ ...prev, [lineId]: emptyScheduleDraft() }));
+    fetchData();
+  };
+
+  const saveScheduleEdit = async (scheduleId: string) => {
+    if (!editingSchedule?.departure_time || !editingSchedule.return_time) { alert('أدخل موعد الذهاب والعودة.'); return; }
+    const { error } = await supabase.from('line_university_schedules').update({
+      departure_time: editingSchedule.departure_time,
+      return_time: editingSchedule.return_time,
+    }).eq('id', scheduleId).select('id').single();
+    if (error) alert('فشل حفظ الموعد: ' + error.message);
+    else { setEditingScheduleId(null); setEditingSchedule(null); fetchData(); }
+  };
+
+  const handleToggleSchedule = async (schedule: UniversitySchedule) => {
+    const next = !schedule.is_active;
+    if (!next && !confirm('إيقاف هذه الجامعة على الخط؟ لن يتمكن طلابها من الاشتراك الجديد، ويبقى المشتركون الحاليون على موعدهم حتى انتهاء اشتراكهم.')) return;
+    const { error } = await supabase.from('line_university_schedules').update({ is_active: next }).eq('id', schedule.id).select('id').single();
+    if (error) alert('فشل تغيير حالة الموعد: ' + error.message);
+    else fetchData();
+  };
+
+  const handleDeleteSchedule = async (schedule: UniversitySchedule) => {
+    if (!confirm(`حذف موعد ${schedule.universities?.name ?? 'الجامعة'} من هذا الخط؟`)) return;
+    const { error } = await supabase.from('line_university_schedules').delete().eq('id', schedule.id);
+    if (error) {
+      alert(error.code === '23503'
+        ? 'هذا الموعد مرتبط باشتراكات طلاب. أوقفه بدلاً من حذفه.'
+        : 'فشل حذف الموعد: ' + error.message);
+    } else fetchData();
   };
 
   const getForm = (lineId: string): StationForm =>
@@ -306,6 +444,30 @@ export const LinesPage: React.FC = () => {
             <input type="number" value={priceDaily} onChange={(e) => setPriceDaily(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
           </div>
+          <div className="sm:col-span-2 lg:col-span-6 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+                <GraduationCap className="h-4 w-4" />
+                الجامعات التي يخدمها الخط وموعد كل جامعة
+              </p>
+              <button type="button" onClick={() => setNewLineSchedules((rows) => [...rows, emptyScheduleDraft()])}
+                className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700">
+                <Plus className="h-3 w-3" /> إضافة جامعة
+              </button>
+            </div>
+            {newLineSchedules.length === 0 ? (
+              <p className="mt-2 text-[11px] text-slate-500">بدون جامعات يستخدم الخط مواعيد المحطات. أضف جامعة ليظهر لكل طالب موعد جامعته فقط.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {newLineSchedules.map((row, index) => (
+                  <ScheduleRowEditor key={index} universities={universities} value={row}
+                    takenIds={newLineSchedules.filter((_, i) => i !== index).map((other) => other.university_id)}
+                    onChange={(patch) => setNewLineSchedules((rows) => rows.map((item, i) => (i === index ? { ...item, ...patch } : item)))}
+                    onRemove={() => setNewLineSchedules((rows) => rows.filter((_, i) => i !== index))} />
+                ))}
+              </div>
+            )}
+          </div>
           <div className="sm:col-span-2 lg:col-span-6 flex justify-end">
             <button type="submit" disabled={lineSubmitting}
               className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
@@ -339,6 +501,15 @@ export const LinesPage: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-bold text-slate-800">{line.name}</h3>
                     <p className="text-xs text-slate-500">الشركة: {line.companies?.name || 'غير محدد'}</p>
+                    {activeSchedules(line).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {activeSchedules(line).slice().sort((a, b) => a.departure_time.localeCompare(b.departure_time)).map((schedule) => (
+                          <span key={schedule.id} className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                            {schedule.universities?.name ?? 'جامعة'} ← {fmt(schedule.departure_time)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">الترم: {line.price_termly} ج.م</span>
@@ -347,7 +518,7 @@ export const LinesPage: React.FC = () => {
                     <button onClick={() => setExpandedLine(isExpanded ? null : line.id)}
                       className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition">
                       <MapPin className="h-3.5 w-3.5" />
-                      المحطات ({sortedStations.length})
+                      المحطات والجامعات ({sortedStations.length})
                       {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                     </button>
                     <button onClick={() => handleToggleLine(line)}
@@ -360,6 +531,68 @@ export const LinesPage: React.FC = () => {
                 {/* Stations Panel */}
                 {isExpanded && (
                   <div className="p-5 bg-slate-50/40 space-y-4">
+
+                    {/* University schedules */}
+                    <div className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
+                      <p className="mb-3 flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+                        <GraduationCap className="h-4 w-4" />
+                        مواعيد الجامعات على هذا الخط
+                      </p>
+                      {(line.line_university_schedules ?? []).length === 0 ? (
+                        <p className="mb-3 text-[11px] text-slate-500">لا توجد جامعات بعد — الخط يستخدم مواعيد المحطات لكل الطلاب.</p>
+                      ) : (
+                        <div className="mb-3 overflow-x-auto">
+                          <table className="w-full text-right text-xs">
+                            <thead className="text-slate-500"><tr><th className="p-2">الجامعة</th><th className="p-2">الذهاب</th><th className="p-2">العودة</th><th className="p-2">الحالة</th><th className="p-2">إجراءات</th></tr></thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {(line.line_university_schedules ?? []).slice().sort((a, b) => a.departure_time.localeCompare(b.departure_time)).map((schedule) => (
+                                <tr key={schedule.id} className={schedule.is_active ? '' : 'opacity-60'}>
+                                  <td className="p-2 font-bold text-slate-700">{schedule.universities?.name ?? '—'}</td>
+                                  {editingScheduleId === schedule.id && editingSchedule ? (
+                                    <>
+                                      <td className="p-2"><input type="time" value={editingSchedule.departure_time} onChange={(e) => setEditingSchedule({ ...editingSchedule, departure_time: e.target.value })} className="rounded-lg border px-2 py-1" aria-label="موعد الذهاب" /></td>
+                                      <td className="p-2"><input type="time" value={editingSchedule.return_time} onChange={(e) => setEditingSchedule({ ...editingSchedule, return_time: e.target.value })} className="rounded-lg border px-2 py-1" aria-label="موعد العودة" /></td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td className="p-2 font-bold text-emerald-700">{fmt(schedule.departure_time)}</td>
+                                      <td className="p-2 font-bold text-amber-700">{fmt(schedule.return_time)}</td>
+                                    </>
+                                  )}
+                                  <td className="p-2">{schedule.is_active ? <span className="text-emerald-600">نشط</span> : <span className="text-rose-500">موقوف</span>}</td>
+                                  <td className="p-2">
+                                    <div className="flex gap-2">
+                                      {editingScheduleId === schedule.id ? (
+                                        <>
+                                          <button onClick={() => saveScheduleEdit(schedule.id)} className="text-blue-600" title="حفظ"><Save className="h-4 w-4" /></button>
+                                          <button onClick={() => { setEditingScheduleId(null); setEditingSchedule(null); }} className="text-slate-400" title="إلغاء"><X className="h-4 w-4" /></button>
+                                        </>
+                                      ) : (
+                                        <button onClick={() => { setEditingScheduleId(schedule.id); setEditingSchedule({ university_id: schedule.university_id, departure_time: fmt(schedule.departure_time), return_time: fmt(schedule.return_time) }); }} className="text-blue-500" title="تعديل الموعد"><Pencil className="h-4 w-4" /></button>
+                                      )}
+                                      <button onClick={() => handleToggleSchedule(schedule)} className={schedule.is_active ? 'text-rose-400' : 'text-emerald-500'} title={schedule.is_active ? 'إيقاف' : 'تفعيل'}><Power className="h-4 w-4" /></button>
+                                      <button onClick={() => handleDeleteSchedule(schedule)} className="text-slate-400 hover:text-rose-500" title="حذف"><Trash2 className="h-4 w-4" /></button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="flex-1 min-w-[260px]">
+                          <ScheduleRowEditor universities={universities} value={getScheduleForm(line.id)}
+                            takenIds={(line.line_university_schedules ?? []).map((schedule) => schedule.university_id)}
+                            onChange={(patch) => updateScheduleForm(line.id, patch)} />
+                        </div>
+                        <button onClick={() => handleAddSchedule(line.id)}
+                          className="flex items-center gap-1 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700">
+                          <Plus className="h-3.5 w-3.5" /> إضافة الجامعة
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">يرى كل طالب موعد جامعته فقط، ولا يظهر الخط لطلاب الجامعات غير المضافة.</p>
+                    </div>
 
                     {/* Existing Stations */}
                     {sortedStations.map((st, idx) => (
@@ -455,6 +688,9 @@ export const LinesPage: React.FC = () => {
                         />
                       </div>
 
+                      {activeSchedules(line).length > 0 && (
+                        <p className="mb-3 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] text-indigo-700">مواعيد هذا الخط تُحدد حسب الجامعة. مواعيد المحطة اختيارية.</p>
+                      )}
                       {/* Times editors — side by side, fully independent */}
                       <div className="flex gap-4 flex-wrap">
                         <TimeListEditor

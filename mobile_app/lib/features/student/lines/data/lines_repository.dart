@@ -6,16 +6,24 @@ import '../models/line_model.dart';
 class LinesRepository {
   final SupabaseClient _client = SupabaseService.client;
 
-  /// 1. Sees a list of all lines across all companies
+  /// 1. Lines the student can subscribe to: lines without university schedules,
+  /// plus lines that serve the student's own university (with that trip time).
   Future<List<LineModel>> getAllLines() async {
     final response = await _client
         .from(SupabaseTables.lines)
         .select('*, companies(name)')
         .eq('is_active', true)
         .order('name');
+    final options = await _client.rpc(SupabaseRpcs.getStudentLineOptions);
+    final optionsByLine = {
+      for (final row in options as List<dynamic>)
+        (row as Map<String, dynamic>)['line_id'] as String: row,
+    };
 
     return (response as List<dynamic>)
         .map((e) => LineModel.fromJson(e as Map<String, dynamic>))
+        .where((line) => optionsByLine.containsKey(line.id))
+        .map((line) => line.withStudentOption(optionsByLine[line.id]!))
         .toList();
   }
 

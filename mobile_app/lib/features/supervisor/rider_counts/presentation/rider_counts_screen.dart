@@ -233,6 +233,12 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
                                 children: [
                                   Text(st.stationName,
                                       style: AppTextStyles.titleMedium),
+                                  if (st.universityName != null)
+                                    Text('رحلة ${st.universityName}',
+                                        style: AppTextStyles.labelSmall
+                                            .copyWith(
+                                                color: const Color(0xFF3F51B5),
+                                                fontWeight: FontWeight.w700)),
                                   if (st.lineName.isNotEmpty)
                                     Text(st.lineName,
                                         style: AppTextStyles.labelSmall

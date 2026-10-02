@@ -21,6 +21,9 @@ class SubscriptionModel {
   final String? supervisorPhone;
   final String? supervisorName;
 
+  /// University whose trip this subscription rides on (scheduled lines only).
+  final String? universityName;
+
   SubscriptionModel({
     required this.id,
     required this.studentId,
@@ -40,6 +43,7 @@ class SubscriptionModel {
     this.returnTimes = const [],
     this.supervisorPhone,
     this.supervisorName,
+    this.universityName,
   });
 
   bool get isActive => status == 'active';
@@ -51,12 +55,19 @@ class SubscriptionModel {
     final line = json['lines'] as Map<String, dynamic>?;
     final station = json['stations'] as Map<String, dynamic>?;
     final supervisor = line?['supervisors'] as Map<String, dynamic>?;
-    final availableDepartureTimes = stationTimes(station?['departure_times'] ??
-        json['departure_time'] ??
-        station?['departure_time']);
-    final availableReturnTimes = stationTimes(station?['return_times'] ??
-        json['return_time'] ??
-        station?['return_time']);
+    // Scheduled lines: the only valid times are those of the student's university.
+    final schedule = json['line_university_schedules'] as Map<String, dynamic>?;
+    final university = schedule?['universities'] as Map<String, dynamic>?;
+    final availableDepartureTimes = schedule != null
+        ? stationTimes(schedule['departure_time'])
+        : stationTimes(station?['departure_times'] ??
+            json['departure_time'] ??
+            station?['departure_time']);
+    final availableReturnTimes = schedule != null
+        ? stationTimes(schedule['return_time'])
+        : stationTimes(station?['return_times'] ??
+            json['return_time'] ??
+            station?['return_time']);
 
     return SubscriptionModel(
       id: json['id'] as String,
@@ -81,6 +92,7 @@ class SubscriptionModel {
       returnTimes: availableReturnTimes,
       supervisorPhone: supervisor?['phone'] as String?,
       supervisorName: supervisor?['full_name'] as String?,
+      universityName: university?['name'] as String?,
     );
   }
 }

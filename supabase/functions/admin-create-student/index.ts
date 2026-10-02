@@ -33,15 +33,35 @@ Deno.serve(async (request: Request) => {
     if (stationError) throw stationError;
     if (!station) return jsonResponse({ error: 'المحطة غير تابعة للخط أو غير نشطة.' }, 400);
 
-    // The DB trigger requires a departure/return time that exists on the station.
-    const normalize = (time: string) => time.slice(0, 5);
-    const departureTimes: string[] = (station.departure_times ?? []).map(String);
-    const returnTimes: string[] = (station.return_times ?? []).map(String);
-    if (!departureTimes.length || !returnTimes.length) {
-      return jsonResponse({ error: 'المحطة ليس لها مواعيد ذهاب وعودة. أضف المواعيد من صفحة الخطوط أولاً.' }, 400);
+    // Lines with university schedules: the time comes from the student's university
+    // (the DB trigger sets it). Other lines use the station's own time lists.
+    const { data: schedules, error: schedulesError } = await serviceClient.from('line_university_schedules')
+      .select('id,departure_time,return_time,universities!inner(name)')
+      .eq('line_id', lineId).eq('is_active', true);
+    if (schedulesError) throw schedulesError;
+    let departureTime: string;
+    let returnTime: string;
+    if ((schedules ?? []).length > 0) {
+      const schedule = (schedules ?? []).find((row) => {
+        const uni = Array.isArray(row.universities) ? row.universities[0] : row.universities;
+        return uni?.name === university;
+      });
+      if (!schedule) {
+        return jsonResponse({ error: 'هذا الخط لا يخدم جامعة الطالب. اختر خطاً يخدم جامعته أو أضف الجامعة للخط.' }, 400);
+      }
+      departureTime = schedule.departure_time;
+      returnTime = schedule.return_time;
+    } else {
+      // The DB trigger requires a departure/return time that exists on the station.
+      const normalize = (time: string) => time.slice(0, 5);
+      const departureTimes: string[] = (station.departure_times ?? []).map(String);
+      const returnTimes: string[] = (station.return_times ?? []).map(String);
+      if (!departureTimes.length || !returnTimes.length) {
+        return jsonResponse({ error: 'المحطة ليس لها مواعيد ذهاب وعودة. أضف المواعيد من صفحة الخطوط أولاً.' }, 400);
+      }
+      departureTime = departureTimes.find((t) => normalize(t) === normalize(requestedDeparture)) ?? departureTimes[0];
+      returnTime = returnTimes.find((t) => normalize(t) === normalize(requestedReturn)) ?? returnTimes[0];
     }
-    const departureTime = departureTimes.find((t) => normalize(t) === normalize(requestedDeparture)) ?? departureTimes[0];
-    const returnTime = returnTimes.find((t) => normalize(t) === normalize(requestedReturn)) ?? returnTimes[0];
 
     const priceColumn = { termly: 'price_termly', yearly: 'price_yearly', daily: 'price_daily' }[subscriptionType] as 'price_termly' | 'price_yearly' | 'price_daily';
 

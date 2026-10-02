@@ -39,6 +39,24 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isUploadingReceipt = false;
   XFile? _receiptPreview;
 
+  List<String> _departureChoices() => _selectedLine?.hasUniversitySchedule == true
+      ? [_selectedLine!.scheduleDepartureTime!]
+      : _selectedStation?.departureTimes ?? const [];
+
+  List<String> _returnChoices() => _selectedLine?.hasUniversitySchedule == true
+      ? [_selectedLine!.scheduleReturnTime!]
+      : _selectedStation?.returnTimes ?? const [];
+
+  String _stationDeparture(StationModel st) =>
+      _selectedLine?.hasUniversitySchedule == true
+          ? _selectedLine!.scheduleDepartureTime!
+          : st.departureTime;
+
+  String _stationReturn(StationModel st) =>
+      _selectedLine?.hasUniversitySchedule == true
+          ? _selectedLine!.scheduleReturnTime!
+          : st.returnTime;
+
   Future<void> _onLineSelected(LineModel line) async {
     setState(() {
       _selectedLine = line;
@@ -97,6 +115,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             returnTime: _selectedReturnTime!,
             type: _selectedType,
             price: price,
+            scheduleId: _selectedLine!.scheduleId,
           );
       ref.invalidate(currentSubscriptionProvider);
       if (mounted) {
@@ -631,6 +650,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                                   style: AppTextStyles.labelSmall
                                       .copyWith(color: AppColors.textSecondary),
                                 ),
+                                if (line.hasUniversitySchedule)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      '${line.universityName ?? 'جامعتك'} ← ذهاب ${line.scheduleDepartureTime} · عودة ${line.scheduleReturnTime}',
+                                      style: AppTextStyles.labelSmall.copyWith(
+                                          color: const Color(0xFF3F51B5),
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -674,8 +703,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                     child: GestureDetector(
                       onTap: () => setState(() {
                         _selectedStation = st;
-                        _selectedDepartureTime = null;
-                        _selectedReturnTime = null;
+                        // Scheduled lines: the university trip time is fixed.
+                        _selectedDepartureTime =
+                            _selectedLine?.scheduleDepartureTime;
+                        _selectedReturnTime = _selectedLine?.scheduleReturnTime;
                       }),
                       child: Container(
                         padding: const EdgeInsets.all(14),
@@ -710,11 +741,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                    'ذهاب ${st.departureTime.isEmpty ? 'غير محدد' : st.departureTime}',
+                                    'ذهاب ${_stationDeparture(st).isEmpty ? 'غير محدد' : _stationDeparture(st)}',
                                     style: AppTextStyles.labelSmall.copyWith(
                                         color: AppColors.textSecondary)),
                                 Text(
-                                    'عودة ${st.returnTime.isEmpty ? 'غير محدد' : st.returnTime}',
+                                    'عودة ${_stationReturn(st).isEmpty ? 'غير محدد' : _stationReturn(st)}',
                                     style: AppTextStyles.labelSmall.copyWith(
                                         color: AppColors.textSecondary))
                               ]),
@@ -728,8 +759,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             if (_selectedStation != null) ...[
               const SizedBox(height: 16),
               _buildTimePicker(
-                title: 'اختار معاد الذهاب',
-                choices: _selectedStation!.departureTimes,
+                title: _selectedLine!.hasUniversitySchedule
+                    ? 'معاد الذهاب لجامعتك'
+                    : 'اختار معاد الذهاب',
+                choices: _departureChoices(),
                 selected: _selectedDepartureTime,
                 onSelected: (value) =>
                     setState(() => _selectedDepartureTime = value),
@@ -737,8 +770,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               ),
               const SizedBox(height: 12),
               _buildTimePicker(
-                title: 'اختار معاد العودة',
-                choices: _selectedStation!.returnTimes,
+                title: _selectedLine!.hasUniversitySchedule
+                    ? 'معاد العودة لجامعتك'
+                    : 'اختار معاد العودة',
+                choices: _returnChoices(),
                 selected: _selectedReturnTime,
                 onSelected: (value) =>
                     setState(() => _selectedReturnTime = value),

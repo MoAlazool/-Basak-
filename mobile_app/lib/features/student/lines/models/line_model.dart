@@ -62,6 +62,17 @@ class LineModel {
   final bool isActive;
   final String? companyName;
 
+  /// True when the line runs per-university trips (line_university_schedules).
+  final bool usesUniversitySchedules;
+
+  /// The trip of the signed-in student's university on this line, if any.
+  final String? scheduleId;
+  final String? universityName;
+  final String? scheduleDepartureTime;
+  final String? scheduleReturnTime;
+
+  bool get hasUniversitySchedule => scheduleId != null;
+
   LineModel({
     required this.id,
     required this.companyId,
@@ -72,7 +83,39 @@ class LineModel {
     required this.priceDaily,
     required this.isActive,
     this.companyName,
+    this.usesUniversitySchedules = false,
+    this.scheduleId,
+    this.universityName,
+    this.scheduleDepartureTime,
+    this.scheduleReturnTime,
   });
+
+  /// Applies a row of the get_student_line_options RPC.
+  LineModel withStudentOption(Map<String, dynamic> option) {
+    String? hhmm(dynamic value) {
+      final text = value?.toString();
+      if (text == null || text.isEmpty) return null;
+      return text.length >= 5 ? text.substring(0, 5) : text;
+    }
+
+    return LineModel(
+      id: id,
+      companyId: companyId,
+      name: name,
+      supervisorId: supervisorId,
+      priceTermly: priceTermly,
+      priceYearly: priceYearly,
+      priceDaily: priceDaily,
+      isActive: isActive,
+      companyName: companyName,
+      usesUniversitySchedules:
+          option['uses_university_schedules'] as bool? ?? false,
+      scheduleId: option['schedule_id'] as String?,
+      universityName: option['university_name'] as String?,
+      scheduleDepartureTime: hhmm(option['departure_time']),
+      scheduleReturnTime: hhmm(option['return_time']),
+    );
+  }
 
   factory LineModel.fromJson(Map<String, dynamic> json) {
     return LineModel(

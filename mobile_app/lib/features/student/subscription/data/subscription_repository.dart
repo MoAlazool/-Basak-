@@ -18,7 +18,8 @@ class SubscriptionRepository {
         .select('''
           *,
           lines(name, supervisors(full_name, phone)),
-          stations(name, departure_times, return_times)
+          stations(name, departure_times, return_times),
+          line_university_schedules(departure_time, return_time, universities(name))
         ''')
         .eq('student_id', user.id)
         .inFilter('status',
@@ -41,6 +42,7 @@ class SubscriptionRepository {
     required String returnTime,
     required String type, // termly | yearly | daily
     required double price,
+    String? scheduleId,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('المستخدم غير مسجل.');
@@ -52,6 +54,7 @@ class SubscriptionRepository {
       'student_id': user.id,
       'line_id': lineId,
       'station_id': stationId,
+      if (scheduleId != null) 'schedule_id': scheduleId,
       'departure_time': departureTime,
       'return_time': returnTime,
       'type': type,
@@ -62,7 +65,8 @@ class SubscriptionRepository {
     }).select('''
           *,
           lines(name, supervisors(full_name, phone)),
-          stations(name, departure_times, return_times)
+          stations(name, departure_times, return_times),
+          line_university_schedules(departure_time, return_time, universities(name))
         ''').single();
 
     return SubscriptionModel.fromJson(inserted);
