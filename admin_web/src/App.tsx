@@ -9,22 +9,50 @@ import { StudentsPage } from './pages/StudentsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { LoginPage } from './pages/LoginPage';
 import { PendingReceiptsTable } from './components/PendingReceiptsTable';
+import { supabase } from './lib/supabase';
+import { usePendingReceipts } from './lib/pendingReceipts';
 
 export function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // Restore session from localStorage
+  // Restore only a real Supabase session whose user is listed as an admin.
   useEffect(() => {
-    const saved = localStorage.getItem('basak_admin_auth');
-    if (saved === 'true') setIsLoggedIn(true);
+    let mounted = true;
+    const restore = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data, error } = await supabase.from('admins').select('id').eq('id', session.user.id).maybeSingle();
+        if (!error && data && mounted) setIsLoggedIn(true);
+        else await supabase.auth.signOut();
+      }
+      if (mounted) setAuthLoading(false);
+    };
+    void restore();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        if (mounted) setIsLoggedIn(false);
+        return;
+      }
+      void Promise.resolve().then(async () => {
+        const { data, error } = await supabase.from('admins').select('id').eq('id', session.user.id).maybeSingle();
+        if (!error && data && mounted) setIsLoggedIn(true);
+        else if (mounted) {
+          setIsLoggedIn(false);
+          await supabase.auth.signOut();
+        }
+      });
+    });
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('basak_admin_auth');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsLoggedIn(false);
   };
 
+  if (authLoading) return <div className="min-h-screen grid place-items-center" dir="rtl">جاري التحقق من الجلسة...</div>;
   if (!isLoggedIn) {
     return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
   }
@@ -54,7 +82,7 @@ export function App() {
           {activeTab === 'receipts' && (
             <div className="space-y-6">
               <h1 className="text-2xl font-bold text-slate-800">فحص واعتماد الإيصالات</h1>
-              <PendingReceiptsTable receipts={[]} loading={false} onReceiptReviewed={() => {}} />
+              <AdminReceiptsQueue />
             </div>
           )}
           {activeTab === 'reports' && <ReportsPage />}
@@ -66,6 +94,13 @@ export function App() {
     </div>
   );
 }
+
+const AdminReceiptsQueue: React.FC = () => {
+  const { receipts, loading, error, refresh } = usePendingReceipts();
+
+  if (error) return <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الإيصالات: {error} <button className="mr-3 font-bold underline" onClick={() => void refresh()}>إعادة المحاولة</button></div>;
+  return <PendingReceiptsTable receipts={receipts} loading={loading} onReceiptReviewed={() => void refresh()} />;
+};
 
 // ── Mobile Bottom Nav ──────────────────────────────────────────────
 import {

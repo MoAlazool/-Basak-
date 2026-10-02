@@ -43,7 +43,7 @@ class FloatingGlassNavBar extends StatelessWidget {
         NavItem(
           icon: LucideIcons.qrCode,
           activeIcon: LucideIcons.qrCode,
-          label: 'رمز QR',
+          label: 'بطاقتي',
         ),
         NavItem(
           icon: LucideIcons.user,
@@ -119,7 +119,8 @@ class FloatingGlassNavBar extends StatelessWidget {
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 250),
                           padding: isSelected
-                              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 4)
+                              ? const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 4)
                               : const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: isSelected
@@ -130,7 +131,9 @@ class FloatingGlassNavBar extends StatelessWidget {
                           child: Icon(
                             isSelected ? item.activeIcon : item.icon,
                             size: 22,
-                            color: isSelected ? AppColors.babyBlue : AppColors.textSecondary,
+                            color: isSelected
+                                ? AppColors.babyBlue
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ),

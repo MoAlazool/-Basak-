@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Bus, Eye, EyeOff, ShieldCheck, LogIn } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface LoginPageProps {
   onLogin: () => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -17,19 +18,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setError('');
     setLoading(true);
 
-    // Small delay for UX
-    await new Promise((r) => setTimeout(r, 600));
-
-    const correctUser = import.meta.env.VITE_ADMIN_USERNAME;
-    const correctPass = import.meta.env.VITE_ADMIN_PASSWORD;
-
-    if (username.trim() === correctUser && password === correctPass) {
-      localStorage.setItem('basak_admin_auth', 'true');
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInError) throw signInError;
+      const { data: admin, error: adminError } = await supabase.from('admins').select('id').eq('id', data.user.id).maybeSingle();
+      if (adminError) throw adminError;
+      if (!admin) {
+        await supabase.auth.signOut();
+        throw new Error('هذا الحساب غير مسجل كمسؤول في النظام.');
+      }
       onLogin();
-    } else {
-      setError('اسم المستخدم أو كلمة المرور غير صحيحة');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تسجيل الدخول.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -71,13 +74,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-[#5B6B7A] mb-1.5">
-                اسم المستخدم
+                البريد الإلكتروني للمسؤول
               </label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@example.com"
                 autoComplete="username"
                 required
                 className="w-full rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-[#1F2937] placeholder-slate-400 focus:border-[#7EC8E3] focus:outline-none focus:ring-2 focus:ring-[#7EC8E3]/20 transition"

@@ -6,6 +6,25 @@ import '../models/station_rider_count_model.dart';
 class RiderCountsRepository {
   final SupabaseClient _client = SupabaseService.client;
 
+  Future<List<StationRiderCountModel>> getAssignedStationRiderCounts({
+    required DateTime targetDate,
+  }) async {
+    final assigned = await _client.rpc('get_supervisor_assigned_line_ids');
+    final lineIds = (assigned as List<dynamic>)
+        .map((row) => row['line_id'] as String)
+        .toSet()
+        .toList();
+    if (lineIds.isEmpty) return const [];
+
+    final results = await Future.wait(lineIds.map((lineId) =>
+        getStationRiderCounts(lineId: lineId, targetDate: targetDate)));
+    return results.expand((counts) => counts).toList()
+      ..sort((a, b) {
+        final byLine = a.lineName.compareTo(b.lineName);
+        return byLine != 0 ? byLine : a.orderIndex.compareTo(b.orderIndex);
+      });
+  }
+
   /// Fetch live rider counts per station for a specific line and date (Today or Tomorrow)
   Future<List<StationRiderCountModel>> getStationRiderCounts({
     required String lineId,

@@ -1,15 +1,49 @@
+import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/supabase_tables.dart';
 import '../../../core/network/supabase_service.dart';
 import '../models/user_role.dart';
 
 class AuthRepository {
-  final SupabaseClient _client = SupabaseService.client;
+  SupabaseClient get _client => SupabaseService.client;
 
   // Format phone to internal email identifier to enable immediate password auth without SMS gateway costs
   static String phoneToAuthEmail(String phone) {
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final cleanPhone = normalizeEgyptianPhone(phone);
     return '$cleanPhone@busak.app';
+  }
+
+  static String normalizeEgyptianPhone(String phone) {
+    var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('20') && digits.length >= 12) {
+      digits = digits.substring(2);
+    }
+    if (digits.length == 10 && digits.startsWith('1')) {
+      digits = '0$digits';
+    }
+    return digits;
+  }
+
+  Future<List<Map<String, String>>> getActiveUniversities() async {
+    final rows = await _client
+        .from('universities')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+    return (rows as List<dynamic>)
+        .map(
+            (row) => {'id': row['id'] as String, 'name': row['name'] as String})
+        .toList();
+  }
+
+  Future<List<String>> getActiveColleges(String universityId) async {
+    final rows = await _client
+        .from('colleges')
+        .select('name')
+        .eq('university_id', universityId)
+        .eq('is_active', true)
+        .order('name');
+    return (rows as List<dynamic>).map((row) => row['name'] as String).toList();
   }
 
   /// Register a new student:
@@ -18,17 +52,23 @@ class AuthRepository {
     required String phone,
     required String fullName,
     required String university,
+    required String college,
     required String password,
+    Uint8List? profileImageBytes,
+    String? profileImageExtension,
   }) async {
-    // 1. Validate 4-part name
+    // Require a three-part name, while allowing the four-part form used by the UI.
     final nameParts = fullName.trim().split(RegExp(r'\s+'));
-    if (nameParts.length < 4) {
-      throw Exception('يرجى إدخال الاسم الرباعي كاملاً (4 أجزاء).');
+    if (nameParts.length < 3) {
+      throw Exception('يرجى إدخال الاسم ثلاثياً على الأقل.');
+    }
+    if (university.trim().isEmpty) {
+      throw Exception('اختر الجامعة من القائمة.');
     }
 
-    final cleanPhone = phone.trim().replaceAll(RegExp(r'[^0-9]'), '');
-    if (cleanPhone.length < 10) {
-      throw Exception('يرجى إدخال رقم هاتف صحيح مكون من 11 رقماً.');
+    final cleanPhone = normalizeEgyptianPhone(phone);
+    if (!RegExp(r'^01[0125][0-9]{8}$').hasMatch(cleanPhone)) {
+      throw Exception('يرجى إدخال رقم هاتف مصري صحيح مكون من 11 رقماً.');
     }
     final authEmail = phoneToAuthEmail(cleanPhone);
 
@@ -41,7 +81,7 @@ class AuthRepository {
           .maybeSingle();
 
       if (existing != null) {
-        throw Exception('رقم الهاتف مسجل مسبقاً. يرجى تسجيل الدخول مباشرة.');
+        throw Exception('الرقم مستخدم بالفعل. يرجى تسجيل الدخول مباشرة.');
       }
     } catch (e) {
       if (e.toString().contains('مسجل مسبقاً')) rethrow;
@@ -71,24 +111,64 @@ class AuthRepository {
       } catch (_) {}
     }
 
+    // Phone-based synthetic email addresses do not need an email confirmation.
+    // Recover a session here if the project returns a user without one.
+    if (_client.auth.currentUser == null && user != null) {
+      try {
+        final response = await _client.auth.signInWithPassword(
+          email: authEmail,
+          password: password,
+        );
+        user = response.user ?? user;
+      } catch (_) {}
+    }
+
     final studentId = user?.id ?? SupabaseService.currentUser?.id;
+
+    if (studentId == null || _client.auth.currentUser == null) {
+      throw Exception('تعذر تفعيل جلسة الطالب. أعد المحاولة قبل حفظ البيانات.');
+    }
+
+    String? profileImagePath;
+    if (profileImageBytes != null) {
+      final extension = (profileImageExtension ?? 'jpg').toLowerCase();
+      final safeExtension =
+          const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+              ? extension
+              : 'jpg';
+      profileImagePath = '$studentId/avatar.$safeExtension';
+      final contentType = safeExtension == 'jpg' || safeExtension == 'jpeg'
+          ? 'image/jpeg'
+          : 'image/$safeExtension';
+      await _client.storage.from('student-avatars').uploadBinary(
+            profileImagePath,
+            profileImageBytes,
+            fileOptions: FileOptions(contentType: contentType),
+          );
+    }
 
     // 4. Create Student Profile Record (phone is unique at DB level)
     try {
       final Map<String, dynamic> record = {
+        'id': studentId,
         'phone': cleanPhone,
         'full_name': fullName.trim(),
         'university': university.trim(),
-        'password': password,
+        'college': college.trim().isEmpty ? 'غير محدد' : college.trim(),
+        if (profileImagePath != null) 'profile_image_url': profileImagePath,
       };
-      if (studentId != null) {
-        record['id'] = studentId;
-      }
-
       await _client.from(SupabaseTables.students).insert(record);
     } catch (e) {
-      if (e.toString().contains('duplicate') || e.toString().contains('unique')) {
-        throw Exception('رقم الهاتف مسجل مسبقاً في النظام.');
+      if (profileImagePath != null) {
+        try {
+          await _client.storage
+              .from('student-avatars')
+              .remove([profileImagePath]);
+        } catch (_) {}
+      }
+      if (e.toString().contains('duplicate') ||
+          e.toString().contains('unique')) {
+        throw Exception('الرقم مستخدم بالفعل.');
       }
       throw Exception('تعذر حفظ بيانات الطالب في قاعدة البيانات: $e');
     }
@@ -105,7 +185,8 @@ class AuthRepository {
 
     final finalUser = _client.auth.currentUser ?? user;
     if (finalUser == null) {
-      throw Exception('تم إنشاء الحساب بنجاح! يرجى التبديل لتبويب تسجيل الدخول الآن.');
+      throw Exception(
+          'تم إنشاء الحساب بنجاح! يرجى التبديل لتبويب تسجيل الدخول الآن.');
     }
 
     return finalUser;
@@ -117,9 +198,9 @@ class AuthRepository {
     required String password,
   }) async {
     String loginEmail = identifier.trim();
-    final cleanPhone = identifier.replaceAll(RegExp(r'[^0-9]'), '');
+    final cleanPhone = normalizeEgyptianPhone(identifier);
     if (!loginEmail.contains('@')) {
-      loginEmail = phoneToAuthEmail(loginEmail);
+      loginEmail = phoneToAuthEmail(identifier);
     }
 
     try {
@@ -157,7 +238,8 @@ class AuthRepository {
           } catch (_) {
             // Already signed up, attempt signIn once more
             try {
-              await _client.auth.signInWithPassword(email: loginEmail, password: password);
+              await _client.auth
+                  .signInWithPassword(email: loginEmail, password: password);
             } catch (_) {}
           }
           return UserRole.supervisor;
@@ -183,7 +265,8 @@ class AuthRepository {
             }
           } catch (_) {
             try {
-              await _client.auth.signInWithPassword(email: loginEmail, password: password);
+              await _client.auth
+                  .signInWithPassword(email: loginEmail, password: password);
             } catch (_) {}
           }
           return UserRole.student;
@@ -231,10 +314,8 @@ class AuthRepository {
   Future<void> deleteStudentAccount() async {
     final user = _client.auth.currentUser;
     if (user == null) return;
-
-    // Deleting the student profile cascades subscriptions, receipts, etc.
-    await _client.from(SupabaseTables.students).delete().eq('id', user.id);
-    await _client.auth.signOut();
+    await _client.functions.invoke('student-delete-account');
+    await _client.auth.signOut(scope: SignOutScope.local);
   }
 
   Future<void> signOut() async {

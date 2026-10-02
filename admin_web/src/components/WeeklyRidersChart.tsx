@@ -10,10 +10,11 @@ interface DayRiderCount {
 interface WeeklyChartProps {
   data: DayRiderCount[];
   loading: boolean;
+  error: string;
 }
 
-export const WeeklyRidersChart: React.FC<WeeklyChartProps> = ({ data, loading }) => {
-  const maxCount = Math.max(...data.map((d) => d.count), 10);
+export const WeeklyRidersChart: React.FC<WeeklyChartProps> = ({ data, loading, error }) => {
+  const maxCount = Math.max(...data.map((d) => d.count), 1);
 
   return (
     <div className="glass-panel p-6 flex flex-col justify-between h-full">
@@ -25,7 +26,7 @@ export const WeeklyRidersChart: React.FC<WeeklyChartProps> = ({ data, loading })
             </div>
             <div>
               <h2 className="text-[16px] font-bold text-[#1F2937]">نشاط الركاب خلال الأسبوع</h2>
-              <p className="text-[12px] font-medium text-[#5B6B7A]">إحصاء الحضور اليومي الفعلي (مفتاح نازل بكرة)</p>
+              <p className="text-[12px] font-medium text-[#5B6B7A]">عدد تأكيدات الركوب المسجلة يوميًا في قاعدة البيانات</p>
             </div>
           </div>
           <span className="text-[11.5px] font-bold text-[#3E8FBF] bg-[#D6EEF9]/60 px-3 py-1 rounded-full">
@@ -39,14 +40,22 @@ export const WeeklyRidersChart: React.FC<WeeklyChartProps> = ({ data, loading })
             <div className="w-full flex items-center justify-center h-full text-sm text-[#5B6B7A]">
               جاري تحميل بيانات الركاب...
             </div>
+          ) : error ? (
+            <div role="alert" className="w-full flex items-center justify-center h-full text-center text-sm text-rose-700">
+              {error}
+            </div>
+          ) : data.length === 0 ? (
+            <div className="w-full flex items-center justify-center h-full text-sm text-[#5B6B7A]">
+              لا توجد بيانات متاحة لهذه الفترة.
+            </div>
           ) : (
             data.map((item, idx) => {
-              const heightPercent = Math.max(12, Math.round((item.count / maxCount) * 100));
+              const heightPercent = item.count === 0 ? 0 : Math.max(4, Math.round((item.count / maxCount) * 100));
               return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                <div key={item.dateStr} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
                   {/* Tooltip on hover */}
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] font-bold text-white bg-[#1F2937] px-2 py-0.5 rounded-md shadow-md -mb-1">
-                    {item.count}
+                    {item.count.toLocaleString('ar-EG')} راكب
                   </span>
 
                   {/* Bar */}
@@ -73,8 +82,12 @@ export const WeeklyRidersChart: React.FC<WeeklyChartProps> = ({ data, loading })
       </div>
 
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11.5px] text-[#5B6B7A]">
-        <span>إجمالي تأكيدات الحضور لهذا الأسبوع: {data.reduce((s, d) => s + d.count, 0)} راكب</span>
-        <span className="text-[#2E9E5B] font-semibold">تحديث لحظي</span>
+        <span>
+          {error
+            ? 'إجمالي الأسبوع غير متاح'
+            : `إجمالي تأكيدات الركوب المسجلة: ${data.reduce((s, d) => s + d.count, 0).toLocaleString('ar-EG')} راكب`}
+        </span>
+        <span className="text-[#5B6B7A] font-semibold">بيانات قاعدة البيانات</span>
       </div>
     </div>
   );

@@ -1,3 +1,36 @@
+String stationTimesLabel(dynamic value) {
+  if (value == null) return '';
+  if (value is List) {
+    return value.map((time) => time.toString()).join('، ');
+  }
+  return value.toString();
+}
+
+List<String> stationTimes(dynamic value) {
+  if (value == null) return const [];
+  final raw = value is List ? value : [value];
+  final values = raw
+      .map((time) => time.toString())
+      .where((time) => time.isNotEmpty)
+      .map((time) => time.length >= 5 ? time.substring(0, 5) : time)
+      .toList();
+  int? minutes(String value) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(value);
+    if (match == null) return null;
+    return (int.parse(match.group(1)!) * 60) + int.parse(match.group(2)!);
+  }
+
+  values.sort((a, b) {
+    final aMinutes = minutes(a);
+    final bMinutes = minutes(b);
+    if (aMinutes != null && bMinutes != null) {
+      return aMinutes.compareTo(bMinutes);
+    }
+    return a.compareTo(b);
+  });
+  return values;
+}
+
 class CompanyModel {
   final String id;
   final String name;
@@ -51,7 +84,9 @@ class LineModel {
       priceYearly: (json['price_yearly'] as num).toDouble(),
       priceDaily: (json['price_daily'] as num).toDouble(),
       isActive: json['is_active'] as bool? ?? true,
-      companyName: json['companies'] != null ? json['companies']['name'] as String? : null,
+      companyName: json['companies'] != null
+          ? json['companies']['name'] as String?
+          : null,
     );
   }
 }
@@ -61,16 +96,18 @@ class StationModel {
   final String lineId;
   final String name;
   final int orderIndex;
-  final String departureTime;
-  final String returnTime;
+  final List<String> departureTimes;
+  final List<String> returnTimes;
+  String get departureTime => departureTimes.join('، ');
+  String get returnTime => returnTimes.join('، ');
 
   StationModel({
     required this.id,
     required this.lineId,
     required this.name,
     required this.orderIndex,
-    required this.departureTime,
-    required this.returnTime,
+    required this.departureTimes,
+    required this.returnTimes,
   });
 
   factory StationModel.fromJson(Map<String, dynamic> json) {
@@ -79,8 +116,9 @@ class StationModel {
       lineId: json['line_id'] as String,
       name: json['name'] as String,
       orderIndex: json['order_index'] as int? ?? 0,
-      departureTime: json['departure_time'] as String,
-      returnTime: json['return_time'] as String,
+      departureTimes:
+          stationTimes(json['departure_times'] ?? json['departure_time']),
+      returnTimes: stationTimes(json['return_times'] ?? json['return_time']),
     );
   }
 }

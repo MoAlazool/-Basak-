@@ -14,6 +14,6 @@ class SupabaseTables {
 
 class SupabaseRpcs {
   static const String toggleStudentDailyRide = 'toggle_student_daily_ride';
-  static const String getLineRiderCounts = 'get_line_rider_counts';
+  static const String getLineRiderCounts = 'get_line_rider_counts_with_returns';
   static const String lookupStudentByQr = 'lookup_student_by_qr';
 }

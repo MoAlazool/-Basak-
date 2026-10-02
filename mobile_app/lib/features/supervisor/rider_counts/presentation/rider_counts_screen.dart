@@ -18,7 +18,7 @@ class RiderCountsScreen extends ConsumerStatefulWidget {
 }
 
 class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
-  bool _isTomorrowSelected = false;
+  bool _isTomorrowSelected = DateTime.now().hour >= 16;
   bool _isLoading = true;
   List<StationRiderCountModel> _counts = [];
   String? _error;
@@ -35,17 +35,16 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
       _error = null;
     });
 
-    final targetDate = _isTomorrowSelected
-        ? DateTime.now().add(const Duration(days: 1))
-        : DateTime.now();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetDate =
+        _isTomorrowSelected ? today.add(const Duration(days: 1)) : today;
 
     try {
-      // In production, lineId is fetched from supervisor's assigned lines
-      const defaultLineId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-      final counts = await ref.read(riderCountsRepoProvider).getStationRiderCounts(
-            lineId: defaultLineId,
-            targetDate: targetDate,
-          );
+      final counts =
+          await ref.read(riderCountsRepoProvider).getAssignedStationRiderCounts(
+                targetDate: targetDate,
+              );
       if (mounted) {
         setState(() {
           _counts = counts;
@@ -65,6 +64,8 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
   @override
   Widget build(BuildContext context) {
     final totalRiders = _counts.fold<int>(0, (sum, st) => sum + st.ridingCount);
+    final totalReturners =
+        _counts.fold<int>(0, (sum, st) => sum + st.returningCount);
 
     return GlassScaffold(
       body: CustomScrollView(
@@ -76,10 +77,11 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('أعداد الركاب (الحضور اليومي)', style: AppTextStyles.displayMedium),
+                  Text('أعداد الذهاب والعودة',
+                      style: AppTextStyles.displayMedium),
                   const SizedBox(height: 4),
                   Text(
-                    'الإحصاء المباشر بناءً على مفتاح الطلاب "نازل بكرة"',
+                    'الأعداد تتحدث مباشرة حسب اختيارات الطلاب للرحلة وموعد العودة.',
                     style: AppTextStyles.bodyMedium,
                   ),
                   const SizedBox(height: 16),
@@ -95,12 +97,16 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
                           },
                           borderRadius: 16,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          color: !_isTomorrowSelected ? AppColors.babyBlueLight : Colors.white,
+                          color: !_isTomorrowSelected
+                              ? AppColors.babyBlueLight
+                              : Colors.white,
                           child: Center(
                             child: Text(
                               'رحلة اليوم',
                               style: AppTextStyles.titleMedium.copyWith(
-                                color: !_isTomorrowSelected ? const Color(0xFF0C4A6E) : AppColors.textPrimary,
+                                color: !_isTomorrowSelected
+                                    ? const Color(0xFF0C4A6E)
+                                    : AppColors.textPrimary,
                               ),
                             ),
                           ),
@@ -115,12 +121,16 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
                           },
                           borderRadius: 16,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          color: _isTomorrowSelected ? AppColors.babyBlueLight : Colors.white,
+                          color: _isTomorrowSelected
+                              ? AppColors.babyBlueLight
+                              : Colors.white,
                           child: Center(
                             child: Text(
                               'رحلة غداً (المؤكدين)',
                               style: AppTextStyles.titleMedium.copyWith(
-                                color: _isTomorrowSelected ? const Color(0xFF0C4A6E) : AppColors.textPrimary,
+                                color: _isTomorrowSelected
+                                    ? const Color(0xFF0C4A6E)
+                                    : AppColors.textPrimary,
                               ),
                             ),
                           ),
@@ -145,21 +155,27 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
                                 color: AppColors.babyBlueUltraLight,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(LucideIcons.users, color: AppColors.babyBlueDark),
+                              child: const Icon(LucideIcons.users,
+                                  color: AppColors.babyBlueDark),
                             ),
                             const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('إجمالي الركاب المتوقعين', style: AppTextStyles.labelSmall),
-                                Text('$totalRiders راكب', style: AppTextStyles.displayMedium),
+                                Text('إجمالي الرحلة',
+                                    style: AppTextStyles.labelSmall),
+                                Text('$totalRiders ذهاب',
+                                    style: AppTextStyles.displayMedium),
+                                Text('$totalReturners عودة',
+                                    style: AppTextStyles.bodyMedium),
                               ],
                             ),
                           ],
                         ),
                         IconButton(
                           onPressed: _loadCounts,
-                          icon: const Icon(LucideIcons.refreshCw, color: AppColors.babyBlueDark),
+                          icon: const Icon(LucideIcons.refreshCw,
+                              color: AppColors.babyBlueDark),
                         ),
                       ],
                     ),
@@ -184,7 +200,8 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
                 (context, index) {
                   final st = _counts[index];
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                     child: GlassContainer(
                       padding: const EdgeInsets.all(16),
                       borderRadius: 18,
@@ -214,26 +231,39 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(st.stationName, style: AppTextStyles.titleMedium),
+                                  Text(st.stationName,
+                                      style: AppTextStyles.titleMedium),
+                                  if (st.lineName.isNotEmpty)
+                                    Text(st.lineName,
+                                        style: AppTextStyles.labelSmall
+                                            .copyWith(
+                                                color:
+                                                    AppColors.textSecondary)),
                                   Text(
-                                    'وقت المرور: ${st.departureTime}',
-                                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                                    'الذهاب: ${st.departureTime} · العودة: ${st.returnTime}',
+                                    style: AppTextStyles.labelSmall.copyWith(
+                                        color: AppColors.textSecondary),
                                   ),
                                 ],
                               ),
                             ],
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: st.ridingCount > 0 ? AppColors.babyBlueUltraLight : const Color(0xFFF1F5F9),
+                              color: st.ridingCount > 0
+                                  ? AppColors.babyBlueUltraLight
+                                  : const Color(0xFFF1F5F9),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '${st.ridingCount} ركاب',
+                              '${st.ridingCount} ذهاب\n${st.returningCount} عودة',
                               style: AppTextStyles.bodyMedium.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: st.ridingCount > 0 ? AppColors.babyBlueDark : AppColors.textMuted,
+                                color: st.ridingCount > 0
+                                    ? AppColors.babyBlueDark
+                                    : AppColors.textMuted,
                               ),
                             ),
                           ),

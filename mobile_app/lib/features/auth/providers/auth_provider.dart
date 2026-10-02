@@ -1,8 +1,41 @@
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/network/supabase_service.dart';
+import '../../../core/storage/offline_cache.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
+import '../../student/qr/data/student_qr_repository.dart';
+
+final activeUniversitiesProvider =
+    FutureProvider<List<Map<String, String>>>((ref) {
+  return ref.watch(authRepositoryProvider).getActiveUniversities();
+});
+final activeCollegesProvider =
+    FutureProvider.family<List<String>, String>((ref, universityId) {
+  return ref.watch(authRepositoryProvider).getActiveColleges(universityId);
+});
+
+final studentProfileSummaryProvider =
+    FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
+  final response = await SupabaseService.client
+      .from('students')
+      .select('full_name, phone, university, college, profile_image_url')
+      .eq('id', userId)
+      .maybeSingle();
+  if (response == null) return null;
+  final path = response['profile_image_url'] as String?;
+  if (path == null || path.isEmpty) return response;
+  try {
+    final signed = await SupabaseService.client.storage
+        .from('student-avatars')
+        .createSignedUrl(path, 600);
+    return {...response, 'profile_image_signed_url': signed};
+  } catch (_) {
+    return response;
+  }
+});
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository();
@@ -53,15 +86,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _init() async {
-    final current = SupabaseService.currentUser;
-    if (current != null) {
-      try {
-        final role = await _repo.detectUserRole(current.id);
+    try {
+      final current = SupabaseService.currentUser;
+      if (current != null) {
+        UserRole role;
+        try {
+          role = await _repo.detectUserRole(current.id);
+          await OfflineCache.saveSession(current, role.name);
+        } catch (_) {
+          final cachedRole = await OfflineCache.readRoleFor(current.id);
+          role = UserRole.fromString(cachedRole);
+        }
         state = AuthState(user: current, role: role, isInitialLoading: false);
-      } catch (e) {
-        state = AuthState(user: current, role: UserRole.unknown, isInitialLoading: false);
+        if (role == UserRole.student) unawaited(_refreshOfflineStudentPass());
+      } else {
+        state = const AuthState(isInitialLoading: false);
       }
-    } else {
+    } catch (_) {
+      // Keep the app usable at the sign-in screen when the backend is offline
+      // or has not been initialized (for example, in a widget preview).
       state = const AuthState(isInitialLoading: false);
     }
   }
@@ -70,7 +113,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String phone,
     required String fullName,
     required String university,
+    required String college,
     required String password,
+    Uint8List? profileImageBytes,
+    String? profileImageExtension,
   }) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
@@ -78,9 +124,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
         phone: phone,
         fullName: fullName,
         university: university,
+        college: college,
         password: password,
+        profileImageBytes: profileImageBytes,
+        profileImageExtension: profileImageExtension,
       );
-      state = AuthState(user: user, role: UserRole.student, isLoading: false, isInitialLoading: false);
+      await OfflineCache.saveSession(user, UserRole.student.name);
+      unawaited(_refreshOfflineStudentPass());
+      state = AuthState(
+          user: user,
+          role: UserRole.student,
+          isLoading: false,
+          isInitialLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
       rethrow;
@@ -97,8 +152,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         identifier: identifier,
         password: password,
       );
+      final user = SupabaseService.currentUser;
+      if (user != null) await OfflineCache.saveSession(user, role.name);
+      if (role == UserRole.student) unawaited(_refreshOfflineStudentPass());
       state = AuthState(
-        user: SupabaseService.currentUser,
+        user: user,
         role: role,
         isLoading: false,
         isInitialLoading: false,
@@ -113,6 +171,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
     try {
       await _repo.deleteStudentAccount();
+      await OfflineCache.clearStudentPass();
       state = const AuthState();
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
@@ -124,7 +183,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> signOut() async {
     await _repo.signOut();
+    await OfflineCache.clearStudentPass();
     state = const AuthState();
+  }
+
+  Future<void> _refreshOfflineStudentPass() async {
+    try {
+      await StudentQrRepository().getStudentPassDetails();
+    } catch (_) {
+      // The app remains available. The last encrypted pass is used when offline.
+    }
   }
 }
 

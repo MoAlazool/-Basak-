@@ -25,6 +25,7 @@ class LinesRepository {
         .from(SupabaseTables.stations)
         .select()
         .eq('line_id', lineId)
+        .eq('is_active', true)
         .order('order_index');
 
     return (response as List<dynamic>)

@@ -3,7 +3,7 @@ import { Users, Bus, Building2, Wallet } from 'lucide-react';
 
 interface StatsProps {
   activeStudents: number;
-  ridingToday: number;
+  ridingToday: number | null;
   companiesCount: number;
   monthlyRevenue: number;
   loading: boolean;
@@ -18,40 +18,40 @@ export const StatsRow: React.FC<StatsProps> = ({
 }) => {
   const cards = [
     {
-      label: 'الطلاب المشتركون (النشطون)',
+      label: 'الاشتراكات النشطة',
       value: activeStudents,
       displayValue: activeStudents.toLocaleString('ar-EG'),
-      delta: '+12% عن الشهر الماضي',
-      deltaColor: 'text-[#2E9E5B]',
+      delta: 'العدد المسجل حاليًا',
+      deltaColor: 'text-[#5B6B7A]',
       icon: Users,
       iconBg: 'bg-[#D6EEF9]',
       iconColor: 'text-[#3E8FBF]',
     },
     {
       label: 'نازلين اليوم (مؤكدين)',
-      value: ridingToday,
-      displayValue: ridingToday.toLocaleString('ar-EG'),
-      delta: 'حسب مفتاح نازل بكرة',
+      value: ridingToday ?? 0,
+      displayValue: ridingToday === null ? '—' : ridingToday.toLocaleString('ar-EG'),
+      delta: 'حسب تأكيدات قاعدة البيانات',
       deltaColor: 'text-[#5B6B7A]',
       icon: Bus,
       iconBg: 'bg-[#DDF3E6]',
       iconColor: 'text-[#2E9E5B]',
     },
     {
-      label: 'شركات النقل المعتمدة',
+      label: 'شركات النقل المفعّلة',
       value: companiesCount,
       displayValue: companiesCount.toLocaleString('ar-EG'),
-      delta: 'تعمل بكامل خطوطها',
+      delta: 'حسب حالة التفعيل المسجلة',
       deltaColor: 'text-[#5B6B7A]',
       icon: Building2,
       iconBg: 'bg-[#FFF1D6]',
       iconColor: 'text-[#B8860B]',
     },
     {
-      label: 'الإيرادات الشهرية المقدرة',
+      label: 'إجمالي الإيرادات المسجلة',
       value: monthlyRevenue,
       displayValue: `${monthlyRevenue.toLocaleString('ar-EG')} ج.م`,
-      delta: 'مسددة عبر تحويلات بنكية',
+      delta: 'الاشتراكات النشطة والإيرادات المؤرشفة',
       deltaColor: 'text-[#2E9E5B]',
       icon: Wallet,
       iconBg: 'bg-[#EBF5FB]',

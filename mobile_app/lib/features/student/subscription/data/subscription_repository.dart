@@ -18,10 +18,11 @@ class SubscriptionRepository {
         .select('''
           *,
           lines(name, supervisors(full_name, phone)),
-          stations(name, departure_time, return_time)
+          stations(name, departure_times, return_times)
         ''')
         .eq('student_id', user.id)
-        .inFilter('status', ['pending_payment', 'pending_review', 'active', 'rejected'])
+        .inFilter('status',
+            ['pending_payment', 'pending_review', 'active', 'rejected'])
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
@@ -36,6 +37,8 @@ class SubscriptionRepository {
   Future<SubscriptionModel> createSubscription({
     required String lineId,
     required String stationId,
+    required String departureTime,
+    required String returnTime,
     required String type, // termly | yearly | daily
     required double price,
   }) async {
@@ -45,24 +48,22 @@ class SubscriptionRepository {
     final isDaily = type == 'daily';
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
-    final inserted = await _client
-        .from(SupabaseTables.subscriptions)
-        .insert({
-          'student_id': user.id,
-          'line_id': lineId,
-          'station_id': stationId,
-          'type': type,
-          'price': price,
-          'status': isDaily ? 'active' : 'pending_payment',
-          'start_date': isDaily ? today : null,
-          'end_date': isDaily ? today : null,
-        })
-        .select('''
+    final inserted = await _client.from(SupabaseTables.subscriptions).insert({
+      'student_id': user.id,
+      'line_id': lineId,
+      'station_id': stationId,
+      'departure_time': departureTime,
+      'return_time': returnTime,
+      'type': type,
+      'price': price,
+      'status': isDaily ? 'active' : 'pending_payment',
+      'start_date': isDaily ? today : null,
+      'end_date': isDaily ? today : null,
+    }).select('''
           *,
           lines(name, supervisors(full_name, phone)),
-          stations(name, departure_time, return_time)
-        ''')
-        .single();
+          stations(name, departure_times, return_times)
+        ''').single();
 
     return SubscriptionModel.fromJson(inserted);
   }
@@ -76,14 +77,25 @@ class SubscriptionRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('المستخدم غير مسجل.');
 
+    final previousReceipts = await getReceiptsHistory(subscriptionId);
+    if (previousReceipts.length >= 5) {
+      throw Exception(
+          'تم استخدام المحاولات الخمس لرفع الإيصال. تواصل مع الإدارة للمساعدة.');
+    }
+
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final storagePath = '${user.id}/${subscriptionId}_$timestamp.$fileExtension';
+    final storagePath =
+        '${user.id}/${subscriptionId}_$timestamp.$fileExtension';
+    final contentType = fileExtension.toLowerCase() == 'jpg' ||
+            fileExtension.toLowerCase() == 'jpeg'
+        ? 'image/jpeg'
+        : 'image/${fileExtension.toLowerCase()}';
 
     // 1. Upload file to Storage private bucket
     await _client.storage.from(SupabaseConfig.receiptsBucket).uploadBinary(
           storagePath,
           fileBytes,
-          fileOptions: FileOptions(contentType: 'image/$fileExtension', upsert: true),
+          fileOptions: FileOptions(contentType: contentType, upsert: true),
         );
 
     // 2. Insert receipt row into receipts table

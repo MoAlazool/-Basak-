@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { GraduationCap, Plus, CheckCircle, XCircle, Trash2, MapPin, Search } from 'lucide-react';
+import { GraduationCap, Plus, CheckCircle, XCircle, MapPin, Search } from 'lucide-react';
 
 interface University {
   id: string;
@@ -10,9 +10,11 @@ interface University {
   created_at: string;
   students_count?: number;
 }
+interface College { id: string; university_id: string; name: string; is_active: boolean }
 
 export const UniversitiesPage: React.FC = () => {
   const [universities, setUniversities] = useState<University[]>([]);
+  const [colleges, setColleges] = useState<College[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -20,6 +22,8 @@ export const UniversitiesPage: React.FC = () => {
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [collegeName, setCollegeName] = useState('');
+  const [collegeUniversityId, setCollegeUniversityId] = useState('');
 
   useEffect(() => {
     fetchUniversities();
@@ -34,11 +38,14 @@ export const UniversitiesPage: React.FC = () => {
         .order('name', { ascending: true });
 
       if (error) throw error;
+      if (!data) throw new Error('لم تُرجع قاعدة البيانات قائمة الجامعات.');
 
       // Also count students per university if students table exists
-      const { data: studentsData } = await supabase
+      const { data: studentsData, error: studentsError } = await supabase
         .from('students')
         .select('university');
+      if (studentsError) throw studentsError;
+      if (!studentsData) throw new Error('تعذر تحميل أعداد الطلاب.');
 
       const countMap: Record<string, number> = {};
       (studentsData || []).forEach((s) => {
@@ -53,11 +60,41 @@ export const UniversitiesPage: React.FC = () => {
       }));
 
       setUniversities(enriched);
+      const { data: collegeData, error: collegeError } = await supabase
+        .from('colleges').select('id, university_id, name, is_active').order('name');
+      if (collegeError) throw collegeError;
+      if (!collegeData) throw new Error('تعذر تحميل الكليات.');
+      setColleges(collegeData);
+      if (!collegeUniversityId && data.length) setCollegeUniversityId(data[0].id);
     } catch (err: any) {
       console.error('Error fetching universities:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAddCollege = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!collegeName.trim() || !collegeUniversityId) return;
+    try {
+      setIsSubmitting(true);
+      const { error } = await supabase.from('colleges').insert({
+        name: collegeName.trim(), university_id: collegeUniversityId, is_active: true,
+      });
+      if (error) throw error;
+      setCollegeName('');
+      await fetchUniversities();
+    } catch (err: any) {
+      alert('فشل إضافة الكلية: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleCollegeStatus = async (college: College) => {
+    const { error } = await supabase.from('colleges').update({ is_active: !college.is_active }).eq('id', college.id).select('id').single();
+    if (error) alert('فشل تعديل حالة الكلية: ' + error.message);
+    else fetchUniversities();
   };
 
   const handleAddUniversity = async (e: React.FormEvent) => {
@@ -99,13 +136,13 @@ export const UniversitiesPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string, uniName: string) => {
-    if (!confirm(`هل أنت متأكد من حذف ${uniName}؟`)) return;
+    if (!confirm(`تعطيل ${uniName}؟ ستظل بياناتها محفوظة، ولن تظهر في تسجيل الطلاب.`)) return;
     try {
-      const { error } = await supabase.from('universities').delete().eq('id', id);
+      const { error } = await supabase.from('universities').update({ is_active: false }).eq('id', id);
       if (error) throw error;
       fetchUniversities();
     } catch (err: any) {
-      alert('فشل حذف الجامعة: ' + err.message);
+      alert('فشل تعطيل الجامعة: ' + err.message);
     }
   };
 
@@ -239,9 +276,9 @@ export const UniversitiesPage: React.FC = () => {
                     <button
                       onClick={() => handleDelete(u.id, u.name)}
                       className="text-rose-400 hover:text-rose-600 transition"
-                      title="حذف الجامعة"
+                      title="تعطيل الجامعة مع الاحتفاظ ببياناتها"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <XCircle className="h-4 w-4" />
                     </button>
                   </td>
                 </tr>
@@ -250,6 +287,32 @@ export const UniversitiesPage: React.FC = () => {
           </table>
         )}
       </div>
+
+      <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-slate-700">إدارة كليات كل جامعة</h2>
+          <p className="mt-1 text-xs text-slate-500">الكليات النشطة هي التي تظهر للطالب أثناء إنشاء الحساب.</p>
+        </div>
+        <form onSubmit={handleAddCollege} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <select value={collegeUniversityId} onChange={(e) => setCollegeUniversityId(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" required>
+            <option value="">اختر الجامعة</option>
+            {universities.filter((university) => university.is_active).map((university) => <option key={university.id} value={university.id}>{university.name}</option>)}
+          </select>
+          <input value={collegeName} onChange={(e) => setCollegeName(e.target.value)} placeholder="اسم الكلية كما يظهر للطالب" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" required />
+          <button disabled={isSubmitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"><Plus className="ml-1 inline h-4 w-4" />إضافة كلية</button>
+        </form>
+        {colleges.length === 0 ? <p className="text-sm text-slate-500">لا توجد كليات بعد؛ أضف الكليات الصحيحة لكل جامعة لتظهر في التسجيل.</p> : (
+          <div className="grid gap-2 md:grid-cols-2">
+            {colleges.map((college) => {
+              const university = universities.find((item) => item.id === college.university_id);
+              return <div key={college.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
+                <div><p className="font-semibold text-slate-700">{college.name}</p><p className="text-xs text-slate-500">{university?.name ?? 'جامعة غير مفعّلة'}</p></div>
+                <button onClick={() => toggleCollegeStatus(college)} className={`rounded-lg px-3 py-1 text-xs font-bold ${college.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>{college.is_active ? 'نشطة' : 'معطلة'}</button>
+              </div>;
+            })}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

@@ -1,20 +1,9 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { FileCheck, Check, X, Eye, AlertOctagon, Clock } from 'lucide-react';
+import { createReceiptImageUrl, type PendingReceiptRow } from '../lib/pendingReceipts';
 
-export interface PendingReceiptRow {
-  id: string;
-  subscriptionId: string;
-  studentName: string;
-  studentPhone: string;
-  university: string;
-  lineName: string;
-  subscriptionType: string;
-  price: number;
-  imageUrl: string;
-  attemptNumber: number;
-  createdAt: string;
-}
+export type { PendingReceiptRow } from '../lib/pendingReceipts';
 
 interface PendingReceiptsProps {
   receipts: PendingReceiptRow[];
@@ -30,18 +19,42 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   const [rejectModalReceiptId, setRejectModalReceiptId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [thumbnailFailures, setThumbnailFailures] = useState<Record<string, boolean>>({});
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<PendingReceiptRow | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+
+  const openReceiptPreview = async (row: PendingReceiptRow) => {
+    setPreviewReceipt(row);
+    setPreviewImageUrl(null);
+    setPreviewError('');
+    setPreviewLoading(true);
+    try {
+      // Create a fresh URL at click time so previews still work after a tab has
+      // been open long enough for the list's original signed URL to expire.
+      const url = await createReceiptImageUrl(row.imagePath || row.imageUrl);
+      setPreviewImageUrl(url);
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : 'تعذر تحميل صورة الإيصال.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   // Approve Receipt Mutation
   const handleApprove = async (receiptId: string) => {
     try {
       setProcessingId(receiptId);
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('receipts')
         .update({ status: 'approved' })
-        .eq('id', receiptId);
+        .eq('id', receiptId)
+        .select('id')
+        .single();
 
       if (error) throw error;
+      if (!data) throw new Error('لم يتم اعتماد الإيصال؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
       // Optimistic update: notify parent to remove or fade out row
       onReceiptReviewed(receiptId);
     } catch (err: any) {
@@ -62,15 +75,18 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
 
     try {
       setProcessingId(rejectModalReceiptId);
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('receipts')
         .update({
           status: 'rejected',
           rejection_reason: cleanReason,
         })
-        .eq('id', rejectModalReceiptId);
+        .eq('id', rejectModalReceiptId)
+        .select('id')
+        .single();
 
       if (error) throw error;
+      if (!data) throw new Error('لم يتم رفض الإيصال؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
       onReceiptReviewed(rejectModalReceiptId);
       setRejectModalReceiptId(null);
       setRejectionReason('');
@@ -139,13 +155,24 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                     {/* Student Info with Thumbnail */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
-                        <div
-                          onClick={() => setPreviewImageUrl(row.imageUrl)}
+                        <button
+                          type="button"
+                          onClick={() => void openReceiptPreview(row)}
                           className="h-10 w-10 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center cursor-pointer hover:border-[#7EC8E3] group"
                           title="عرض صورة الإيصال"
+                          aria-label={`عرض إيصال ${row.studentName}`}
                         >
-                          <Eye className="h-4 w-4 text-[#5B6B7A] group-hover:text-[#3E8FBF]" />
-                        </div>
+                          {row.imageUrl && !thumbnailFailures[row.id] ? (
+                            <img
+                              src={row.imageUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              onError={() => setThumbnailFailures((failed) => ({ ...failed, [row.id]: true }))}
+                            />
+                          ) : (
+                            <Eye className="h-4 w-4 text-[#5B6B7A] group-hover:text-[#3E8FBF]" />
+                          )}
+                        </button>
                         <div>
                           <p className="font-bold text-[#1F2937] leading-tight">{row.studentName}</p>
                           <p className="text-[11.5px] text-[#5B6B7A]">{row.studentPhone} • {row.university}</p>
@@ -254,20 +281,43 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       )}
 
       {/* Image Preview Modal */}
-      {previewImageUrl && (
+      {previewReceipt && (
         <div
-          onClick={() => setPreviewImageUrl(null)}
+          onClick={() => {
+            setPreviewReceipt(null);
+            setPreviewImageUrl(null);
+            setPreviewError('');
+          }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
         >
           <div className="glass-panel p-4 max-w-lg w-full bg-white">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-bold text-[#1F2937]">معاينة إيصال التحويل</span>
-              <button onClick={() => setPreviewImageUrl(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setPreviewReceipt(null)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="h-80 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-slate-200">
-              <span className="text-xs text-[#5B6B7A]">معاينة الصورة المسجلة في Supabase Storage</span>
+              {previewLoading ? (
+                <span className="text-sm text-slate-500">جاري تحميل صورة الإيصال...</span>
+              ) : previewError ? (
+                <div className="px-6 text-center text-sm text-rose-700" role="alert">
+                  <p>تعذر عرض صورة الإيصال: {previewError}</p>
+                  <button className="mt-3 font-bold underline" onClick={() => void openReceiptPreview(previewReceipt)}>
+                    إعادة المحاولة
+                  </button>
+                </div>
+              ) : previewImageUrl ? (
+                <img
+                  src={previewImageUrl}
+                  alt="إيصال التحويل"
+                  className="h-full w-full object-contain"
+                  onError={() => {
+                    setPreviewImageUrl(null);
+                    setPreviewError('تعذر فتح الملف. تحقق من أن صورة الإيصال ما زالت محفوظة.');
+                  }}
+                />
+              ) : null}
             </div>
           </div>
         </div>

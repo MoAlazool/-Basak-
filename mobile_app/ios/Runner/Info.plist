@@ -6,8 +6,12 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>يستخدم باصك الكاميرا لمسح بطاقة الطالب ضوئياً والتحقق من بيانات الاشتراك.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>يستخدم باصك الصورة التي تختارها لإضافتها إلى ملفك الشخصي.</string>
 	<key>CFBundleDisplayName</key>
-	<string>Basak Mobile</string>
+	<string>باصك</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

@@ -1,13 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Users, Plus, Trash2, Search, GraduationCap, Phone, Key, Bus, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle } from 'lucide-react';
+
+const StudentAvatar: React.FC<{ path: string; name: string }> = ({ path, name }) => {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let active = true;
+    void supabase.storage.from('student-avatars').createSignedUrl(path, 600).then(({ data, error }) => {
+      if (!error && active && data) setUrl(data.signedUrl);
+    });
+    return () => { active = false; };
+  }, [path]);
+  return url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
+};
 
 interface Student {
   id: string;
   phone: string;
   full_name: string;
   university: string;
-  password?: string;
+  college: string;
+  profile_image_url?: string | null;
   created_at: string;
   subscriptions?: {
     id: string;
@@ -23,26 +36,17 @@ interface University {
   name: string;
 }
 
-interface Line {
-  id: string;
-  name: string;
-}
-
 export const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
-  const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   // Add Student Form
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedUniversity, setSelectedUniversity] = useState('');
-  const [customUniversity, setCustomUniversity] = useState('');
-  const [password, setPassword] = useState('123456');
-  const [selectedLineId, setSelectedLineId] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export const StudentsPage: React.FC = () => {
       const { data: studentsData, error: sErr } = await supabase
         .from('students')
         .select(`
-          id, phone, full_name, university, password, created_at,
+          id, phone, full_name, university, college, profile_image_url, created_at,
           subscriptions(id, status, type, price, lines(name))
         `)
         .order('created_at', { ascending: false });
@@ -66,25 +70,17 @@ export const StudentsPage: React.FC = () => {
       setStudents(studentsData || []);
 
       // Fetch active universities
-      const { data: uniData } = await supabase
+      const { data: uniData, error: uniError } = await supabase
         .from('universities')
         .select('id, name')
         .eq('is_active', true)
         .order('name');
 
+      if (uniError) throw uniError;
       setUniversities(uniData || []);
       if (uniData && uniData.length > 0) {
-        setSelectedUniversity(uniData[0].name);
+        setSelectedUniversity((current) => current || uniData[0].name);
       }
-
-      // Fetch active lines
-      const { data: linesData } = await supabase
-        .from('lines')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-
-      setLines(linesData || []);
     } catch (err: any) {
       console.error('Error fetching students data:', err);
     } finally {
@@ -108,45 +104,24 @@ export const StudentsPage: React.FC = () => {
       return;
     }
 
-    const finalUniversity = (selectedUniversity === 'other' ? customUniversity : selectedUniversity).trim();
+    const finalUniversity = selectedUniversity.trim();
     if (!finalUniversity) {
-      alert('يرجى تحديد أو كتابة الجامعة.');
+      alert('اختر الجامعة من القائمة.');
       return;
     }
 
     try {
       setIsSubmitting(true);
 
-      // 1. Insert into students table
-      const { data: newStudent, error: stError } = await supabase
-        .from('students')
-        .insert({
-          full_name: fullName.trim(),
-          phone: cleanPhone,
-          university: finalUniversity,
-          password: password.trim() || '123456',
-        })
-        .select()
-        .single();
-
-      if (stError) throw stError;
-
-      // 2. If a line was assigned, optionally create an active subscription
-      if (selectedLineId && newStudent) {
-        await supabase.from('subscriptions').insert({
-          student_id: newStudent.id,
-          line_id: selectedLineId,
-          type: 'termly',
-          price: 3500,
-          status: 'active',
-        });
-      }
+      const { error } = await supabase.functions.invoke('admin-create-student', {
+        body: { fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password },
+      });
+      if (error) throw error;
 
       alert('تم تسجيل الطالب بنجاح!');
       setFullName('');
       setPhone('');
-      setPassword('123456');
-      setSelectedLineId('');
+      setPassword('');
       fetchInitialData();
     } catch (err: any) {
       alert('فشل إضافة الطالب: ' + err.message);
@@ -156,29 +131,20 @@ export const StudentsPage: React.FC = () => {
   };
 
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
-    if (!confirm(`هل أنت متأكد من حذف الطالب "${studentName}"؟ سيتم حذف اشتراكاته وسجلاته بالكامل.`)) {
+    if (!confirm(`هل أنت متأكد من حذف الطالب "${studentName}"؟ سيتم حذف حسابه واشتراكاته وبياناته، مع الاحتفاظ بمبلغ الإيراد في السجل المالي.`)) {
       return;
     }
 
     try {
-      // First delete associated subscriptions, receipts, daily_ride_status to be 100% clean
-      await supabase.from('daily_ride_status').delete().eq('student_id', studentId);
-      await supabase.from('subscriptions').delete().eq('student_id', studentId);
-      const { error } = await supabase.from('students').delete().eq('id', studentId);
-
+      const { error } = await supabase.functions.invoke('admin-delete-student', {
+        body: { studentId },
+      });
       if (error) throw error;
       alert('تم حذف الطالب بنجاح.');
       fetchInitialData();
     } catch (err: any) {
       alert('فشل حذف الطالب: ' + err.message);
     }
-  };
-
-  const togglePasswordVisibility = (studentId: string) => {
-    setVisiblePasswords((prev) => ({
-      ...prev,
-      [studentId]: !prev[studentId],
-    }));
   };
 
   const filteredStudents = students.filter((s) => {
@@ -237,7 +203,10 @@ export const StudentsPage: React.FC = () => {
             <label className="text-xs font-semibold text-slate-500">الجامعة / نقطة الوصول</label>
             <select
               value={selectedUniversity}
-              onChange={(e) => setSelectedUniversity(e.target.value)}
+              onChange={(e) => {
+                const selected = universities.find((university) => university.name === e.target.value);
+                setSelectedUniversity(selected?.name || '');
+              }}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
               required
             >
@@ -246,53 +215,20 @@ export const StudentsPage: React.FC = () => {
                   {u.name}
                 </option>
               ))}
-              <option value="other">+ جامعة أخرى...</option>
             </select>
           </div>
-
-          {/* Custom University if other */}
-          {selectedUniversity === 'other' && (
-            <div>
-              <label className="text-xs font-semibold text-slate-500">اكتب اسم الجامعة</label>
-              <input
-                type="text"
-                placeholder="مثال: جامعة المنصورة الأهلية"
-                value={customUniversity}
-                onChange={(e) => setCustomUniversity(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                required
-              />
-            </div>
-          )}
 
           {/* Password */}
           <div>
             <label className="text-xs font-semibold text-slate-500">كلمة مرور التطبيق</label>
             <input
               type="text"
-              placeholder="مثال: 123456"
+              placeholder="6 أحرف على الأقل"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
               required
             />
-          </div>
-
-          {/* Assign Line (Optional) */}
-          <div>
-            <label className="text-xs font-semibold text-slate-500">تعيين خط سير فوري (اختياري)</label>
-            <select
-              value={selectedLineId}
-              onChange={(e) => setSelectedLineId(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">بدون تعيين خط سير حالياً</option>
-              {lines.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="sm:col-span-2 lg:col-span-3 flex justify-end">
@@ -339,8 +275,7 @@ export const StudentsPage: React.FC = () => {
                 <tr>
                   <th className="p-4 font-bold">اسم الطالب</th>
                   <th className="p-4 font-bold">رقم الهاتف</th>
-                  <th className="p-4 font-bold">الجامعة</th>
-                  <th className="p-4 font-bold">كلمة المرور</th>
+                  <th className="p-4 font-bold">الجامعة / الكلية</th>
                   <th className="p-4 font-bold">الاشتراك وخط السير</th>
                   <th className="p-4 font-bold">تاريخ التسجيل</th>
                   <th className="p-4 font-bold text-left">إجراءات</th>
@@ -349,11 +284,10 @@ export const StudentsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredStudents.map((s) => {
                   const activeSub = (s.subscriptions || []).find((sub) => sub.status === 'active');
-                  const isPassVisible = visiblePasswords[s.id];
-
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/80">
                       <td className="p-4 font-bold text-slate-800">
+                        {s.profile_image_url && <StudentAvatar path={s.profile_image_url} name={s.full_name} />}
                         {s.full_name}
                       </td>
                       <td className="p-4 text-slate-600 font-mono text-xs">
@@ -366,20 +300,8 @@ export const StudentsPage: React.FC = () => {
                         <span className="inline-flex items-center gap-1.5">
                           <GraduationCap className="h-3.5 w-3.5 text-blue-500" />
                           {s.university || 'غير محدد'}
+                          <span className="block pr-5 text-slate-400">{s.college || 'الكلية غير محددة'}</span>
                         </span>
-                      </td>
-                      <td className="p-4">
-                        <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono">
-                          <Key className="h-3 w-3 text-slate-400" />
-                          <span>{isPassVisible ? (s.password || '123456') : '••••••'}</span>
-                          <button
-                            type="button"
-                            onClick={() => togglePasswordVisibility(s.id)}
-                            className="text-slate-400 hover:text-slate-600 transition ml-1"
-                          >
-                            {isPassVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                          </button>
-                        </div>
                       </td>
                       <td className="p-4">
                         {activeSub ? (

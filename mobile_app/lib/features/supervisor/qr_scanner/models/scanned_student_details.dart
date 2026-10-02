@@ -11,6 +11,8 @@ class ScannedStudentDetails {
   final String? returnTime;
   final String? paymentDate;
   final bool todayRideStatus;
+  final bool isOfflineCache;
+  final String? cachedAt;
 
   ScannedStudentDetails({
     required this.id,
@@ -25,11 +27,14 @@ class ScannedStudentDetails {
     this.returnTime,
     this.paymentDate,
     required this.todayRideStatus,
+    this.isOfflineCache = false,
+    this.cachedAt,
   });
 
   bool get hasActiveSubscription => subscriptionStatus == 'active';
 
-  factory ScannedStudentDetails.fromJson(Map<String, dynamic> json) {
+  factory ScannedStudentDetails.fromJson(Map<String, dynamic> json,
+      {bool isOfflineCache = false}) {
     final sub = json['subscription'] as Map<String, dynamic>?;
 
     return ScannedStudentDetails(
@@ -45,6 +50,8 @@ class ScannedStudentDetails {
       returnTime: sub?['return_time'] as String?,
       paymentDate: sub?['payment_date'] as String?,
       todayRideStatus: json['today_ride_status'] as bool? ?? false,
+      isOfflineCache: isOfflineCache,
+      cachedAt: json['_cached_at'] as String?,
     );
   }
 }

@@ -4,25 +4,56 @@ import { Topbar } from '../components/Topbar';
 import { StatsRow } from '../components/StatsRow';
 import { WeeklyRidersChart } from '../components/WeeklyRidersChart';
 import { TopLinesPanel } from '../components/TopLinesPanel';
-import { PendingReceiptsTable, PendingReceiptRow } from '../components/PendingReceiptsTable';
+import { PendingReceiptsTable } from '../components/PendingReceiptsTable';
+import { usePendingReceipts } from '../lib/pendingReceipts';
+
+const cairoDateParts = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Cairo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+function cairoDateKey(date: Date): string {
+  const parts = Object.fromEntries(cairoDateParts.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function shiftDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+function cairoWeekdayName(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const daysArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  return daysArabic[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
+}
 
 export const OverviewPage: React.FC = () => {
   const [stats, setStats] = useState({
     activeStudents: 0,
-    ridingToday: 0,
+    ridingToday: null as number | null,
     companiesCount: 0,
     monthlyRevenue: 0,
   });
   const [weeklyData, setWeeklyData] = useState<{ dayName: string; dateStr: string; count: number }[]>([]);
+  const [weeklyError, setWeeklyError] = useState('');
   const [topLines, setTopLines] = useState<any[]>([]);
-  const [pendingReceipts, setPendingReceipts] = useState<PendingReceiptRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const {
+    receipts: pendingReceipts,
+    loading: receiptsLoading,
+    error: receiptsError,
+    refresh: refreshPendingReceipts,
+  } = usePendingReceipts();
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
   const fetchDashboardData = async () => {
+    let weeklyQueryAttempted = false;
     try {
       setLoading(true);
 
@@ -33,7 +64,13 @@ export const OverviewPage: React.FC = () => {
         .select('price', { count: 'exact' })
         .eq('status', 'active');
 
-      const totalRevenue = (activeSubs || []).reduce((sum, item) => sum + (item.price || 0), 0);
+      const { data: archivedRevenue, error: archivedError } = await supabase
+        .from('deleted_student_revenue')
+        .select('amount');
+      if (archivedError) throw archivedError;
+      const totalRevenue =
+        (activeSubs || []).reduce((sum, item) => sum + Number(item.price || 0), 0) +
+        (archivedRevenue || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
       // Companies count
       const { count: compCount } = await supabase
@@ -41,46 +78,51 @@ export const OverviewPage: React.FC = () => {
         .select('*', { count: 'exact', head: true })
         .eq('is_active', true);
 
-      // Riding Today (daily_ride_status)
-      const todayStr = new Date().toISOString().substring(0, 10);
-      const { count: ridersTodayCount } = await supabase
-        .from('daily_ride_status')
-        .select('*', { count: 'exact', head: true })
-        .eq('ride_date', todayStr)
-        .eq('is_riding', true);
+      // Use calendar dates in the application's Cairo timezone. UTC ISO dates
+      // can roll over to tomorrow while it is still today in Egypt.
+      const todayStr = cairoDateKey(new Date());
+      let ridersTodayCount: number | null = null;
+
+      // Read exact counts for each date from the same source as the student
+      // "نازل بكرة" confirmations. Never invent values when a day is empty.
+      try {
+        weeklyQueryAttempted = true;
+        setWeeklyError('');
+        const dateKeys = Array.from({ length: 7 }, (_, offset) => shiftDateKey(todayStr, offset - 6));
+        const weekPoints = await Promise.all(dateKeys.map(async (dateStr) => {
+          const { count, error } = await supabase
+            .from('daily_ride_status')
+            .select('student_id', { count: 'exact', head: true })
+            .eq('ride_date', dateStr)
+            .eq('is_riding', true);
+          if (error) throw error;
+          if (count === null) throw new Error(`The exact rider count was not returned for ${dateStr}.`);
+
+          return {
+            dateStr,
+            dayName: cairoWeekdayName(dateStr),
+            count,
+          };
+        }));
+        setWeeklyData(weekPoints);
+        ridersTodayCount = weekPoints[weekPoints.length - 1]?.count ?? null;
+      } catch (weeklyLoadError) {
+        console.error('Error fetching exact weekly rider confirmations:', weeklyLoadError);
+        setWeeklyData([]);
+        setWeeklyError('تعذر تحميل أعداد الركاب الفعلية من قاعدة البيانات.');
+      }
+
+      // Riding Today uses the exact same daily row count as the chart. Keep it
+      // unavailable if the database could not provide an exact count.
 
       setStats({
         activeStudents: activeSubsCount || 0,
-        ridingToday: ridersTodayCount || 0,
+        ridingToday: ridersTodayCount,
         companiesCount: compCount || 0,
         monthlyRevenue: totalRevenue || 0,
       });
 
-      // 2. Weekly Bar Chart Data (Last 7 Days)
-      const daysArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-      const weekPoints = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().substring(0, 10);
-        const dayName = daysArabic[d.getDay()];
-
-        // Query daily_ride_status for that date
-        const { count } = await supabase
-          .from('daily_ride_status')
-          .select('*', { count: 'exact', head: true })
-          .eq('ride_date', dateStr)
-          .eq('is_riding', true);
-
-        weekPoints.push({
-          dayName,
-          dateStr,
-          count: count || (i === 0 ? ridersTodayCount || 0 : Math.floor(Math.random() * 25) + 10), // sensible display fallback if table freshly initialized
-        });
-      }
-      setWeeklyData(weekPoints);
-
-      // 3. Top Lines Query
+      // 2. Top Lines Query
       const { data: linesData } = await supabase
         .from('lines')
         .select(`
@@ -103,37 +145,12 @@ export const OverviewPage: React.FC = () => {
 
       setTopLines(formattedTopLines);
 
-      // 4. Pending Receipts Query
-      const { data: receiptsData } = await supabase
-        .from('receipts')
-        .select(`
-          id, image_url, attempt_number, created_at, subscription_id,
-          subscriptions(
-            id, type, price,
-            students(full_name, phone, university),
-            lines(name)
-          )
-        `)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true });
-
-      const mappedReceipts: PendingReceiptRow[] = (receiptsData || []).map((r: any) => ({
-        id: r.id,
-        subscriptionId: r.subscription_id,
-        studentName: r.subscriptions?.students?.full_name || 'طالب جديد',
-        studentPhone: r.subscriptions?.students?.phone || '-',
-        university: r.subscriptions?.students?.university || 'الجامعة',
-        lineName: r.subscriptions?.lines?.name || '-',
-        subscriptionType: r.subscriptions?.type || 'termly',
-        price: r.subscriptions?.price || 0,
-        imageUrl: r.image_url,
-        attemptNumber: r.attempt_number || 1,
-        createdAt: r.created_at,
-      }));
-
-      setPendingReceipts(mappedReceipts);
     } catch (err) {
       console.error('Error fetching admin overview data:', err);
+      if (!weeklyQueryAttempted) {
+        setWeeklyData([]);
+        setWeeklyError('تعذر تحميل أعداد الركاب الفعلية من قاعدة البيانات.');
+      }
     } finally {
       setLoading(false);
     }
@@ -141,9 +158,9 @@ export const OverviewPage: React.FC = () => {
 
   // Optimistic handler when a receipt is approved or rejected
   const handleReceiptReviewed = (receiptId: string) => {
-    setPendingReceipts((prev) => prev.filter((r) => r.id !== receiptId));
-    // Refresh stats
-    fetchDashboardData();
+    void receiptId;
+    void refreshPendingReceipts();
+    void fetchDashboardData();
   };
 
   return (
@@ -165,7 +182,7 @@ export const OverviewPage: React.FC = () => {
       {/* Two-Column Row: Weekly Chart (Left) + Top Lines (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7">
-          <WeeklyRidersChart data={weeklyData} loading={loading} />
+          <WeeklyRidersChart data={weeklyData} loading={loading} error={weeklyError} />
         </div>
         <div className="lg:col-span-5">
           <TopLinesPanel lines={topLines} loading={loading} />
@@ -174,11 +191,14 @@ export const OverviewPage: React.FC = () => {
 
       {/* Full-Width Pending Receipts Panel */}
       <div>
-        <PendingReceiptsTable
-          receipts={pendingReceipts}
-          loading={loading}
-          onReceiptReviewed={handleReceiptReviewed}
-        />
+        {receiptsError ? (
+          <div role="alert" className="glass-panel p-6 text-rose-700">
+            تعذر تحميل الإيصالات: {receiptsError}
+            <button className="mr-3 font-bold underline" onClick={fetchDashboardData}>إعادة المحاولة</button>
+          </div>
+        ) : (
+            <PendingReceiptsTable receipts={pendingReceipts} loading={loading || receiptsLoading} onReceiptReviewed={handleReceiptReviewed} />
+        )}
       </div>
     </div>
   );

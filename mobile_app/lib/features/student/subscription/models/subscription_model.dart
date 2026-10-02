@@ -1,10 +1,13 @@
+import '../../lines/models/line_model.dart';
+
 class SubscriptionModel {
   final String id;
   final String studentId;
   final String lineId;
   final String stationId;
   final String type; // termly | yearly | daily
-  final String status; // pending_payment | pending_review | active | rejected | expired
+  final String
+      status; // pending_payment | pending_review | active | rejected | expired
   final String? startDate;
   final String? endDate;
   final double price;
@@ -13,6 +16,8 @@ class SubscriptionModel {
   final String? stationName;
   final String? departureTime;
   final String? returnTime;
+  final List<String> departureTimes;
+  final List<String> returnTimes;
   final String? supervisorPhone;
   final String? supervisorName;
 
@@ -31,6 +36,8 @@ class SubscriptionModel {
     this.stationName,
     this.departureTime,
     this.returnTime,
+    this.departureTimes = const [],
+    this.returnTimes = const [],
     this.supervisorPhone,
     this.supervisorName,
   });
@@ -44,6 +51,12 @@ class SubscriptionModel {
     final line = json['lines'] as Map<String, dynamic>?;
     final station = json['stations'] as Map<String, dynamic>?;
     final supervisor = line?['supervisors'] as Map<String, dynamic>?;
+    final availableDepartureTimes = stationTimes(station?['departure_times'] ??
+        json['departure_time'] ??
+        station?['departure_time']);
+    final availableReturnTimes = stationTimes(station?['return_times'] ??
+        json['return_time'] ??
+        station?['return_time']);
 
     return SubscriptionModel(
       id: json['id'] as String,
@@ -58,8 +71,14 @@ class SubscriptionModel {
       createdAt: json['created_at'] as String,
       lineName: line?['name'] as String?,
       stationName: station?['name'] as String?,
-      departureTime: station?['departure_time'] as String?,
-      returnTime: station?['return_time'] as String?,
+      departureTime: stationTimesLabel(json['departure_time'] ??
+          station?['departure_times'] ??
+          station?['departure_time']),
+      returnTime: stationTimesLabel(json['return_time'] ??
+          station?['return_times'] ??
+          station?['return_time']),
+      departureTimes: availableDepartureTimes,
+      returnTimes: availableReturnTimes,
       supervisorPhone: supervisor?['phone'] as String?,
       supervisorName: supervisor?['full_name'] as String?,
     );

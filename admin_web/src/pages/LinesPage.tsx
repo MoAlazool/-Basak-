@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { MapPin, Plus, Clock, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
+import { MapPin, Plus, Clock, ChevronDown, ChevronUp, Power, Pencil, Save, X } from 'lucide-react';
 
 interface Station {
   id: string;
   line_id: string;
   name: string;
   order_index: number;
+  departure_times: string[];
+  return_times: string[];
+  is_active: boolean;
+}
+
+interface StationForm {
+  name: string;
   departure_times: string[];
   return_times: string[];
 }
@@ -96,6 +103,9 @@ export const LinesPage: React.FC = () => {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
+  const [editingStationId, setEditingStationId] = useState<string | null>(null);
+  const [editingStation, setEditingStation] = useState<StationForm | null>(null);
+  const [pageError, setPageError] = useState('');
 
   // Line form
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
@@ -106,32 +116,31 @@ export const LinesPage: React.FC = () => {
   const [lineSubmitting, setLineSubmitting] = useState(false);
 
   // Station forms (per line)
-  type StationForm = {
-    name: string;
-    departure_times: string[];
-    return_times: string[];
-  };
   const [stationForms, setStationForms] = useState<Record<string, StationForm>>({});
 
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     try {
+      setPageError('');
       setLoading(true);
       const { data: linesData, error: lError } = await supabase
         .from('lines')
-        .select(`*, companies(name), stations(id, name, order_index, departure_times, return_times)`)
+        .select(`*, companies(name), stations(id, name, order_index, departure_times, return_times, is_active)`)
         .order('name');
       if (lError) throw lError;
+      if (!linesData) throw new Error('لم تُرجع قاعدة البيانات قائمة الخطوط.');
       setLines(linesData || []);
 
       const { data: compData, error: cError } = await supabase
         .from('companies').select('id, name').eq('is_active', true);
       if (cError) throw cError;
+      if (!compData) throw new Error('لم تُرجع قاعدة البيانات قائمة الشركات.');
       setCompanies(compData || []);
       if (compData && compData.length > 0) setSelectedCompanyId(compData[0].id);
     } catch (err) {
       console.error('Error fetching lines data:', err);
+      setPageError(err instanceof Error ? err.message : 'تعذر تحميل الخطوط والمحطات.');
     } finally {
       setLoading(false);
     }
@@ -165,11 +174,15 @@ export const LinesPage: React.FC = () => {
     if (!form?.name?.trim()) { alert('أدخل اسم المحطة أولاً'); return; }
 
     const line = lines.find((l) => l.id === lineId);
-    const nextOrder = (line?.stations?.length ?? 0) + 1;
+    const nextOrder = Math.max(0, ...(line?.stations ?? []).map((station) => station.order_index)) + 1;
 
     // Filter out empty time strings
-    const depTimes = (form.departure_times || []).filter((t) => t.trim());
-    const retTimes = (form.return_times || []).filter((t) => t.trim());
+    const depTimes = (form.departure_times || []).filter((t) => t.trim()).sort();
+    const retTimes = (form.return_times || []).filter((t) => t.trim()).sort();
+    if (depTimes.length === 0 || retTimes.length === 0) {
+      alert('أضف موعد ذهاب واحدًا وموعد عودة واحدًا على الأقل.');
+      return;
+    }
 
     const { error } = await supabase.from('stations').insert({
       line_id: lineId,
@@ -177,6 +190,8 @@ export const LinesPage: React.FC = () => {
       order_index: nextOrder,
       departure_times: depTimes,
       return_times: retTimes,
+      departure_time: depTimes[0],
+      return_time: retTimes[0],
     });
 
     if (error) {
@@ -190,18 +205,45 @@ export const LinesPage: React.FC = () => {
     }
   };
 
-  const handleDeleteStation = async (stationId: string) => {
-    if (!confirm('حذف هذه المحطة؟')) return;
-    const { error } = await supabase.from('stations').delete().eq('id', stationId);
-    if (error) alert('فشل الحذف: ' + error.message);
+  const handleToggleStation = async (station: Station) => {
+    const next = !station.is_active;
+    if (!next && !confirm('تعطيل هذه المحطة للطلبات الجديدة؟ ستبقى بيانات الاشتراكات السابقة محفوظة.')) return;
+    const { error } = await supabase.from('stations').update({ is_active: next }).eq('id', station.id).select('id').single();
+    if (error) alert('فشل تغيير حالة المحطة: ' + error.message);
     else fetchData();
   };
 
-  const handleDeleteLine = async (lineId: string) => {
-    if (!confirm('حذف هذا الخط وكل محطاته؟')) return;
-    const { error } = await supabase.from('lines').delete().eq('id', lineId);
-    if (error) alert('فشل حذف الخط: ' + error.message);
+  const handleToggleLine = async (line: Line) => {
+    const next = !line.is_active;
+    if (!next && !confirm('تعطيل الخط للاشتراكات الجديدة؟ ستظل اشتراكات الطلاب الحالية وسجلاتها محفوظة.')) return;
+    const { error } = await supabase.from('lines').update({ is_active: next }).eq('id', line.id).select('id').single();
+    if (error) alert('فشل تغيير حالة الخط: ' + error.message);
     else fetchData();
+  };
+
+  const startStationEdit = (station: Station) => {
+    setEditingStationId(station.id);
+    setEditingStation({
+      name: station.name,
+      departure_times: (station.departure_times ?? []).map((time) => time.slice(0, 5)).sort(),
+      return_times: (station.return_times ?? []).map((time) => time.slice(0, 5)).sort(),
+    });
+  };
+
+  const saveStationEdit = async (stationId: string) => {
+    if (!editingStation?.name.trim()) { alert('اسم المحطة مطلوب.'); return; }
+    const departureTimes = editingStation.departure_times.filter(Boolean).sort();
+    const returnTimes = editingStation.return_times.filter(Boolean).sort();
+    if (!departureTimes.length || !returnTimes.length) { alert('أضف موعد ذهاب وموعد عودة على الأقل.'); return; }
+    const { error } = await supabase.from('stations').update({
+      name: editingStation.name.trim(),
+      departure_times: departureTimes,
+      return_times: returnTimes,
+      departure_time: departureTimes[0],
+      return_time: returnTimes[0],
+    }).eq('id', stationId).select('id').single();
+    if (error) alert('فشل حفظ مواعيد المحطة: ' + error.message);
+    else { setEditingStationId(null); setEditingStation(null); fetchData(); }
   };
 
   const getForm = (lineId: string): StationForm =>
@@ -221,6 +263,8 @@ export const LinesPage: React.FC = () => {
           إضافة خطوط السير، التسعير، ومحطات التوقف مع مواعيد ذهاب وعودة متعددة لكل محطة
         </p>
       </div>
+
+      {pageError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الخطوط: {pageError}<button className="mr-3 underline" onClick={fetchData}>إعادة المحاولة</button></div>}
 
       {/* ── Add Line Form ─────────────────────────────────── */}
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -298,9 +342,9 @@ export const LinesPage: React.FC = () => {
                       المحطات ({sortedStations.length})
                       {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                     </button>
-                    <button onClick={() => handleDeleteLine(line.id)}
-                      className="text-rose-400 hover:text-rose-600 transition" title="حذف الخط">
-                      <Trash2 className="h-4 w-4" />
+                    <button onClick={() => handleToggleLine(line)}
+                      className={`${line.is_active ? 'text-rose-400 hover:text-rose-600' : 'text-emerald-500 hover:text-emerald-700'} transition`} title={line.is_active ? 'تعطيل الخط' : 'تفعيل الخط'}>
+                      <Power className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -311,7 +355,7 @@ export const LinesPage: React.FC = () => {
 
                     {/* Existing Stations */}
                     {sortedStations.map((st, idx) => (
-                      <div key={st.id} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <div key={st.id} className={`rounded-xl border border-slate-100 bg-white p-4 shadow-sm ${st.is_active === false ? 'opacity-60' : ''}`}>
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
@@ -319,12 +363,22 @@ export const LinesPage: React.FC = () => {
                             </span>
                             <MapPin className="h-4 w-4 text-blue-400" />
                             <span className="font-bold text-slate-800 text-sm">{st.name}</span>
+                            {st.is_active === false && <span className="text-[10px] text-rose-500">معطّلة</span>}
                           </div>
-                          <button onClick={() => handleDeleteStation(st.id)}
-                            className="text-rose-300 hover:text-rose-500 transition" title="حذف المحطة">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex gap-3">
+                            <button onClick={() => startStationEdit(st)} className="text-blue-500 hover:text-blue-700" title="تعديل المحطة والمواعيد"><Pencil className="h-4 w-4" /></button>
+                            <button onClick={() => handleToggleStation(st)} className={st.is_active === false ? 'text-emerald-500' : 'text-rose-400'} title={st.is_active === false ? 'تفعيل المحطة' : 'تعطيل المحطة'}><Power className="h-4 w-4" /></button>
+                          </div>
                         </div>
+
+                        {editingStationId === st.id && editingStation && <div className="mb-4 space-y-3 rounded-xl bg-blue-50/60 p-3">
+                          <input value={editingStation.name} onChange={(e) => setEditingStation({ ...editingStation, name: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" aria-label="اسم المحطة" />
+                          <div className="flex flex-wrap gap-4">
+                            <TimeListEditor label="مواعيد الذهاب" color="emerald" times={editingStation.departure_times} onChange={(times) => setEditingStation({ ...editingStation, departure_times: times })} />
+                            <TimeListEditor label="مواعيد العودة" color="amber" times={editingStation.return_times} onChange={(times) => setEditingStation({ ...editingStation, return_times: times })} />
+                          </div>
+                          <div className="flex justify-end gap-2"><button onClick={() => saveStationEdit(st.id)} className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"><Save className="h-3 w-3" />حفظ التعديلات</button><button onClick={() => { setEditingStationId(null); setEditingStation(null); }} className="rounded-lg border px-3 py-1.5 text-xs">إلغاء</button></div>
+                        </div>}
 
                         {/* Times display */}
                         <div className="grid grid-cols-2 gap-3">

@@ -42,7 +42,9 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في البحث: $e'),
+            content: const Text(
+              'تعذر التحقق من الرمز. اتصل بالإنترنت أو راجع صحة الرمز.',
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -93,6 +95,22 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
                 ],
               ),
               const Divider(height: 24),
+              if (student.isOfflineCache) ...[
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF4E5),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Text(
+                    'لا يوجد اتصال بالإنترنت. هذه بيانات محفوظة من آخر عملية تحقق وقد لا تعكس التغييرات الأخيرة.',
+                    style: TextStyle(color: Color(0xFF8A5A00), fontSize: 12, height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
               _buildDetailRow(LucideIcons.phone, 'رقم الهاتف', student.phone),
               _buildDetailRow(LucideIcons.mapPin, 'المحطة', student.stationName ?? 'غير محدد'),
               _buildDetailRow(LucideIcons.bus, 'الخط', student.lineName ?? 'غير محدد'),

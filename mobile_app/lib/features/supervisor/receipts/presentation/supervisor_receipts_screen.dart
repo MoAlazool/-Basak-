@@ -7,15 +7,18 @@ import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../data/supervisor_receipts_repository.dart';
 
-final supervisorReceiptsRepoProvider = Provider((ref) => SupervisorReceiptsRepository());
-final pendingReceiptsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final supervisorReceiptsRepoProvider =
+    Provider((ref) => SupervisorReceiptsRepository());
+final pendingReceiptsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return ref.watch(supervisorReceiptsRepoProvider).getPendingReceiptsQueue();
 });
 
 class SupervisorReceiptsScreen extends ConsumerWidget {
   const SupervisorReceiptsScreen({super.key});
 
-  void _showRejectDialog(BuildContext context, WidgetRef ref, String receiptId) {
+  void _showRejectDialog(
+      BuildContext context, WidgetRef ref, String receiptId) {
     final reasonController = TextEditingController();
     showDialog(
       context: context,
@@ -34,14 +37,16 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
           children: [
             Text(
               'بحسب النظام، يجب كتابة سبب الرفض بوضوح ليتم إرساله للطالب.',
-              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+              style: AppTextStyles.labelSmall
+                  .copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: reasonController,
               maxLines: 3,
               decoration: const InputDecoration(
-                hintText: 'سبب الرفض (إلزامي): صورة غير واضحة، المبلغ غير مطابق، إلخ...',
+                hintText:
+                    'سبب الرفض (إلزامي): صورة غير واضحة، المبلغ غير مطابق، إلخ...',
               ),
             ),
           ],
@@ -55,7 +60,8 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () async {
               final reason = reasonController.text.trim();
@@ -83,7 +89,9 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطأ: $e'), backgroundColor: AppColors.error),
+                    SnackBar(
+                        content: Text('خطأ: $e'),
+                        backgroundColor: AppColors.error),
                   );
                 }
               }
@@ -95,7 +103,8 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _approve(BuildContext context, WidgetRef ref, String receiptId) async {
+  Future<void> _approve(
+      BuildContext context, WidgetRef ref, String receiptId) async {
     try {
       await ref.read(supervisorReceiptsRepoProvider).approveReceipt(receiptId);
       ref.invalidate(pendingReceiptsProvider);
@@ -129,9 +138,11 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('مراجعة إيصالات الطلاب', style: AppTextStyles.displayMedium),
+                  Text('مراجعة إيصالات الطلاب',
+                      style: AppTextStyles.displayMedium),
                   const SizedBox(height: 4),
-                  Text('فحص وتأكيد إيصالات التحويل البنكي للاشتراكات الجديدة', style: AppTextStyles.bodyMedium),
+                  Text('فحص وتأكيد إيصالات التحويل البنكي للاشتراكات الجديدة',
+                      style: AppTextStyles.bodyMedium),
                 ],
               ),
             ),
@@ -144,10 +155,13 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(LucideIcons.checkCheck, size: 50, color: AppColors.success),
+                        const Icon(LucideIcons.checkCheck,
+                            size: 50, color: AppColors.success),
                         const SizedBox(height: 12),
-                        Text('لا توجد إيصالات معلقة', style: AppTextStyles.titleMedium),
-                        Text('تم فحص جميع الإيصالات بنجاح.', style: AppTextStyles.bodyMedium),
+                        Text('لا توجد إيصالات معلقة',
+                            style: AppTextStyles.titleMedium),
+                        Text('تم فحص جميع الإيصالات بنجاح.',
+                            style: AppTextStyles.bodyMedium),
                       ],
                     ),
                   ),
@@ -165,7 +179,8 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
                     final attempt = r['attempt_number'] ?? 1;
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
                       child: GlassContainer(
                         padding: const EdgeInsets.all(16),
                         borderRadius: 20,
@@ -175,9 +190,11 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(student?['full_name'] ?? 'اسم الطالب', style: AppTextStyles.titleMedium),
+                                Text(student?['full_name'] ?? 'اسم الطالب',
+                                    style: AppTextStyles.titleMedium),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: AppColors.babyBlueUltraLight,
                                     borderRadius: BorderRadius.circular(8),
@@ -193,10 +210,38 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
                               ],
                             ),
                             const SizedBox(height: 6),
-                            Text('الجامعة: ${student?['university'] ?? ""}', style: AppTextStyles.bodyMedium),
-                            Text('الهاتف: ${student?['phone'] ?? ""}', style: AppTextStyles.bodyMedium),
-                            Text('الخط: ${line?['name'] ?? ""} | المحطة: ${station?['name'] ?? ""}',
-                                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+                            Text('الجامعة: ${student?['university'] ?? ""}',
+                                style: AppTextStyles.bodyMedium),
+                            Text('الهاتف: ${student?['phone'] ?? ""}',
+                                style: AppTextStyles.bodyMedium),
+                            Text(
+                                'الخط: ${line?['name'] ?? ""} | المحطة: ${station?['name'] ?? ""}',
+                                style: AppTextStyles.labelSmall
+                                    .copyWith(color: AppColors.textSecondary)),
+                            const SizedBox(height: 12),
+                            if (r['signed_image_url'] is String)
+                              GestureDetector(
+                                onTap: () => showDialog<void>(
+                                  context: context,
+                                  builder: (ctx) => Dialog(
+                                    child: InteractiveViewer(
+                                      child: Image.network(
+                                          r['signed_image_url'] as String),
+                                    ),
+                                  ),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    r['signed_image_url'] as String,
+                                    height: 140,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        const Text('تعذر عرض صورة الإيصال'),
+                                  ),
+                                ),
+                              ),
                             const Divider(height: 20),
                             Row(
                               children: [
@@ -205,9 +250,12 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppColors.success,
                                       foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10)),
                                     ),
-                                    onPressed: () => _approve(context, ref, r['id']),
+                                    onPressed: () =>
+                                        _approve(context, ref, r['id']),
                                     child: const Text('قبول وتفعيل'),
                                   ),
                                 ),
@@ -216,10 +264,14 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
                                   child: OutlinedButton(
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: AppColors.error,
-                                      side: const BorderSide(color: AppColors.error),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      side: const BorderSide(
+                                          color: AppColors.error),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10)),
                                     ),
-                                    onPressed: () => _showRejectDialog(context, ref, r['id']),
+                                    onPressed: () => _showRejectDialog(
+                                        context, ref, r['id']),
                                     child: const Text('رفض ببيان السبب'),
                                   ),
                                 ),
@@ -238,7 +290,19 @@ class SupervisorReceiptsScreen extends ConsumerWidget {
               child: Center(child: CircularProgressIndicator()),
             ),
             error: (err, _) => SliverFillRemaining(
-              child: Center(child: Text('خطأ: $err')),
+              child: Center(
+                  child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('تعذر تحميل الإيصالات: $err',
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () => ref.invalidate(pendingReceiptsProvider),
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ],
+              )),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),

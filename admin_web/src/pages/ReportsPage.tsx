@@ -35,11 +35,19 @@ export const ReportsPage: React.FC = () => {
         .eq('status', 'active');
       if (sError) throw sError;
 
+      const { data: archived, error: archiveError } = await supabase
+        .from('deleted_student_revenue')
+        .select('line_id, line_name, company_name, amount');
+      if (archiveError) throw archiveError;
+
       // Group reports by line
       const reportRows: ReportRow[] = (lines || []).map((l: any) => {
         const lineSubs = (subs || []).filter((s: any) => s.line_id === l.id);
+        const lineArchive = (archived || []).filter((item: any) => item.line_id === l.id);
         const subCount = lineSubs.length;
-        const revenue = lineSubs.reduce((acc: number, cur: any) => acc + (cur.price || 0), 0);
+        const revenue =
+          lineSubs.reduce((acc: number, cur: any) => acc + Number(cur.price || 0), 0) +
+          lineArchive.reduce((acc: number, cur: any) => acc + Number(cur.amount || 0), 0);
         // Estimated attendance rate (simulated based on daily toggle active rates)
         const attendanceRate = subCount > 0 ? 82.5 : 0;
 
@@ -52,6 +60,20 @@ export const ReportsPage: React.FC = () => {
           attendanceRate,
         };
       });
+
+      const removedLineArchive = (archived || []).filter((item: any) =>
+        !(lines || []).some((line: any) => line.id === item.line_id));
+      if (removedLineArchive.length) {
+        reportRows.push({
+          lineId: 'deleted-line-revenue',
+          lineName: 'إيراد محفوظ من خطوط سابقة',
+          companyName: 'غير محدد',
+          subscriberCount: 0,
+          totalRevenue: removedLineArchive.reduce(
+            (sum: number, item: any) => sum + Number(item.amount || 0), 0),
+          attendanceRate: 0,
+        });
+      }
 
       setReports(reportRows);
     } catch (err) {

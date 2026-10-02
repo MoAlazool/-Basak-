@@ -1,17 +1,27 @@
 import 'package:flutter/material.dart';
 
-/// Centralized Glassmorphic Design Palette (White & Baby Blue)
+/// Centralized Design Palette — Unified (Glass + Brand)
 class AppColors {
   // Backgrounds
   static const Color background = Color(0xFFF8FAFC);
   static const Color backgroundPure = Color(0xFFFFFFFF);
   static const Color backgroundSecondary = Color(0xFFF1F5F9);
+  static const Color surface = Colors.white;
 
-  // Baby Blue Accents
-  static const Color babyBlue = Color(0xFF7EC8E3); // Primary Baby Blue
-  static const Color babyBlueLight = Color(0xFFA8D8F0); // Light Tint
-  static const Color babyBlueUltraLight = Color(0xFFE0F2FE); // Gradient Tint
-  static const Color babyBlueDark = Color(0xFF4FA8C7); // Focused / Pressed
+  // Brand Primary (Navy & Teal — used in Theme)
+  static const Color primary = Color(0xFF1E3A8A); // Deep Navy Blue
+  static const Color primaryDark = Color(0xFF17384A);
+  static const Color secondary = Color(0xFF0D9488); // Teal
+  static const Color accent = Color(0xFFF59E0B); // Amber / Gold
+  static const Color teal = Color(0xFF00658D);
+  static const Color ink = Color(0xFF17384A);
+  static const Color canvas = Color(0xFFEAF5FA);
+
+  // Baby Blue Accents (Glass)
+  static const Color babyBlue = Color(0xFF7EC8E3);
+  static const Color babyBlueLight = Color(0xFFA8D8F0);
+  static const Color babyBlueUltraLight = Color(0xFFE0F2FE);
+  static const Color babyBlueDark = Color(0xFF4FA8C7);
 
   // Text Colors (Dark slate, never pure black)
   static const Color textPrimary = Color(0xFF1E293B);
@@ -55,5 +65,10 @@ class AppColors {
           spreadRadius: 2,
           offset: const Offset(0, 10),
         ),
+      ];
+
+  static List<BoxShadow> get cardShadow => [
+        const BoxShadow(
+            color: Color(0x0A16384A), blurRadius: 14, offset: Offset(0, 5)),
       ];
 }
