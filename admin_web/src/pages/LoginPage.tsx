@@ -29,7 +29,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       }
       onLogin();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذر تسجيل الدخول.');
+      const message = err instanceof Error ? err.message.toLowerCase() : '';
+      if (
+        message.includes('invalid login credentials') ||
+        message.includes('invalid_credentials') ||
+        message.includes('user not found')
+      ) {
+        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+      } else if (message.includes('email not confirmed')) {
+        setError('يجب تأكيد البريد الإلكتروني أولاً.');
+      } else if (
+        message.includes('هذا الحساب غير مسجل كمسؤول') ||
+        message.includes('not registered as an administrator')
+      ) {
+        setError('هذا الحساب غير مسجل كمسؤول في النظام.');
+      } else if (
+        message.includes('fetch') ||
+        message.includes('network') ||
+        message.includes('timeout')
+      ) {
+        setError('تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى.');
+      } else {
+        setError('تعذر تسجيل الدخول. تحقق من بيانات الحساب وحاول مرة أخرى.');
+      }
     } finally {
       setLoading(false);
     }
