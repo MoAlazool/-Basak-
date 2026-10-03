@@ -6,7 +6,6 @@ import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
-import '../../receipts/presentation/supervisor_receipts_screen.dart';
 import '../../rider_counts/presentation/rider_counts_screen.dart';
 
 /// Tab 1 — overview of the supervisor's assigned line(s): registered students,
@@ -121,6 +120,7 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
                 label: 'تسجيل حضور اليوم (بواسطتك)',
                 color: const Color(0xFFB97812)),
           ]),
+          ..._tripTimesSection(data, line),
           if (line.schedules.isNotEmpty) ...[
             const BasakSectionTitle('رحلات الجامعات على الخط'),
             _schedulesCard(line),
@@ -226,6 +226,77 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
           Text(label, style: AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
         ]),
       );
+
+  /// Students per trip time on the selected line, from the students' ride
+  /// confirmations: e.g. "5:00 م → 5 طلاب عائدون". Today first, then the next
+  /// ride day once its vote has opened.
+  List<Widget> _tripTimesSection(SupervisorDashboard data, SupervisorLine line) {
+    final rows = data.tripTimes.where((t) => t.lineId == line.id).toList();
+    final days = rows.map((t) => DateUtils.dateOnly(t.rideDate)).toSet().toList()..sort();
+    final today = DateUtils.dateOnly(data.today);
+    return [
+      BasakSectionTitle('الطلاب حسب موعد الرحلة',
+          trailing: BasakPill('من تأكيدات الطلاب', icon: LucideIcons.clock3)),
+      if (rows.isEmpty)
+        const BasakMessageCard(
+          icon: LucideIcons.clock3,
+          title: 'لا توجد تأكيدات بعد',
+          message: 'تظهر هنا أعداد الطلاب لكل موعد ذهاب وعودة بمجرد أن يؤكد الطلاب ركوبهم.',
+        )
+      else
+        for (final day in days)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _tripDayCard(
+              day == today ? 'اليوم' : (day == today.add(const Duration(days: 1)) ? 'غداً' : BasakUi.dateLabel(day)),
+              rows.where((t) => DateUtils.dateOnly(t.rideDate) == day).toList(),
+            ),
+          ),
+    ];
+  }
+
+  Widget _tripDayCard(String dayLabel, List<SupervisorTripTime> rows) {
+    final departures = rows.where((t) => !t.isReturn).toList()..sort((a, b) => a.time.compareTo(b.time));
+    final returns = rows.where((t) => t.isReturn).toList()..sort((a, b) => a.time.compareTo(b.time));
+    Widget group(String title, IconData icon, Color color, List<SupervisorTripTime> items, String noun) =>
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(title, style: AppTextStyles.labelSmall.copyWith(color: color, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 6),
+          if (items.isEmpty)
+            Text('لا أحد', style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted))
+          else
+            for (final t in items)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(children: [
+                  Text(BasakUi.time12(t.time),
+                      style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 8),
+                  const Icon(LucideIcons.arrowLeft, size: 14, color: BasakUi.muted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('${t.students} ${t.students == 1 ? 'طالب' : 'طلاب'} $noun',
+                        style: AppTextStyles.bodyMedium.copyWith(color: BasakUi.ink)),
+                  ),
+                ]),
+              ),
+        ]);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BasakUi.card(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(dayLabel, style: AppTextStyles.titleMedium.copyWith(color: BasakUi.ink)),
+        const SizedBox(height: 10),
+        group('رحلات الذهاب', LucideIcons.sunrise, const Color(0xFF07865A), departures, 'ذاهبون'),
+        const Divider(height: 22),
+        group('رحلات العودة', LucideIcons.sunset, const Color(0xFFB97812), returns, 'عائدون'),
+      ]),
+    );
+  }
 
   Widget _heroDivider() =>
       Container(width: 1, height: 34, color: Colors.white.withOpacity(.18));
@@ -353,16 +424,6 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
           title: 'مسح بطاقة طالب',
           subtitle: 'تحقق من الهوية وسجّل صعود الطالب',
           onTap: widget.onOpenScanner,
-        ),
-        const SizedBox(height: 10),
-        _actionTile(
-          icon: LucideIcons.fileCheck,
-          title: 'مراجعة الإيصالات',
-          subtitle: data.totals.pendingReceipts == 0
-              ? 'لا توجد إيصالات بانتظار المراجعة'
-              : '${data.totals.pendingReceipts} إيصال بانتظار المراجعة',
-          badge: data.totals.pendingReceipts,
-          onTap: () => _push(const SupervisorReceiptsScreen(), 'مراجعة الإيصالات'),
         ),
         const SizedBox(height: 10),
         _actionTile(

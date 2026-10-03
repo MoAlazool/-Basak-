@@ -5,5 +5,7 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   root: path.resolve(__dirname),
-  base: './',
+  // Absolute asset URLs: with './' a deep link such as /reset-password/x asked for
+  // /reset-password/assets/*.css, which the SPA rewrite answered with index.html.
+  base: '/',
 });

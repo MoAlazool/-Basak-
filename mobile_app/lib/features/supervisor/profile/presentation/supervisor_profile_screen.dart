@@ -176,8 +176,8 @@ class SupervisorProfileScreen extends ConsumerWidget {
             icon: LucideIcons.listChecks,
             label: 'نوع التكليف',
             value: data.profile.isDirectlyAssigned
-                ? 'خط مسند بالاسم'
-                : 'كل خطوط الشركة',
+                ? '${data.lines.length} خط مسند من الشركة'
+                : 'لا يوجد خط مسند',
           ),
           BasakInfoRow(
               icon: LucideIcons.users,

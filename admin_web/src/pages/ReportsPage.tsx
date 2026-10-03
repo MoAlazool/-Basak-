@@ -41,8 +41,8 @@ export const ReportsPage: React.FC = () => {
       const today = cairoToday();
       const [{ data: lines, error: linesError }, subs, archived, rides] = await Promise.all([
         supabase.from('lines').select('id,name,company_id,companies(name)').order('name'),
-        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status,created_at')
-          .eq('status', 'active').range(from, to)),
+        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status,created_at,start_date,end_date')
+          .not('paid_at', 'is', null).range(from, to)),
         loadAll(async (from, to) => await supabase.from('deleted_student_revenue')
           .select('line_id,line_name,company_name,company_id,amount,archived_at')
           .range(from, to)),
@@ -52,10 +52,15 @@ export const ReportsPage: React.FC = () => {
       if (linesError) throw new Error(linesError.message);
 
       const lineRows = lines || [];
+      // Revenue: all paid subscriptions. Subscribers/attendance: those valid today.
+      const paidSubs = subs;
+      const currentSubs = paidSubs.filter((sub: any) => sub.status === 'active'
+        && (!sub.start_date || sub.start_date <= today) && (!sub.end_date || sub.end_date >= today));
       const lineById = new Map(lineRows.map((line: any) => [line.id, line]));
       const rideStudents = new Set(rides.map((ride: any) => ride.student_id));
       const result: ReportRow[] = lineRows.map((line: any) => {
-        const lineSubs = subs.filter((sub: any) => sub.line_id === line.id);
+        const lineSubs = currentSubs.filter((sub: any) => sub.line_id === line.id);
+        const linePaid = paidSubs.filter((sub: any) => sub.line_id === line.id);
         const attended = new Set(lineSubs.filter((sub: any) => rideStudents.has(sub.student_id)).map((sub: any) => sub.student_id));
         const archivedTotal = archived.filter((row: any) => row.line_id === line.id)
           .reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0);
@@ -64,7 +69,7 @@ export const ReportsPage: React.FC = () => {
           lineName: line.name,
           companyName: line.companies?.name || '—',
           subscriberCount: lineSubs.length,
-          totalRevenue: lineSubs.reduce((sum: number, sub: any) => sum + Number(sub.price || 0), 0) + archivedTotal,
+          totalRevenue: linePaid.reduce((sum: number, sub: any) => sum + Number(sub.price || 0), 0) + archivedTotal,
           attendanceRate: lineSubs.length ? Math.round((attended.size / lineSubs.length) * 100) : 0,
         };
       });
@@ -81,8 +86,8 @@ export const ReportsPage: React.FC = () => {
         result.push({ lineId: `archive-${lineId}`, lineName: row.lineName, companyName: row.companyName, subscriberCount: 0, totalRevenue: row.amount, attendanceRate: 0 });
       }
 
-      const activeSubscriberCount = subs.length;
-      const attendedTotal = new Set(subs.filter((sub: any) => rideStudents.has(sub.student_id)).map((sub: any) => sub.student_id)).size;
+      const activeSubscriberCount = currentSubs.length;
+      const attendedTotal = new Set(currentSubs.filter((sub: any) => rideStudents.has(sub.student_id)).map((sub: any) => sub.student_id)).size;
       setAttendanceRate(activeSubscriberCount ? Math.round((attendedTotal / activeSubscriberCount) * 100) : 0);
       setReports(result);
     } catch (loadError) {

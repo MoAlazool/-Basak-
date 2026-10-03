@@ -8,22 +8,46 @@ import '../models/subscription_model.dart';
 class SubscriptionRepository {
   final SupabaseClient _client = SupabaseService.client;
 
-  /// Get current active or pending subscription for the logged-in student
+  // period_label / period_phase are computed by the database from academic_terms.
+  static const _select = '''
+          *, period_label, period_phase,
+          lines(name, supervisors(full_name, phone)),
+          stations(name, departure_times, return_times),
+          line_university_schedules(departure_time, return_time, universities(name))
+        ''';
+
+  static String _today() => DateTime.now().toIso8601String().substring(0, 10);
+
+  /// Every subscription of the signed-in student: current, upcoming (paid in
+  /// advance or awaiting payment) and expired, newest period first.
+  Future<List<SubscriptionModel>> getSubscriptions() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return const [];
+    final response = await _client
+        .from(SupabaseTables.subscriptions)
+        .select(_select)
+        .eq('student_id', user.id)
+        .order('start_date', ascending: false, nullsFirst: false)
+        .order('created_at', ascending: false);
+    return (response as List<dynamic>)
+        .map((e) => SubscriptionModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// The subscription that matters now: the one running today, otherwise the
+  /// next upcoming one. Expired subscriptions are history only.
   Future<SubscriptionModel?> getCurrentSubscription() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
     final response = await _client
         .from(SupabaseTables.subscriptions)
-        .select('''
-          *,
-          lines(name, supervisors(full_name, phone)),
-          stations(name, departure_times, return_times),
-          line_university_schedules(departure_time, return_time, universities(name))
-        ''')
+        .select(_select)
         .eq('student_id', user.id)
         .inFilter('status',
             ['pending_payment', 'pending_review', 'active', 'rejected'])
+        .or('end_date.is.null,end_date.gte.${_today()}')
+        .order('start_date', ascending: true)
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
@@ -32,9 +56,19 @@ class SubscriptionRepository {
     return SubscriptionModel.fromJson(response);
   }
 
-  /// Create a new subscription
-  /// If daily: cash-only, active immediately for today
-  /// If termly / yearly: pending_payment until receipt uploaded & approved
+  /// Periods payable now for [lineId]: the current semester, the next one
+  /// (advance payment) and the annual subscription when the company enables it.
+  Future<List<PurchasablePeriod>> getPurchasablePeriods(String lineId) async {
+    final response = await _client.rpc(SupabaseRpcs.getPurchasablePeriods,
+        params: {'p_line_id': lineId});
+    return (response as List<dynamic>)
+        .map((e) => PurchasablePeriod.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Create a subscription. Status, dates and price are set by the database:
+  /// daily = cash on the bus, active for the next ride; termly / yearly =
+  /// pending_payment for the chosen period until a receipt is approved.
   Future<SubscriptionModel> createSubscription({
     required String lineId,
     required String stationId,
@@ -43,33 +77,29 @@ class SubscriptionRepository {
     required String type, // termly | yearly | daily
     required double price,
     String? scheduleId,
+    PurchasablePeriod? period,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('المستخدم غير مسجل.');
 
-    final isDaily = type == 'daily';
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-
-    final inserted = await _client.from(SupabaseTables.subscriptions).insert({
-      'student_id': user.id,
-      'line_id': lineId,
-      'station_id': stationId,
-      if (scheduleId != null) 'schedule_id': scheduleId,
-      'departure_time': departureTime,
-      'return_time': returnTime,
-      'type': type,
-      'price': price,
-      'status': isDaily ? 'active' : 'pending_payment',
-      'start_date': isDaily ? today : null,
-      'end_date': isDaily ? today : null,
-    }).select('''
-          *,
-          lines(name, supervisors(full_name, phone)),
-          stations(name, departure_times, return_times),
-          line_university_schedules(departure_time, return_time, universities(name))
-        ''').single();
-
-    return SubscriptionModel.fromJson(inserted);
+    try {
+      final inserted = await _client.from(SupabaseTables.subscriptions).insert({
+        'student_id': user.id,
+        'line_id': lineId,
+        'station_id': stationId,
+        if (scheduleId != null) 'schedule_id': scheduleId,
+        'departure_time': departureTime,
+        'return_time': returnTime,
+        'type': type,
+        'price': price,
+        if (type != 'daily' && period != null) 'period_code': period.periodCode,
+        if (type != 'daily' && period != null) 'academic_year': period.academicYear,
+      }).select(_select).single();
+      return SubscriptionModel.fromJson(inserted);
+    } on PostgrestException catch (error) {
+      // Messages raised by the database triggers are already in Arabic.
+      throw Exception(error.message);
+    }
   }
 
   /// Upload receipt photo to Supabase Storage and insert receipt record
@@ -87,34 +117,44 @@ class SubscriptionRepository {
           'تم استخدام المحاولات الخمس لرفع الإيصال. تواصل مع الإدارة للمساعدة.');
     }
 
+    final ext = fileExtension.toLowerCase();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final storagePath =
-        '${user.id}/${subscriptionId}_$timestamp.$fileExtension';
-    final contentType = fileExtension.toLowerCase() == 'jpg' ||
-            fileExtension.toLowerCase() == 'jpeg'
-        ? 'image/jpeg'
-        : 'image/${fileExtension.toLowerCase()}';
+    // receipts/{student_id}/{subscription_id}_{timestamp}.{ext} — the database
+    // and the storage policies rely on this exact layout.
+    final storagePath = '${user.id}/${subscriptionId}_$timestamp.$ext';
+    final contentType =
+        ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : 'image/$ext';
 
-    // 1. Upload file to Storage private bucket
+    // 1. Upload to the private bucket. No upsert: a submitted receipt must never
+    // be replaced (students have no UPDATE permission on receipt images).
     await _client.storage.from(SupabaseConfig.receiptsBucket).uploadBinary(
           storagePath,
           fileBytes,
-          fileOptions: FileOptions(contentType: contentType, upsert: true),
+          fileOptions: FileOptions(contentType: contentType, upsert: false),
         );
 
-    // 2. Insert receipt row into receipts table
-    // (Database trigger handles attempt_number calculation and updates subscription status)
-    final inserted = await _client
-        .from(SupabaseTables.receipts)
-        .insert({
-          'subscription_id': subscriptionId,
-          'image_url': storagePath,
-          'status': 'pending',
-        })
-        .select()
-        .single();
-
-    return ReceiptModel.fromJson(inserted);
+    // 2. Insert receipt row (trigger sets attempt number, amount, pending_review).
+    try {
+      final inserted = await _client
+          .from(SupabaseTables.receipts)
+          .insert({
+            'subscription_id': subscriptionId,
+            'image_url': storagePath,
+            'status': 'pending',
+          })
+          .select()
+          .single();
+      return ReceiptModel.fromJson(inserted);
+    } on PostgrestException catch (error) {
+      try {
+        await _client.storage
+            .from(SupabaseConfig.receiptsBucket)
+            .remove([storagePath]);
+      } catch (_) {
+        // Orphaned images are harmless: only the owner and admins can read them.
+      }
+      throw Exception(error.message);
+    }
   }
 
   /// Get receipts history for a subscription

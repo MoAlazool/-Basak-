@@ -40,3 +40,12 @@ export function jsonResponse(body: unknown, status = 200) {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
+
+/** Readable message for thrown Errors and for PostgREST / Auth error objects. */
+export function errorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim();
+    if (message) return message;
+  }
+  return fallback;
+}

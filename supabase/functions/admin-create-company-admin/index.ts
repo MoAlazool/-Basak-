@@ -1,4 +1,4 @@
-import { corsHeaders, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -74,6 +74,6 @@ Deno.serve(async (request: Request) => {
     }
     return jsonResponse({ id: authUserId, invited });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : 'تعذر إنشاء مدير الشركة.' }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر إنشاء مدير الشركة.') }, 400);
   }
 });

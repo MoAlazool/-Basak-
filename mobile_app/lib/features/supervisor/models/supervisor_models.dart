@@ -15,11 +15,15 @@ class SupervisorDashboard {
   final SupervisorTotals totals;
   final List<SupervisorLine> lines;
 
+  /// Students per trip time (from ride confirmations), today and the next ride day.
+  final List<SupervisorTripTime> tripTimes;
+
   SupervisorDashboard({
     required this.today,
     required this.profile,
     required this.totals,
     required this.lines,
+    this.tripTimes = const [],
   });
 
   factory SupervisorDashboard.fromJson(Map<String, dynamic> json) =>
@@ -30,6 +34,39 @@ class SupervisorDashboard {
         totals: SupervisorTotals.fromJson(
             json['totals'] as Map<String, dynamic>? ?? const {}),
         lines: _list(json['lines']).map(SupervisorLine.fromJson).toList(),
+        tripTimes: _list(json['trip_times']).map(SupervisorTripTime.fromJson).toList(),
+      );
+}
+
+/// One row of get_supervisor_dashboard().trip_times: e.g. return 17:00 -> 5 students.
+class SupervisorTripTime {
+  final DateTime rideDate;
+  final String lineId;
+  final String lineName;
+
+  /// 'departure' | 'return'
+  final String direction;
+  final String time;
+  final int students;
+
+  SupervisorTripTime({
+    required this.rideDate,
+    required this.lineId,
+    required this.lineName,
+    required this.direction,
+    required this.time,
+    required this.students,
+  });
+
+  bool get isReturn => direction == 'return';
+
+  factory SupervisorTripTime.fromJson(Map<String, dynamic> json) => SupervisorTripTime(
+        rideDate: DateTime.tryParse(json['ride_date'] as String? ?? '') ?? DateTime.now(),
+        lineId: json['line_id'] as String? ?? '',
+        lineName: json['line_name'] as String? ?? '',
+        direction: json['direction'] as String? ?? 'departure',
+        time: json['time'] as String? ?? '',
+        students: _int(json['students']),
       );
 }
 
@@ -42,7 +79,7 @@ class SupervisorProfile {
   final String? companyName;
   final bool companyActive;
 
-  /// 'direct' = lines assigned by name; 'company' = covers all company lines.
+  /// 'direct' = the company assigned lines to this supervisor; 'none' = no line yet.
   final String assignment;
 
   SupervisorProfile({
@@ -66,7 +103,7 @@ class SupervisorProfile {
         createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
         companyName: json['company_name'] as String?,
         companyActive: json['company_active'] as bool? ?? true,
-        assignment: json['assignment'] as String? ?? 'company',
+        assignment: json['assignment'] as String? ?? 'none',
       );
 }
 
@@ -76,8 +113,6 @@ class SupervisorTotals {
   final int stations;
   final int confirmedToday;
   final int checkedInToday;
-  final int pendingPayment;
-  final int pendingReceipts;
 
   SupervisorTotals({
     required this.lines,
@@ -85,8 +120,6 @@ class SupervisorTotals {
     required this.stations,
     required this.confirmedToday,
     required this.checkedInToday,
-    required this.pendingPayment,
-    required this.pendingReceipts,
   });
 
   factory SupervisorTotals.fromJson(Map<String, dynamic> json) => SupervisorTotals(
@@ -95,8 +128,6 @@ class SupervisorTotals {
         stations: _int(json['stations']),
         confirmedToday: _int(json['confirmed_today']),
         checkedInToday: _int(json['checked_in_today']),
-        pendingPayment: _int(json['pending_payment']),
-        pendingReceipts: _int(json['pending_receipts']),
       );
 }
 
@@ -213,11 +244,14 @@ enum CheckInOutcome {
         _ => CheckInOutcome.notFound,
       };
 
-  bool get isSuccess => this == checkedIn || this == alreadyCheckedIn;
+  bool get isSuccess => this == checkedIn;
 }
 
 class CheckInResult {
   final CheckInOutcome outcome;
+
+  /// Server explanation, e.g. "This student has already been checked in today."
+  final String? message;
   final String direction;
   final DateTime? checkedInAt;
   final bool? confirmedRideToday;
@@ -225,6 +259,7 @@ class CheckInResult {
 
   CheckInResult({
     required this.outcome,
+    this.message,
     required this.direction,
     this.checkedInAt,
     this.confirmedRideToday,
@@ -233,6 +268,7 @@ class CheckInResult {
 
   factory CheckInResult.fromJson(Map<String, dynamic> json) => CheckInResult(
         outcome: CheckInOutcome.fromResult(json['result'] as String?),
+        message: json['message'] as String?,
         direction: json['direction'] as String? ?? 'departure',
         checkedInAt: DateTime.tryParse(json['checked_in_at'] as String? ?? '')?.toLocal(),
         confirmedRideToday: json['confirmed_ride_today'] as bool?,

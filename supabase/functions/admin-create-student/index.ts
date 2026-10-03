@@ -1,4 +1,4 @@
-import { corsHeaders, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -17,6 +17,10 @@ Deno.serve(async (request: Request) => {
     const subscriptionType = String(body.subscriptionType ?? 'termly');
     const requestedDeparture = String(body.departureTime ?? '').trim();
     const requestedReturn = String(body.returnTime ?? '').trim();
+    // Optional period (see get_purchasable_periods); the DB picks the current one if omitted.
+    const periodCode = String(body.periodCode ?? '').trim() || null;
+    const academicYear = Number.isInteger(Number(body.academicYear)) && body.academicYear !== null && body.academicYear !== undefined
+      ? Number(body.academicYear) : null;
     if (fullName.split(/\s+/).length < 4 || phone.length < 10 || !university || password.length < 6 || !lineId || !stationId || !['termly', 'yearly', 'daily'].includes(subscriptionType)) {
       return jsonResponse({ error: 'أدخل الاسم الرباعي ورقم الهاتف والجامعة والخط والمحطة وكلمة مرور صحيحة.' }, 400);
     }
@@ -95,6 +99,8 @@ Deno.serve(async (request: Request) => {
       line_id: line.id,
       station_id: station.id,
       type: subscriptionType,
+      period_code: subscriptionType === 'daily' ? null : periodCode,
+      academic_year: subscriptionType === 'daily' ? null : academicYear,
       departure_time: departureTime,
       return_time: returnTime,
       status: 'pending_payment',
@@ -106,6 +112,6 @@ Deno.serve(async (request: Request) => {
     }
     return jsonResponse({ id: created.user.id });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : 'تعذر إضافة الطالب.' }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر إضافة الطالب.') }, 400);
   }
 });

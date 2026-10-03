@@ -57,3 +57,20 @@ cd mobile_app
 flutter pub get
 flutter run
 ```
+
+---
+
+## تحديث 2026-10-04: خطوات النشر (بالترتيب)
+
+1. **قاعدة البيانات** — شغّل في SQL Editor بالترتيب:
+   `supabase/migrations/20261004000001_supervisor_lines_and_permissions.sql`،
+   `20261004000002_academic_terms_and_subscription_periods.sql`،
+   `20261004000003_student_password_reset.sql` (آمنة لإعادة التشغيل).
+2. **Edge Functions** — أعد نشر كل الوظائف (تغيّر `_shared/admin-auth.ts`) مع الوظيفة الجديدة
+   `student-reset-password`: `supabase/deploy-functions.ps1`.
+3. **لوحة التحكم (Vercel)** — أعد النشر من مجلد `admin_web` (Root Directory = `admin_web`).
+   رسالة `MIME type ('text/html')` وخطأ `400` عند إضافة مشرف كانا من نسخة قديمة من اللوحة ما زالت
+   تُرسل عمود `password` المحذوف؛ `vercel.json` الجديد يمنع تخزين `index.html` ولا يعيد توجيه `/assets/*`.
+4. **تطبيق Android** — ابنِ الإصدار `1.0.5+6` (يحتاجه المشرفون والطلاب).
+
+اختبارات محلية كاملة (SQL + HTTP عبر GoTrue/PostgREST/Edge Functions): `supabase/tests/local/README.md`.

@@ -116,6 +116,9 @@ class StudentQrRepository {
           ''')
           .eq('student_id', user.id)
           .inFilter('status', ['pending_payment', 'pending_review', 'active', 'rejected'])
+          // The subscription running today first, then the next upcoming one.
+          .or('end_date.is.null,end_date.gte.${DateTime.now().toIso8601String().substring(0, 10)}')
+          .order('start_date', ascending: true)
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();

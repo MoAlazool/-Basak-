@@ -17,7 +17,8 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Receipts review and per-trip rider counts open from the Home tab.
+    // Per-trip rider counts open from the Home tab. Receipt review is an
+    // admin-only task (dashboard), never part of the supervisor app.
     final screens = [
       SupervisorHomeScreen(onOpenScanner: () => setState(() => _currentIndex = 1)),
       const SupervisorQrScannerScreen(),

@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.admin-delete-supervisor]
 verify_jwt = false
+
+[functions.student-reset-password]
+verify_jwt = false

@@ -13,7 +13,8 @@ import '../../models/supervisor_models.dart';
 import '../models/scanned_student_details.dart';
 
 /// Tab 2 — scan a student's QR, verify identity + subscription and record the
-/// check-in for today's departure or return trip (supervisor_check_in_student).
+/// check-in (supervisor_check_in_student). A student can be checked in once per
+/// day; the database rejects any further scan that day.
 class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
   const SupervisorQrScannerScreen({super.key});
 
@@ -25,7 +26,8 @@ class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
 class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen> {
   final MobileScannerController _cameraController = MobileScannerController();
   bool _isProcessing = false;
-  late String _direction = DateTime.now().hour < 12 ? 'departure' : 'return';
+  // Recorded with the check-in for reporting only (one check-in per day).
+  String get _direction => DateTime.now().hour < 12 ? 'departure' : 'return';
   int _sessionCheckIns = 0;
 
   Future<void> _onDetect(BarcodeCapture capture) async {
@@ -118,31 +120,9 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
                           foreground: const Color(0xFF07865A),
                           icon: LucideIcons.check),
                   ]),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                            value: 'departure',
-                            label: Text('رحلة الذهاب'),
-                            icon: Icon(LucideIcons.sunrise, size: 16)),
-                        ButtonSegment(
-                            value: 'return',
-                            label: Text('رحلة العودة'),
-                            icon: Icon(LucideIcons.sunset, size: 16)),
-                      ],
-                      selected: {_direction},
-                      onSelectionChanged: (value) => setState(() => _direction = value.first),
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor: WidgetStateProperty.resolveWith((states) =>
-                            states.contains(WidgetState.selected) ? BasakUi.softTeal : Colors.white),
-                        foregroundColor: WidgetStateProperty.resolveWith((states) =>
-                            states.contains(WidgetState.selected) ? BasakUi.teal : BasakUi.muted),
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 8),
+                  Text('يُسجَّل حضور الطالب مرة واحدة فقط في اليوم.',
+                      style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
                 ],
               ),
             ),
@@ -197,11 +177,12 @@ class _CheckInResultSheet extends StatelessWidget {
           message: 'سُجّل حضور الطالب لرحلة $trip اليوم$at.'
         ),
       CheckInOutcome.alreadyCheckedIn => (
-          icon: LucideIcons.badgeCheck,
-          color: const Color(0xFF00658D),
-          background: BasakUi.softTeal,
-          title: 'مسجل مسبقاً',
-          message: 'تم تسجيل هذا الطالب لرحلة $trip اليوم$at. لم يُسجل مرة ثانية.'
+          icon: LucideIcons.ban,
+          color: AppColors.error,
+          background: AppColors.errorLight,
+          title: 'تم تسجيل حضوره اليوم بالفعل',
+          message: 'تم تسجيل حضور هذا الطالب اليوم بالفعل$at (رحلة $trip). لا يمكن تسجيله مرة أخرى قبل الغد.\n'
+              'This student has already been checked in today.'
         ),
       CheckInOutcome.noActiveSubscription => (
           icon: LucideIcons.creditCard,

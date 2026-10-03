@@ -3,17 +3,33 @@ import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope } from '../lib/adminScope';
 import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, Building2 } from 'lucide-react';
+import { PasswordResetRequests } from '../components/PasswordResetRequests';
 
-const StudentAvatar: React.FC<{ path: string; name: string }> = ({ path, name }) => {
-  const [url, setUrl] = useState('');
-  useEffect(() => {
-    let active = true;
-    void supabase.storage.from('student-avatars').createSignedUrl(path, 600).then(({ data, error }) => {
-      if (!error && active && data) setUrl(data.signedUrl);
-    });
-    return () => { active = false; };
-  }, [path]);
-  return url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
+const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) =>
+  url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
+
+/** One request for all photos; a missing file yields no URL instead of a failed request per row. */
+async function signAvatarUrls(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data, error } = await supabase.storage.from('student-avatars').createSignedUrls(paths, 600);
+  if (error) {
+    console.warn('Could not sign student photos:', error.message);
+    return {};
+  }
+  const urls: Record<string, string> = {};
+  (data || []).forEach((item) => { if (item.path && item.signedUrl && !item.error) urls[item.path] = item.signedUrl; });
+  return urls;
+}
+
+interface PurchasablePeriod {
+  period_code: string; academic_year: number; label: string; subscription_type: string;
+  start_date: string; end_date: string; phase: 'current' | 'upcoming';
+}
+
+const phaseLabels: Record<string, { label: string; className: string }> = {
+  current: { label: 'الحالي', className: 'bg-emerald-50 text-emerald-700' },
+  upcoming: { label: 'الفترة القادمة', className: 'bg-indigo-50 text-indigo-700' },
+  expired: { label: 'منتهي', className: 'bg-slate-100 text-slate-500' },
 };
 
 interface Student {
@@ -30,6 +46,10 @@ interface Student {
     type: string;
     price: number;
     created_at: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    period_label?: string | null;
+    period_phase?: string | null;
     departure_time?: string | null;
     return_time?: string | null;
     lines?: LineRef | LineRef[] | null;
@@ -95,6 +115,9 @@ export const StudentsPage: React.FC = () => {
   const [subscriptionType, setSubscriptionType] = useState<'termly' | 'yearly' | 'daily'>('termly');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+  const [periods, setPeriods] = useState<PurchasablePeriod[]>([]);
+  const [periodKey, setPeriodKey] = useState('');
 
   useEffect(() => {
     fetchInitialData();
@@ -109,13 +132,16 @@ export const StudentsPage: React.FC = () => {
         .from('students')
         .select(`
           id, phone, full_name, university, college, profile_image_url, created_at,
-          subscriptions(id, status, type, price, created_at, departure_time, return_time, lines(name, companies(name)),
+          subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name, companies(name)),
             line_university_schedules(universities(name)))
         `)
         .order('created_at', { ascending: false });
 
       if (sErr) throw sErr;
-      setStudents((studentsData || []) as unknown as Student[]);
+      const loadedStudents = (studentsData || []) as unknown as Student[];
+      setStudents(loadedStudents);
+      void signAvatarUrls(loadedStudents.map((st) => st.profile_image_url).filter((x): x is string => !!x))
+        .then(setAvatarUrls);
 
       // Fetch active universities
       const { data: uniData, error: uniError } = await supabase
@@ -214,6 +240,26 @@ export const StudentsPage: React.FC = () => {
   const selectedStation = activeStations(selectedLine).find((station) => station.id === selectedStationId);
   const selectedSchedule = scheduleFor(selectedLine, selectedUniversityId);
 
+  // Payable periods come from the database (academic_terms + annual switch).
+  useEffect(() => {
+    let active = true;
+    if (!selectedLineId) { setPeriods([]); return; }
+    void supabase.rpc('get_purchasable_periods', { p_line_id: selectedLineId }).then(({ data, error }) => {
+      if (!active) return;
+      if (error) { console.warn('Could not load periods:', error.message); setPeriods([]); return; }
+      setPeriods((data || []) as PurchasablePeriod[]);
+    });
+    return () => { active = false; };
+  }, [selectedLineId]);
+
+  const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
+  const annualAvailable = periods.some((p) => p.subscription_type === 'yearly');
+  useEffect(() => {
+    if (subscriptionType === 'yearly' && periods.length > 0 && !annualAvailable) setSubscriptionType('termly');
+    const keys = periodsForType.map((p) => `${p.period_code}:${p.academic_year}`);
+    if (!keys.includes(periodKey)) setPeriodKey(keys[0] || '');
+  }, [periods, subscriptionType]);
+
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -251,6 +297,11 @@ export const StudentsPage: React.FC = () => {
       alert('كلمة المرور يجب ألا تقل عن 6 أحرف.');
       return;
     }
+    if (subscriptionType !== 'daily' && !periodKey) {
+      alert('لا توجد فترة اشتراك متاحة للدفع الآن لهذا النوع.');
+      return;
+    }
+    const [periodCode, academicYear] = periodKey.split(':');
 
     try {
       setIsSubmitting(true);
@@ -258,6 +309,7 @@ export const StudentsPage: React.FC = () => {
       await invokeEdgeFunction('admin-create-student', {
         fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password,
         lineId: selectedLineId, stationId: selectedStationId, subscriptionType, departureTime, returnTime,
+        ...(subscriptionType !== 'daily' ? { periodCode, academicYear: Number(academicYear) } : {}),
       });
 
       alert('تم تسجيل الطالب بنجاح!');
@@ -313,6 +365,8 @@ export const StudentsPage: React.FC = () => {
           إضافة وحذف الطلاب المسجلين بالمنظومة، وإدارة بيانات الوصول وحالة الاشتراكات
         </p>
       </div>
+
+      <PasswordResetRequests />
 
       {/* Add Student Card */}
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -424,10 +478,24 @@ export const StudentsPage: React.FC = () => {
             <label className="text-xs font-semibold text-slate-500">نوع الاشتراك الأول</label>
             <select value={subscriptionType} onChange={(e) => setSubscriptionType(e.target.value as 'termly' | 'yearly' | 'daily')} className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm">
               <option value="termly">ترم — {selectedLine?.price_termly ?? '—'} ج.م</option>
-              <option value="yearly">سنوي — {selectedLine?.price_yearly ?? '—'} ج.م</option>
+              <option value="yearly" disabled={!annualAvailable}>سنوي — {selectedLine?.price_yearly ?? '—'} ج.م{annualAvailable ? '' : ' (غير مفعّل)'}</option>
               <option value="daily">يومي — {selectedLine?.price_daily ?? '—'} ج.م</option>
             </select>
           </div>
+
+          {subscriptionType !== 'daily' && (
+            <div>
+              <label className="text-xs font-semibold text-slate-500">فترة الاشتراك</label>
+              <select value={periodKey} onChange={(e) => setPeriodKey(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm" required>
+                {periodsForType.length === 0 && <option value="">لا توجد فترة متاحة الآن</option>}
+                {periodsForType.map((p) => (
+                  <option key={`${p.period_code}:${p.academic_year}`} value={`${p.period_code}:${p.academic_year}`}>
+                    {p.label} ({p.start_date} ← {p.end_date}){p.phase === 'upcoming' ? ' — دفع مقدم' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Password */}
           <div>
@@ -498,7 +566,7 @@ export const StudentsPage: React.FC = () => {
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/80">
                       <td className="p-4 font-bold text-slate-800">
-                        {s.profile_image_url && <StudentAvatar path={s.profile_image_url} name={s.full_name} />}
+                        {s.profile_image_url && <StudentAvatar url={avatarUrls[s.profile_image_url]} name={s.full_name} />}
                         {s.full_name}
                       </td>
                       <td className="p-4 text-slate-600 font-mono text-xs">
@@ -517,8 +585,16 @@ export const StudentsPage: React.FC = () => {
                       <td className="p-4">
                         {studentSubscriptions.length ? (
                           <div className="space-y-2">
-                            {studentSubscriptions.map((sub) => (
+                            {studentSubscriptions.slice().sort((a, b) => (b.start_date || '').localeCompare(a.start_date || '')).map((sub) => (
                               <div key={sub.id} className="flex flex-wrap items-center gap-2 text-xs">
+                                {sub.period_phase && phaseLabels[sub.period_phase] && (
+                                  <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${phaseLabels[sub.period_phase].className}`}>
+                                    {phaseLabels[sub.period_phase].label}
+                                  </span>
+                                )}
+                                {sub.period_label && (
+                                  <span className="font-semibold text-slate-600" title={`${sub.start_date ?? ''} → ${sub.end_date ?? ''}`}>{sub.period_label}</span>
+                                )}
                                 <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700"><Building2 className="h-3 w-3" />{one(one(sub.lines)?.companies)?.name || '—'}</span>
                                 <span className="font-semibold text-slate-700">{one(sub.lines)?.name || '—'}</span>
                                 {sub.departure_time && (
