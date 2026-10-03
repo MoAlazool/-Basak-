@@ -8,6 +8,7 @@ import { LinesPage } from './pages/LinesPage';
 import { SupervisorsPage } from './pages/SupervisorsPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SubscriptionSettingsPage } from './pages/SubscriptionSettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { PendingReceiptsTable } from './components/PendingReceiptsTable';
@@ -111,6 +112,7 @@ export function App() {
             </div>
           )}
           {activeTab === 'reports' && <ReportsPage />}
+          {activeTab === 'settings' && <SubscriptionSettingsPage />}
         </div>
       </main>
 
@@ -143,7 +145,7 @@ const AdminReceiptsQueue: React.FC = () => {
 // ── Mobile Bottom Nav ──────────────────────────────────────────────
 import {
   LayoutDashboard, Building2, Bus, UserCheck,
-  FileCheck2, BarChart3, LogOut, GraduationCap, Users,
+  FileCheck2, BarChart3, LogOut, GraduationCap, Users, CalendarRange,
 } from 'lucide-react';
 
 interface MobileNavProps {
@@ -166,6 +168,7 @@ const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, onLogout,
     { id: 'students',     icon: Users,           label: 'الطلاب'   },
     { id: 'receipts',     icon: FileCheck2,       label: 'الإيصالات'},
     { id: 'reports',      icon: BarChart3,       label: 'التقارير' },
+    { id: 'settings',     icon: CalendarRange,   label: 'الإعدادات' },
   ];
 
   return (

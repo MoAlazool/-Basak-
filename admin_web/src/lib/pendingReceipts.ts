@@ -16,6 +16,12 @@ export interface PendingReceiptRow {
   departureTime: string;
   returnTime: string;
   subscriptionType: string;
+  /** e.g. "الفصل الدراسي الثاني 2026/2027" (from academic_terms via the period_label computed field). */
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  /** current | upcoming | expired */
+  periodPhase: string;
   price: number;
   imagePath: string | null;
   imageUrl: string | null;
@@ -84,14 +90,14 @@ const hhmm = (value?: string | null) => (value ? String(value).slice(0, 5) : '')
  */
 export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
   const { data: receiptRows, error } = await supabase.from('receipts')
-    .select('id, image_url, attempt_number, created_at, subscription_id')
+    .select('id, image_url, attempt_number, created_at, subscription_id, amount')
     .eq('status', 'pending').order('created_at', { ascending: true });
   if (error) throw error;
   const receipts = (receiptRows || []) as Row[];
   if (!receipts.length) return [];
 
   const { data: subRows, error: subError } = await supabase.from('subscriptions')
-    .select('id, type, price, student_id, line_id, station_id, departure_time, return_time')
+    .select('id, type, price, student_id, line_id, station_id, departure_time, return_time, start_date, end_date, period_label, period_phase')
     .in('id', uniq(receipts.map((r) => r.subscription_id)));
   if (subError) throw subError;
   const subscriptions = byId(subRows as Row[]);
@@ -138,7 +144,12 @@ export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
       departureTime: hhmm(subscription?.departure_time),
       returnTime: hhmm(subscription?.return_time),
       subscriptionType: subscription?.type || 'termly',
-      price: Number(subscription?.price || 0),
+      periodLabel: subscription?.period_label || '',
+      periodStart: subscription?.start_date || '',
+      periodEnd: subscription?.end_date || '',
+      periodPhase: subscription?.period_phase || '',
+      // The amount recorded with the receipt; older receipts fall back to the subscription price.
+      price: Number(receipt.amount ?? subscription?.price ?? 0),
       imagePath,
       imageUrl,
       attemptNumber: receipt.attempt_number || 1,

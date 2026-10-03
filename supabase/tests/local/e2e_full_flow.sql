@@ -213,6 +213,7 @@ BEGIN
   PERFORM t.ok('C14 approval activates for the period without moving its dates',
     r.status = 'active' AND r.start_date = before_start AND r.end_date = before_end AND r.phase = 'current',
     format('%s %s..%s %s', r.status, r.start_date, r.end_date, r.phase));
+  PERFORM t.ok('C14b approval records paid_at (revenue)', r.paid_at IS NOT NULL);
   PERFORM t.ok('C15 reviewer recorded',
     (SELECT reviewed_by::text FROM public.receipts WHERE subscription_id = 'd0000000-0000-0000-0000-000000000002') = 'a0000000-0000-0000-0000-000000000002');
 END $$;
@@ -385,6 +386,16 @@ DO $$ BEGIN
          public.cairo_today() - 3, public.cairo_today() - 3, 50, departure_time, return_time
   FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000002';
   PERFORM public.expire_finished_subscriptions();
+  INSERT INTO public.subscriptions (id, student_id, line_id, station_id, type, status, start_date, end_date, price, departure_time, return_time,
+                                    period_code, academic_year)
+  SELECT 'd0000000-0000-0000-0000-000000000098', 'c0000000-0000-0000-0000-000000000005', line_id, station_id, 'termly', 'pending_payment',
+         public.cairo_today() - 200, public.cairo_today() - 100, 3500, departure_time, return_time, NULL, NULL
+  FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000002';
+  UPDATE public.subscriptions SET start_date = public.cairo_today() - 200, end_date = public.cairo_today() - 100
+  WHERE id = 'd0000000-0000-0000-0000-000000000098';
+  PERFORM public.expire_finished_subscriptions();
+  PERFORM t.ok('E19b an unpaid period that ended expires but is not revenue',
+    (SELECT status = 'expired' AND paid_at IS NULL FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000098'));
   PERFORM t.ok('E19 ended subscriptions are expired, period_phase expired',
     (SELECT status = 'expired' AND public.period_phase(s) = 'expired' FROM public.subscriptions s WHERE id = 'd0000000-0000-0000-0000-000000000099'));
 END $$;
@@ -461,6 +472,12 @@ RESET ROLE; SELECT set_config('request.jwt.claims', '', false);
 -- G. Cascade: deleting a supervisor's account clears its assignments
 -- =============================================================================
 DELETE FROM auth.users WHERE id = 'b0000000-0000-0000-0000-000000000003';
+DELETE FROM auth.users WHERE id = 'c0000000-0000-0000-0000-000000000005';
+DO $$ BEGIN
+  PERFORM t.ok('G0 deleting a student archives paid (incl. expired) revenue only',
+    EXISTS (SELECT 1 FROM public.deleted_student_revenue WHERE source_subscription_id = 'd0000000-0000-0000-0000-000000000099')
+    AND NOT EXISTS (SELECT 1 FROM public.deleted_student_revenue WHERE source_subscription_id = 'd0000000-0000-0000-0000-000000000098'));
+END $$;
 DO $$ BEGIN
   PERFORM t.ok('G1 supervisor deletion removes assignments and the line contact',
     NOT EXISTS (SELECT 1 FROM public.supervisor_lines WHERE supervisor_id = 'b0000000-0000-0000-0000-000000000003')

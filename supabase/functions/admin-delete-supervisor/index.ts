@@ -1,4 +1,4 @@
-import { corsHeaders, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -19,12 +19,8 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: 'هذا المشرف غير تابع لشركتك.' }, 403);
     }
 
-    // Unassign lines first so no line keeps pointing at a deleted account.
-    const { error: unassignError } = await serviceClient
-      .from('lines').update({ supervisor_id: null }).eq('supervisor_id', supervisorId);
-    if (unassignError) throw unassignError;
-
-    // Deleting the Auth user cascades the supervisors row (FK ON DELETE CASCADE).
+    // Deleting the Auth user cascades the supervisors row and its supervisor_lines;
+    // each line's primary contact is then recomputed by the database.
     const { error: deleteAuthError } = await serviceClient.auth.admin.deleteUser(supervisorId);
     if (deleteAuthError && !/not found|does not exist/i.test(deleteAuthError.message)) {
       throw deleteAuthError;
@@ -34,6 +30,6 @@ Deno.serve(async (request: Request) => {
     if (deleteRowError) throw deleteRowError;
     return jsonResponse({ deleted: true });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : 'تعذر حذف المشرف.' }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر حذف المشرف.') }, 400);
   }
 });

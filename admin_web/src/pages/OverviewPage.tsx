@@ -70,13 +70,18 @@ export const OverviewPage: React.FC = () => {
 
       // 1. Stats Queries
       // Active subscriptions count
-      const [activeSubs, archivedRevenue] = await Promise.all([
-        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status')
-          .eq('status', 'active').range(from, to)),
+      // Revenue = every paid subscription (also expired and paid-in-advance ones);
+      // subscribers = subscriptions valid today, so an upcoming paid semester is not counted twice.
+      const today = cairoDateKey(new Date());
+      const [paidSubs, archivedRevenue] = await Promise.all([
+        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status,start_date,end_date')
+          .not('paid_at', 'is', null).range(from, to)),
         loadAll(async (from, to) => await supabase.from('deleted_student_revenue').select('amount').range(from, to)),
       ]);
+      const activeSubs = paidSubs.filter((sub: any) => sub.status === 'active'
+        && (!sub.start_date || sub.start_date <= today) && (!sub.end_date || sub.end_date >= today));
       const totalRevenue =
-        activeSubs.reduce((sum, item: any) => sum + Number(item.price || 0), 0) +
+        paidSubs.reduce((sum, item: any) => sum + Number(item.price || 0), 0) +
         archivedRevenue.reduce((sum, item: any) => sum + Number(item.amount || 0), 0);
 
       // Companies count
@@ -136,10 +141,8 @@ export const OverviewPage: React.FC = () => {
         .order('name');
       if (linesError) throw linesError;
 
-      const topLineSubs = await loadAll(async (from, to) => await supabase.from('subscriptions')
-        .select('line_id,status').eq('status', 'active').range(from, to));
       const activeCountByLine = new Map<string, number>();
-      for (const subscription of topLineSubs as any[]) {
+      for (const subscription of activeSubs as any[]) {
         activeCountByLine.set(subscription.line_id, (activeCountByLine.get(subscription.line_id) || 0) + 1);
       }
 

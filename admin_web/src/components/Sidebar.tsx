@@ -10,6 +10,7 @@ import {
   LogOut,
   GraduationCap,
   Users,
+  CalendarRange,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onLogo
     { id: 'students',     name: 'إدارة الطلاب',      icon: Users },
     { id: 'receipts',     name: 'فحص الإيصالات',     icon: FileCheck2 },
     { id: 'reports',      name: 'التقارير المالية',  icon: BarChart3 },
+    { id: 'settings',     name: 'إعدادات الاشتراكات', icon: CalendarRange },
   ];
 
   return (

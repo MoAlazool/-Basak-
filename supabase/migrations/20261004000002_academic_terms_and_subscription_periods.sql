@@ -267,7 +267,18 @@ $$;
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.subscriptions
   ADD COLUMN IF NOT EXISTS period_code text,
-  ADD COLUMN IF NOT EXISTS academic_year int;
+  ADD COLUMN IF NOT EXISTS academic_year int,
+  -- When the subscription was paid (receipt approved, cash daily, admin activation).
+  -- Revenue uses this, so a paid semester still counts after it expires and an
+  -- unpaid period that ended (also 'expired') never does.
+  ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+
+UPDATE public.subscriptions s
+SET paid_at = COALESCE(
+  (SELECT max(r.reviewed_at) FROM public.receipts r WHERE r.subscription_id = s.id AND r.status = 'approved'),
+  s.created_at)
+-- Before this migration only active rows were ever expired, so both were paid.
+WHERE s.paid_at IS NULL AND s.status IN ('active', 'expired');
 
 ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_period_check;
 ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_period_check CHECK (
@@ -372,6 +383,8 @@ BEGIN
     END IF;
   END IF;
 
+  NEW.paid_at := CASE WHEN NEW.status = 'active' THEN COALESCE(NEW.paid_at, now()) END;
+
   IF NEW.status IN ('pending_payment', 'pending_review', 'active') AND EXISTS (
     SELECT 1 FROM public.subscriptions s
     WHERE s.student_id = NEW.student_id AND s.status IN ('pending_payment', 'pending_review', 'active')
@@ -409,6 +422,12 @@ DECLARE v_period record;
 BEGIN
   IF pg_trigger_depth() <= 1 AND auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
     RAISE EXCEPTION 'تعديل الاشتراك متاح للإدارة فقط. اعتماد الدفع يتم من خلال الإيصال.';
+  END IF;
+
+  IF NEW.status = 'active' AND OLD.status IS DISTINCT FROM 'active' THEN
+    NEW.paid_at := COALESCE(NEW.paid_at, now());
+  ELSIF NEW.status IN ('pending_payment', 'pending_review') THEN
+    NEW.paid_at := NULL;  -- e.g. an admin reverting an activation
   END IF;
 
   IF NEW.status = 'active' AND OLD.status IS DISTINCT FROM 'active' AND NEW.end_date IS NULL THEN
@@ -643,9 +662,7 @@ BEGIN
   FROM public.subscriptions sub
   LEFT JOIN public.lines l ON l.id = sub.line_id
   LEFT JOIN public.companies c ON c.id = l.company_id
-  WHERE sub.student_id = OLD.id AND sub.status IN ('active', 'expired')
-    AND (sub.type = 'daily' OR EXISTS (
-      SELECT 1 FROM public.receipts r WHERE r.subscription_id = sub.id AND r.status = 'approved'))
+  WHERE sub.student_id = OLD.id AND sub.paid_at IS NOT NULL
   ON CONFLICT (source_subscription_id) DO NOTHING;
   RETURN OLD;
 END;

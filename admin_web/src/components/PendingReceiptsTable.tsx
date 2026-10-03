@@ -237,6 +237,13 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                     {/* Subscription Type + Price */}
                     <td className="py-3.5 px-4">
                       <span className="pill-new">{typeLabels[row.subscriptionType] || row.subscriptionType}</span>
+                      {row.periodLabel && <p className="mt-1 text-[11.5px] font-bold text-[#1F2937]">{row.periodLabel}</p>}
+                      {row.periodStart && (
+                        <p className="text-[11px] text-[#5B6B7A]">
+                          <span dir="ltr">{row.periodStart} → {row.periodEnd}</span>
+                          {row.periodPhase === 'upcoming' && <span className="mr-1 rounded bg-indigo-50 px-1.5 text-[10px] font-bold text-indigo-700">دفع مقدم</span>}
+                        </p>
+                      )}
                       <p className="mt-1 font-extrabold text-[#3E8FBF]">{row.price.toLocaleString('ar-EG')} ج.م</p>
                     </td>
 
@@ -337,7 +344,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
             <div className="flex justify-between items-center mb-2">
               <div>
                 <span className="text-sm font-bold text-[#1F2937]">إيصال {previewReceipt.studentName}</span>
-                <p className="text-[11.5px] text-[#5B6B7A]">{previewReceipt.companyName} • {previewReceipt.lineName} • {typeLabels[previewReceipt.subscriptionType] || previewReceipt.subscriptionType} • {previewReceipt.price.toLocaleString('ar-EG')} ج.م</p>
+                <p className="text-[11.5px] text-[#5B6B7A]">{previewReceipt.companyName} • {previewReceipt.lineName} • {previewReceipt.periodLabel || typeLabels[previewReceipt.subscriptionType] || previewReceipt.subscriptionType} • {previewReceipt.price.toLocaleString('ar-EG')} ج.م • رُفع {formatUpload(previewReceipt.createdAt).day} {formatUpload(previewReceipt.createdAt).time}</p>
               </div>
               <button onClick={() => setPreviewReceipt(null)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />

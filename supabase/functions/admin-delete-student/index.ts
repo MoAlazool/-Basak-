@@ -1,4 +1,4 @@
-import { corsHeaders, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 async function removeStudentFiles(service: SupabaseClient, studentId: string) {
@@ -69,6 +69,6 @@ Deno.serve(async (request: Request) => {
     if (deleteProfileError) throw deleteProfileError;
     return jsonResponse({ deleted: true, revenuePreserved: true });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : 'تعذر حذف الطالب.' }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر حذف الطالب.') }, 400);
   }
 });
