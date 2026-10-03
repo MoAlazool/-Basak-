@@ -28,7 +28,7 @@ interface PurchasablePeriod {
 
 const phaseLabels: Record<string, { label: string; className: string }> = {
   current: { label: 'الحالي', className: 'bg-emerald-50 text-emerald-700' },
-  upcoming: { label: 'القادم (مدفوع مقدماً)', className: 'bg-indigo-50 text-indigo-700' },
+  upcoming: { label: 'الفترة القادمة', className: 'bg-indigo-50 text-indigo-700' },
   expired: { label: 'منتهي', className: 'bg-slate-100 text-slate-500' },
 };
 

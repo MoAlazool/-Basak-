@@ -9,14 +9,23 @@ const route = (url) => {
   if (m && fnPorts[m[1]]) return [fnPorts[m[1]], m[2] || '/'];
   return null;
 };
+const cors = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type, prefer, accept-profile, content-profile, range, x-supabase-api-version',
+  'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
+  'access-control-expose-headers': 'content-range, x-total-count',
+};
 http.createServer((req, res) => {
+  // Like the hosted gateway, answer CORS for auth/rest (functions answer their own).
+  if (req.method === 'OPTIONS' && !req.url.startsWith('/functions/')) { res.writeHead(204, cors); return res.end(); }
   const target = route(req.url);
   if (!target) { res.writeHead(404); return res.end('no route'); }
   const headers = { ...req.headers, host: '127.0.0.1' };
   // Like Kong: an apikey with no bearer token acts as the bearer.
   if (!headers.authorization && headers.apikey) headers.authorization = `Bearer ${headers.apikey}`;
   const p = http.request({ host: '127.0.0.1', port: target[0], path: target[1], method: req.method, headers }, (r) => {
-    res.writeHead(r.statusCode, r.headers); r.pipe(res);
+    const headers = req.url.startsWith('/functions/') ? r.headers : { ...r.headers, ...cors };
+    res.writeHead(r.statusCode, headers); r.pipe(res);
   });
   p.on('error', (e) => { res.writeHead(502); res.end(String(e)); });
   req.pipe(p);
