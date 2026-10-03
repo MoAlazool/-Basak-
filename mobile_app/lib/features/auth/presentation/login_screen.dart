@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
+import '../../splash/splash_gate.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, required this.onSignup});
@@ -105,7 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final loading = ref.watch(authStateProvider).isLoading;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F9FC),
+      backgroundColor: splashBackground,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -114,17 +115,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               constraints: const BoxConstraints(maxWidth: 460),
               child: Column(
                 children: [
+                  // The launch splash glides its logo onto this one.
                   Container(
+                    key: basakLogoTargetKey,
                     width: 78,
                     height: 78,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                          colors: [Color(0xFF1F6F8B), Color(0xFF3E8FBF)]),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Color(0x261F6F8B),
+                            blurRadius: 16,
+                            offset: Offset(0, 7)),
+                      ],
                     ),
-                    padding: const EdgeInsets.all(13),
-                    child: Image.asset('assets/images/basak_logo.webp',
-                        fit: BoxFit.contain),
+                    child: ClipOval(
+                        child: Image.asset('assets/images/basak_icon.png',
+                            fit: BoxFit.cover)),
                   ),
                   const SizedBox(height: 12),
                   const Text('باصك | Basak',

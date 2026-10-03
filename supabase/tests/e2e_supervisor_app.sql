@@ -35,10 +35,11 @@ GRANT SELECT ON e2e_ctx TO authenticated;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', json_build_object('sub', supervisor_id, 'role', 'authenticated')::text, true) FROM e2e_ctx;
 DO $$
-DECLARE c record; d jsonb; r jsonb; r2 jsonb; m jsonb; v_ok boolean;
+DECLARE c record; d jsonb; r jsonb; r2 jsonb; m jsonb; m0 jsonb; v_ok boolean; v_first text;
 BEGIN
   SELECT * INTO c FROM e2e_ctx;
 
+  m0 := public.get_supervisor_monthly_summary(NULL);  -- baseline: real scans already this month
   d := public.get_supervisor_dashboard();
   INSERT INTO e2e_results(step, ok, detail) VALUES ('dashboard: profile is the caller with company',
     (d->'profile'->>'id')::uuid = c.supervisor_id AND d->'profile'->>'company_name' IS NOT NULL, d->'profile'->>'company_name');
@@ -53,13 +54,16 @@ BEGIN
     d->'totals'->>'registered_students');
 
   r := public.supervisor_check_in_student(c.qr_ok, 'departure');
+  v_first := r->>'result';  -- 'already_checked_in' if this student was really scanned today
   INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: active student is checked in',
-    r->>'result' = 'checked_in' AND r->'student'->>'full_name' IS NOT NULL, r->>'result');
+    v_first IN ('checked_in', 'already_checked_in') AND r->'student'->>'full_name' IS NOT NULL, v_first);
   r2 := public.supervisor_check_in_student(c.qr_ok, 'departure');
   INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: second scan is a duplicate, not a new check-in',
     r2->>'result' = 'already_checked_in' AND r2->>'checked_in_at' = r->>'checked_in_at', r2->>'result');
+  -- One check-in per student per day (20261004000001): a later scan, any direction, is a duplicate.
   r2 := public.supervisor_check_in_student(c.qr_ok, 'return');
-  INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: return trip is a separate check-in', r2->>'result' = 'checked_in', r2->>'result');
+  INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: one check-in per day (return scan is a duplicate)',
+    r2->>'result' = 'already_checked_in', r2->>'result');
 
   IF c.qr_outside IS NOT NULL THEN
     r := public.supervisor_check_in_student(c.qr_outside, 'departure');
@@ -70,10 +74,10 @@ BEGIN
   INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: unknown QR is reported', r->>'result' = 'not_found', r->>'result');
 
   m := public.get_supervisor_monthly_summary(NULL);
-  INSERT INTO e2e_results(step, ok, detail) VALUES ('monthly: counts come from the real scan log',
-    (m->'totals'->>'checkins')::int = 2 AND (m->'totals'->>'duplicate_scans')::int = 1
-      AND (m->'totals'->>'scans')::int >= 4 AND (m->'totals'->>'unique_students')::int = 1,
-    (m->'totals')::text);
+  INSERT INTO e2e_results(step, ok, detail) VALUES ('monthly: counts move exactly with the new scans',
+    (m->'totals'->>'checkins')::int - (m0->'totals'->>'checkins')::int = (v_first = 'checked_in')::int
+      AND (m->'totals'->>'scans')::int - (m0->'totals'->>'scans')::int >= 4,
+    'before ' || (m0->'totals')::text || ' after ' || (m->'totals')::text);
   INSERT INTO e2e_results(step, ok, detail) VALUES ('monthly: one row per day up to today',
     jsonb_array_length(m->'days') = extract(day FROM public.cairo_today())::int, jsonb_array_length(m->'days')::text);
 
@@ -90,8 +94,13 @@ BEGIN
 END $$;
 RESET ROLE;
 
--- Direct assignment narrows the supervisor to that line only.
-UPDATE public.lines SET supervisor_id = (SELECT supervisor_id FROM e2e_ctx) WHERE id = (SELECT own_line FROM e2e_ctx);
+-- Assignment (supervisor_lines via set_supervisor_lines) defines exactly the supervisor's lines.
+ALTER TABLE e2e_ctx ADD COLUMN super_id uuid;
+UPDATE e2e_ctx SET super_id = (SELECT id FROM public.admins WHERE role = 'super_admin' ORDER BY created_at LIMIT 1);
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object('sub', super_id, 'role', 'authenticated')::text, true) FROM e2e_ctx;
+SELECT public.set_supervisor_lines((SELECT supervisor_id FROM e2e_ctx), ARRAY[(SELECT own_line FROM e2e_ctx)]);
+RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', json_build_object('sub', supervisor_id, 'role', 'authenticated')::text, true) FROM e2e_ctx;
 DO $$

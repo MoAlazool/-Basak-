@@ -8,6 +8,7 @@ import 'features/auth/presentation/login_register_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/onboarding/onboarding_controller.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'features/splash/splash_gate.dart';
 import 'features/student/student_main_screen.dart';
 import 'features/supervisor/supervisor_main_screen.dart';
 
@@ -47,7 +48,7 @@ class BasakApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const AuthGate(),
+      home: const SplashGate(child: AuthGate()),
     );
   }
 }

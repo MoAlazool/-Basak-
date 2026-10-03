@@ -11,7 +11,10 @@ Outputs
   * Legacy icons (Android 7 and below): circular mipmap-*/ic_launcher.png and
     ic_launcher_round.png.
   * In-app logo: assets/images/basak_icon.png (circular, transparent corners).
+  * iOS AppIcon set (square, opaque: iOS applies its own mask) and web
+    favicon / PWA icons (circular + full-bleed maskable).
 """
+import json
 import os
 import sys
 
@@ -98,3 +101,29 @@ for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
 os.makedirs(os.path.join('assets', 'images'), exist_ok=True)
 round_icon.resize((512, 512), Image.LANCZOS).save(os.path.join('assets', 'images', 'basak_icon.png'))
 print('icons written; backdrop', top, '->', bottom)
+
+# ---------------------------------------------------------------- iOS
+square = flat.crop((CANVAS // 2 - VISIBLE_R, CANVAS // 2 - VISIBLE_R,
+                    CANVAS // 2 + VISIBLE_R, CANVAS // 2 + VISIBLE_R)).convert('RGB')
+ios_dir = os.path.join('ios', 'Runner', 'Assets.xcassets', 'AppIcon.appiconset')
+with open(os.path.join(ios_dir, 'Contents.json'), encoding='utf-8') as fh:
+    contents = json.load(fh)
+for image in contents['images']:
+    name = image.get('filename')
+    if not name:
+        continue
+    pts = float(image['size'].split('x')[0])
+    px = round(pts * int(image['scale'].rstrip('x')))
+    square.resize((px, px), Image.LANCZOS).save(os.path.join(ios_dir, name))
+
+# ---------------------------------------------------------------- Web
+web = os.path.join('web')
+round_icon.resize((32, 32), Image.LANCZOS).save(os.path.join(web, 'favicon.png'))
+for px in (192, 512):
+    round_icon.resize((px, px), Image.LANCZOS).save(os.path.join(web, 'icons', f'Icon-{px}.png'))
+    # Maskable: full-bleed, content inside the 80% safe circle.
+    full = flat.crop((CANVAS // 2 - int(VISIBLE_R / .8), CANVAS // 2 - int(VISIBLE_R / .8),
+                      CANVAS // 2 + int(VISIBLE_R / .8), CANVAS // 2 + int(VISIBLE_R / .8)))
+    full.convert('RGB').resize((px, px), Image.LANCZOS).save(
+        os.path.join(web, 'icons', f'Icon-maskable-{px}.png'))
+print('ios + web icons written')

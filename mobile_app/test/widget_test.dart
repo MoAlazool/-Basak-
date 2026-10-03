@@ -60,7 +60,9 @@ void main() {
         child: const BasakApp(),
       ),
     );
+    // Let the ~3.2 s launch splash play out; it covers the screen until then.
     await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 3200));
 
     expect(find.text('باصك | Basak'), findsOneWidget);
     expect(find.text('تسجيل الدخول'), findsOneWidget);
