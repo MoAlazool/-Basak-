@@ -143,6 +143,8 @@ class SupervisorLine {
   final int confirmedToday;
   final List<LineUniversityTrip> schedules;
   final List<SupervisorStation> stations;
+  final int departureTrips;
+  final int returnTrips;
 
   SupervisorLine({
     required this.id,
@@ -156,6 +158,8 @@ class SupervisorLine {
     required this.confirmedToday,
     required this.schedules,
     required this.stations,
+    this.departureTrips = 0,
+    this.returnTrips = 0,
   });
 
   factory SupervisorLine.fromJson(Map<String, dynamic> json) => SupervisorLine(
@@ -170,6 +174,8 @@ class SupervisorLine {
         confirmedToday: _int(json['confirmed_today']),
         schedules: _list(json['schedules']).map(LineUniversityTrip.fromJson).toList(),
         stations: _list(json['stations']).map(SupervisorStation.fromJson).toList(),
+        departureTrips: _list(json['trips']).where((t) => t['direction'] == 'departure').length,
+        returnTrips: _list(json['trips']).where((t) => t['direction'] == 'return').length,
       );
 }
 
@@ -369,5 +375,135 @@ class StationActivity {
         station: json['station'] as String? ?? '',
         line: json['line'] as String? ?? '',
         checkins: _int(json['checkins']),
+      );
+}
+
+
+/// Result of get_supervisor_trip_manifest(): one Going or Return trip of a line
+/// with its stations in travel order and the students at each station.
+class TripManifest {
+  final String lineId;
+  final String lineName;
+  final String originName;
+  final String? destination;
+  final String direction; // departure | return
+  final List<ManifestTripOption> trips;
+  final ManifestTripOption? trip;
+  final List<ManifestStation> stations;
+
+  TripManifest({
+    required this.lineId,
+    required this.lineName,
+    required this.originName,
+    required this.destination,
+    required this.direction,
+    required this.trips,
+    required this.trip,
+    required this.stations,
+  });
+
+  bool get isReturn => direction == 'return';
+  List<ManifestStudent> get students => [for (final s in stations) ...s.students];
+  int get totalStudents => students.length;
+  int get checkedIn => students.where((s) => s.isCheckedIn).length;
+  int get confirmed => students.where((s) => s.confirmed).length;
+
+  /// Start → stops → end in travel order (Return starts at the university).
+  List<String> get routeNames {
+    final stops = stations.where((s) => s.stopTime != null).map((s) => s.name).toList();
+    final start = isReturn ? (destination ?? 'الجامعة') : originName;
+    final end = isReturn ? originName : (destination ?? 'الجامعة');
+    return [start, ...stops, end];
+  }
+
+  factory TripManifest.fromJson(Map<String, dynamic> json) {
+    final line = json['line'] as Map<String, dynamic>? ?? const {};
+    return TripManifest(
+      lineId: line['id'] as String? ?? '',
+      lineName: line['name'] as String? ?? '',
+      originName: line['origin_name'] as String? ?? '',
+      destination: line['destination'] as String?,
+      direction: json['direction'] as String? ?? 'departure',
+      trips: _list(json['trips']).map(ManifestTripOption.fromJson).toList(),
+      trip: json['trip'] is Map
+          ? ManifestTripOption.fromJson(Map<String, dynamic>.from(json['trip'] as Map))
+          : null,
+      stations: _list(json['stations']).map(ManifestStation.fromJson).toList(),
+    );
+  }
+}
+
+class ManifestTripOption {
+  final String id;
+  final String label;
+  final String startTime;
+  final String? arrivalTime;
+  final String? university;
+  final int students;
+
+  ManifestTripOption({
+    required this.id,
+    required this.label,
+    required this.startTime,
+    required this.arrivalTime,
+    required this.university,
+    required this.students,
+  });
+
+  factory ManifestTripOption.fromJson(Map<String, dynamic> json) => ManifestTripOption(
+        id: json['id'] as String,
+        label: (json['label'] as String? ?? '').trim(),
+        startTime: json['start_time'] as String? ?? '',
+        arrivalTime: json['arrival_time'] as String?,
+        university: json['university'] as String?,
+        students: _int(json['students']),
+      );
+}
+
+class ManifestStation {
+  final String id;
+  final String name;
+  final String? stopTime;
+  final List<ManifestStudent> students;
+
+  ManifestStation(
+      {required this.id, required this.name, required this.stopTime, required this.students});
+
+  int get checkedIn => students.where((s) => s.isCheckedIn).length;
+
+  factory ManifestStation.fromJson(Map<String, dynamic> json) => ManifestStation(
+        id: json['id'] as String,
+        name: json['name'] as String? ?? '',
+        stopTime: json['stop_time'] as String?,
+        students: _list(json['students']).map(ManifestStudent.fromJson).toList(),
+      );
+}
+
+class ManifestStudent {
+  final String id;
+  final String fullName;
+  final String phone;
+  final String? university;
+  final bool confirmed;
+  final DateTime? checkedInAt;
+
+  ManifestStudent({
+    required this.id,
+    required this.fullName,
+    required this.phone,
+    required this.university,
+    required this.confirmed,
+    required this.checkedInAt,
+  });
+
+  bool get isCheckedIn => checkedInAt != null;
+
+  factory ManifestStudent.fromJson(Map<String, dynamic> json) => ManifestStudent(
+        id: json['id'] as String,
+        fullName: json['full_name'] as String? ?? '',
+        phone: json['phone'] as String? ?? '',
+        university: json['university'] as String?,
+        confirmed: json['confirmed'] as bool? ?? false,
+        checkedInAt: DateTime.tryParse(json['checked_in_at'] as String? ?? '')?.toLocal(),
       );
 }

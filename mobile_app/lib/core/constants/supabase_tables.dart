@@ -20,6 +20,8 @@ class SupabaseRpcs {
   static const String getSupervisorDashboard = 'get_supervisor_dashboard';
   static const String supervisorCheckInStudent = 'supervisor_check_in_student';
   static const String getSupervisorMonthlySummary = 'get_supervisor_monthly_summary';
+  static const String getSupervisorTripManifest = 'get_supervisor_trip_manifest';
+  static const String getStudentCatalog = 'get_student_catalog';
   static const String getPurchasablePeriods = 'get_purchasable_periods';
   static const String requestStudentPasswordReset = 'request_student_password_reset';
 }

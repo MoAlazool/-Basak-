@@ -93,12 +93,17 @@ BEGIN
 END $$;
 RESET ROLE;
 
--- Foreign line check needs the id of a line the company admin cannot see.
+-- Foreign line check: a line of another company (created here when none exists).
 DO $$
 DECLARE c record; v_foreign uuid; v_ok boolean;
 BEGIN
   SELECT * INTO c FROM e2e_ctx;
   SELECT id INTO v_foreign FROM public.lines WHERE company_id <> c.company_id LIMIT 1;
+  IF v_foreign IS NULL THEN
+    INSERT INTO public.companies(name, is_active) VALUES ('E2E other company', true) RETURNING id INTO c.other_company;
+    INSERT INTO public.lines(company_id, name, origin_name, price_termly, price_yearly, price_daily, is_active)
+    VALUES (c.other_company, 'E2E foreign line', 'X', 1, 1, 1, true) RETURNING id INTO v_foreign;
+  END IF;
   PERFORM set_config('request.jwt.claims', json_build_object('sub', c.cadmin_id, 'role', 'authenticated')::text, true);
   BEGIN
     PERFORM public.set_line_active(v_foreign, false); v_ok := false;

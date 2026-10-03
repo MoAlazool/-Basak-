@@ -4,6 +4,7 @@ import 'home/presentation/supervisor_home_screen.dart';
 import 'monthly/presentation/supervisor_monthly_screen.dart';
 import 'profile/presentation/supervisor_profile_screen.dart';
 import 'qr_scanner/presentation/supervisor_qr_scanner_screen.dart';
+import 'trips/presentation/supervisor_trips_screen.dart';
 
 class SupervisorMainScreen extends StatefulWidget {
   const SupervisorMainScreen({super.key});
@@ -20,7 +21,9 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
     // Per-trip rider counts open from the Home tab. Receipt review is an
     // admin-only task (dashboard), never part of the supervisor app.
     final screens = [
-      SupervisorHomeScreen(onOpenScanner: () => setState(() => _currentIndex = 1)),
+      SupervisorHomeScreen(onOpenScanner: () => setState(() => _currentIndex = 2)),
+      // Going / Return trips: route, students per station, check-in state.
+      const SupervisorTripsScreen(),
       const SupervisorQrScannerScreen(),
       const SupervisorMonthlyScreen(),
       const SupervisorProfileScreen(),

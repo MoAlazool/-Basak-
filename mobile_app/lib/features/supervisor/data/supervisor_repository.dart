@@ -19,11 +19,11 @@ class SupervisorRepository {
 
   /// Verifies the QR and records a check-in for today's [direction] trip.
   /// Offline: falls back to the cached read-only lookup (nothing is recorded).
-  Future<CheckInResult> checkIn(String qrValue, {required String direction}) async {
+  Future<CheckInResult> checkIn(String qrValue, {required String direction, String? tripId}) async {
     final qr = qrValue.trim();
     try {
       final response = await _client.rpc(SupabaseRpcs.supervisorCheckInStudent,
-          params: {'p_qr_code': qr, 'p_direction': direction});
+          params: {'p_qr_code': qr, 'p_direction': direction, if (tripId != null) 'p_trip_id': tripId});
       final json = Map<String, dynamic>.from(response as Map);
       if (json['student'] is Map) {
         await OfflineCache.saveStudentLookup(qr, Map<String, dynamic>.from(json['student'] as Map));
@@ -41,6 +41,18 @@ class SupervisorRepository {
       return CheckInResult(
           outcome: CheckInOutcome.offlineLookup, direction: direction, student: details);
     }
+  }
+
+  /// One Going (departure) or Return trip of a line: route, stop times and the
+  /// students per station with their check-in state for today.
+  Future<TripManifest> getTripManifest(
+      {required String lineId, required String direction, String? tripId}) async {
+    final response = await _client.rpc(SupabaseRpcs.getSupervisorTripManifest, params: {
+      'p_line_id': lineId,
+      'p_direction': direction,
+      if (tripId != null) 'p_trip_id': tripId,
+    });
+    return TripManifest.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
   Future<SupervisorMonthlySummary> getMonthlySummary(DateTime month) async {

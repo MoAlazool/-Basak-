@@ -12,11 +12,17 @@ import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
 import '../models/scanned_student_details.dart';
 
-/// Tab 2 — scan a student's QR, verify identity + subscription and record the
-/// check-in (supervisor_check_in_student). A student can be checked in once per
-/// day; the database rejects any further scan that day.
+/// Scan a student's QR, verify identity + subscription and record the check-in
+/// (supervisor_check_in_student) for the Going or Return trip — once per
+/// student, day and direction. Opened from the Trips page it is pinned to that
+/// trip; as a tab the supervisor picks the direction.
 class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
-  const SupervisorQrScannerScreen({super.key});
+  /// 'departure' | 'return'; null = chosen on screen (time-based default).
+  final String? direction;
+  final String? tripId;
+  final String? tripLabel;
+
+  const SupervisorQrScannerScreen({super.key, this.direction, this.tripId, this.tripLabel});
 
   @override
   ConsumerState<SupervisorQrScannerScreen> createState() =>
@@ -26,8 +32,9 @@ class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
 class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen> {
   final MobileScannerController _cameraController = MobileScannerController();
   bool _isProcessing = false;
-  // Recorded with the check-in for reporting only (one check-in per day).
-  String get _direction => DateTime.now().hour < 12 ? 'departure' : 'return';
+  late String _direction =
+      widget.direction ?? (DateTime.now().hour < 12 ? 'departure' : 'return');
+  bool get _pinned => widget.direction != null;
   int _sessionCheckIns = 0;
 
   Future<void> _onDetect(BarcodeCapture capture) async {
@@ -38,7 +45,8 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
     setState(() => _isProcessing = true);
     try {
       final result =
-          await ref.read(supervisorRepoProvider).checkIn(rawValue, direction: _direction);
+          await ref.read(supervisorRepoProvider)
+              .checkIn(rawValue, direction: _direction, tripId: widget.tripId);
       if (result.outcome == CheckInOutcome.checkedIn) {
         _sessionCheckIns++;
         HapticFeedback.mediumImpact();
@@ -120,8 +128,33 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
                           foreground: const Color(0xFF07865A),
                           icon: LucideIcons.check),
                   ]),
-                  const SizedBox(height: 8),
-                  Text('يُسجَّل حضور الطالب مرة واحدة فقط في اليوم.',
+                  const SizedBox(height: 10),
+                  if (_pinned)
+                    BasakPill(
+                      '${_direction == 'return' ? 'رحلة العودة' : 'رحلة الذهاب'}'
+                      '${widget.tripLabel != null ? ' · ${widget.tripLabel}' : ''}',
+                      icon: _direction == 'return' ? LucideIcons.sunset : LucideIcons.sunrise,
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                              value: 'departure',
+                              label: Text('الذهاب'),
+                              icon: Icon(LucideIcons.sunrise, size: 16)),
+                          ButtonSegment(
+                              value: 'return',
+                              label: Text('العودة'),
+                              icon: Icon(LucideIcons.sunset, size: 16)),
+                        ],
+                        selected: {_direction},
+                        onSelectionChanged: (value) => setState(() => _direction = value.first),
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  Text('يُسجَّل الطالب مرة واحدة لكل اتجاه (ذهاب / عودة) في اليوم.',
                       style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
                 ],
               ),

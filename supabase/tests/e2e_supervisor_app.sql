@@ -25,7 +25,7 @@ SELECT
      WHERE NOT EXISTS (SELECT 1 FROM public.subscriptions sub JOIN public.lines l ON l.id = sub.line_id
                        WHERE sub.student_id = st.id AND l.company_id = (SELECT company_id FROM sup))
      LIMIT 1) AS qr_outside,
-  (SELECT id FROM public.lines WHERE company_id = (SELECT company_id FROM sup) ORDER BY name LIMIT 1) AS own_line,
+  (SELECT id FROM public.lines WHERE company_id = (SELECT company_id FROM sup) AND is_active ORDER BY name LIMIT 1) AS own_line,
   (SELECT id FROM public.lines WHERE company_id <> (SELECT company_id FROM sup) LIMIT 1) AS foreign_line;
 GRANT SELECT ON e2e_ctx TO authenticated;
 
@@ -53,6 +53,11 @@ BEGIN
       FROM jsonb_array_elements(d->'lines') l, jsonb_array_elements(l->'stations') s),
     d->'totals'->>'registered_students');
 
+  IF c.qr_ok IS NULL THEN
+    -- Live data has no subscriber valid today on this company's lines; the scan
+    -- flow is covered by e2e_trip_directions.sql with its own fixture.
+    INSERT INTO e2e_results(step, ok, detail) VALUES ('scan steps', true, 'SKIPPED: no active subscriber today');
+  ELSE
   r := public.supervisor_check_in_student(c.qr_ok, 'departure');
   v_first := r->>'result';  -- 'already_checked_in' if this student was really scanned today
   INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: active student is checked in',
@@ -60,11 +65,12 @@ BEGIN
   r2 := public.supervisor_check_in_student(c.qr_ok, 'departure');
   INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: second scan is a duplicate, not a new check-in',
     r2->>'result' = 'already_checked_in' AND r2->>'checked_in_at' = r->>'checked_in_at', r2->>'result');
-  -- One check-in per student per day (20261004000001): a later scan, any direction, is a duplicate.
+  -- One check-in per student, day and direction (20261006000001): the return trip is separate.
   r2 := public.supervisor_check_in_student(c.qr_ok, 'return');
-  INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: one check-in per day (return scan is a duplicate)',
-    r2->>'result' = 'already_checked_in', r2->>'result');
+  INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: return trip is a separate check-in',
+    r2->>'result' IN ('checked_in', 'already_checked_in') AND r2->>'direction' = 'return', r2->>'result');
 
+  END IF;
   IF c.qr_outside IS NOT NULL THEN
     r := public.supervisor_check_in_student(c.qr_outside, 'departure');
     INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: student outside my lines is refused without details',
@@ -74,10 +80,12 @@ BEGIN
   INSERT INTO e2e_results(step, ok, detail) VALUES ('scan: unknown QR is reported', r->>'result' = 'not_found', r->>'result');
 
   m := public.get_supervisor_monthly_summary(NULL);
+  IF c.qr_ok IS NOT NULL THEN
   INSERT INTO e2e_results(step, ok, detail) VALUES ('monthly: counts move exactly with the new scans',
-    (m->'totals'->>'checkins')::int - (m0->'totals'->>'checkins')::int = (v_first = 'checked_in')::int
+    (m->'totals'->>'checkins')::int - (m0->'totals'->>'checkins')::int = (v_first = 'checked_in')::int + (r2->>'result' = 'checked_in')::int
       AND (m->'totals'->>'scans')::int - (m0->'totals'->>'scans')::int >= 4,
     'before ' || (m0->'totals')::text || ' after ' || (m->'totals')::text);
+  END IF;
   INSERT INTO e2e_results(step, ok, detail) VALUES ('monthly: one row per day up to today',
     jsonb_array_length(m->'days') = extract(day FROM public.cairo_today())::int, jsonb_array_length(m->'days')::text);
 
@@ -113,8 +121,14 @@ END $$;
 RESET ROLE;
 
 DO $$
-DECLARE v_ok boolean;
+DECLARE v_ok boolean; v_company uuid;
 BEGIN
+  IF (SELECT foreign_line FROM e2e_ctx) IS NULL THEN
+    INSERT INTO public.companies(name, is_active) VALUES ('E2E other company', true) RETURNING id INTO v_company;
+    INSERT INTO public.lines(company_id, name, origin_name, price_termly, price_yearly, price_daily, is_active)
+    VALUES (v_company, 'E2E foreign line', 'X', 1, 1, 1, true);
+    UPDATE e2e_ctx SET foreign_line = (SELECT id FROM public.lines WHERE name = 'E2E foreign line');
+  END IF;
   BEGIN
     UPDATE public.lines SET supervisor_id = (SELECT supervisor_id FROM e2e_ctx) WHERE id = (SELECT foreign_line FROM e2e_ctx);
     v_ok := false;

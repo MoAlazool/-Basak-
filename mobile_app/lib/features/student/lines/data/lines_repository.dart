@@ -3,6 +3,7 @@ import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../models/line_model.dart';
 import '../models/trip_model.dart';
+import '../models/catalog_model.dart';
 
 class LinesRepository {
   final SupabaseClient _client = SupabaseService.client;
@@ -25,6 +26,15 @@ class LinesRepository {
         .map((e) => LineModel.fromJson(e as Map<String, dynamic>))
         .where((line) => optionsByLine.containsKey(line.id))
         .map((line) => line.withStudentOption(optionsByLine[line.id]!))
+        .toList();
+  }
+
+  /// Step 1–2 of the subscription flow: active companies → active lines that
+  /// serve the student's university (server-filtered).
+  Future<List<CatalogCompany>> getCatalog() async {
+    final response = await _client.rpc(SupabaseRpcs.getStudentCatalog);
+    return (response as List<dynamic>? ?? const [])
+        .map((c) => CatalogCompany.fromJson(c as Map<String, dynamic>))
         .toList();
   }
 

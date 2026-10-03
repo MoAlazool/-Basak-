@@ -9,12 +9,16 @@ import '../../../../core/widgets/glass_scaffold.dart';
 import '../../lines/data/lines_repository.dart';
 import '../../lines/models/line_model.dart';
 import '../../lines/models/trip_model.dart';
+import '../../lines/models/catalog_model.dart';
 import '../../lines/presentation/trip_timetable.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../models/subscription_model.dart';
 import '../../home/presentation/student_home_screen.dart';
 
 final linesRepoProvider = Provider((ref) => LinesRepository());
+final studentCatalogProvider = FutureProvider<List<CatalogCompany>>(
+    (ref) => ref.watch(linesRepoProvider).getCatalog());
+
 final allLinesProvider = FutureProvider<List<LineModel>>((ref) async {
   return ref.watch(linesRepoProvider).getAllLines();
 });
@@ -52,6 +56,7 @@ class SubscriptionScreen extends ConsumerStatefulWidget {
 }
 
 class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
+  CatalogCompany? _selectedCompany;
   LineModel? _selectedLine;
   StationModel? _selectedStation;
   String? _selectedDepartureTime;
@@ -318,7 +323,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _progressHeader(active ? 3 : 2),
+          _progressHeader(4),
           const SizedBox(height: 18),
           Text(active ? 'اشتراكك الجامعي' : 'إتمام الاشتراك',
               style: AppTextStyles.displayMedium),
@@ -472,6 +477,13 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ]),
       );
 
+  /// Subscription flow position (1 company, 2 line & trip, 3 period, 4 payment).
+  int get _selectionStep => _selectedCompany == null
+      ? 1
+      : (_selectedLine == null || _departureTrip == null)
+          ? 2
+          : 3;
+
   Widget _progressHeader(int step) => Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
         decoration: BoxDecoration(
@@ -480,17 +492,17 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             border: Border.all(color: const Color(0xFFE3EDF3))),
         child: Column(children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('الخطوة $step من 3',
+            Text('الخطوة $step من 4',
                 style: AppTextStyles.labelSmall.copyWith(
                     color: const Color(0xFF00658D),
                     fontWeight: FontWeight.bold)),
-            Text(step == 3 ? 'مكتمل' : 'متبقي ${3 - step} خطوة',
+            Text(step == 4 ? 'الدفع والموافقة' : 'متبقي ${4 - step} خطوات',
                 style: AppTextStyles.labelSmall
                     .copyWith(color: AppColors.textSecondary))
           ]),
           const SizedBox(height: 13),
           Row(children: [
-            for (var i = 1; i <= 3; i++) ...[
+            for (var i = 1; i <= 4; i++) ...[
               CircleAvatar(
                   radius: 15,
                   backgroundColor: i <= step
@@ -500,7 +512,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                       size: 15,
                       color:
                           i <= step ? Colors.white : AppColors.textSecondary)),
-              if (i < 3)
+              if (i < 4)
                 Expanded(
                     child: Container(
                         height: 2,
@@ -511,9 +523,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           ]),
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('المسار والمحطة', style: AppTextStyles.labelSmall),
-            Text('التسجيل والدفع', style: AppTextStyles.labelSmall),
-            Text('الموافقة', style: AppTextStyles.labelSmall)
+            Text('الشركة', style: AppTextStyles.labelSmall),
+            Text('الخط والرحلة', style: AppTextStyles.labelSmall),
+            Text('الفترة', style: AppTextStyles.labelSmall),
+            Text('الدفع', style: AppTextStyles.labelSmall)
           ]),
         ]),
       );
@@ -781,7 +794,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 label: const Text('العودة إلى اشتراكاتي'),
               ),
             ),
-          _progressHeader(1),
+          _progressHeader(_selectionStep),
           const SizedBox(height: 18),
           Text('اشتراكي الجامعي',
               style: AppTextStyles.displayMedium
@@ -792,94 +805,22 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                   .copyWith(color: const Color(0xFF718695))),
           const SizedBox(height: 18),
 
-          // 1. Pick Line
-          Text('مسارات الحافلات المتاحة',
-              style: AppTextStyles.titleMedium
-                  .copyWith(color: const Color(0xFF17384A))),
-          const SizedBox(height: 8),
-          linesAsync.when(
-            data: (lines) => Column(
-              children: lines.map((line) {
-                final isSelected = _selectedLine?.id == line.id;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GestureDetector(
-                    onTap: () => _onLineSelected(line),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected ? const Color(0xFFEAF4FB) : Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF00658D)
-                              : const Color(0xFFE6EEF3),
-                          width: isSelected ? 1.6 : 1,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Color(0x0817384A),
-                              blurRadius: 12,
-                              offset: Offset(0, 4))
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isSelected
-                                ? LucideIcons.checkCircle
-                                : LucideIcons.circle,
-                            color: isSelected
-                                ? const Color(0xFF00658D)
-                                : AppColors.textSecondary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(line.name,
-                                    style: AppTextStyles.titleMedium.copyWith(
-                                        color: const Color(0xFF17384A))),
-                                Text(
-                                  line.companyName ?? 'شركة النقل',
-                                  style: AppTextStyles.labelSmall
-                                      .copyWith(color: AppColors.textSecondary),
-                                ),
-                                if (line.originName != null || line.destinationName != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Text(
-                                      '${line.originName ?? line.name} ← ${line.destinationName ?? 'الجامعة'}',
-                                      style: AppTextStyles.labelSmall.copyWith(
-                                          color: const Color(0xFF3F51B5),
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(line.priceTermly.toStringAsFixed(0),
-                                    style: AppTextStyles.titleLarge.copyWith(
-                                        color: const Color(0xFF00658D))),
-                                Text('ج.م / ترم',
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                        color: AppColors.textSecondary))
-                              ]),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+          // 1. Company → 2. Line (only active, serving the student's university)
+          ref.watch(studentCatalogProvider).when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => Text('خطأ: $err'),
+            error: (err, _) => Text('تعذر تحميل الشركات: $err'),
+            data: (companies) => companies.isEmpty
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BasakUi.card(),
+                    child: Text('لا توجد حالياً شركات أو خطوط متاحة لجامعتك.',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                  )
+                : _selectedCompany == null
+                    ? _companyStep(companies)
+                    : _lineStep(_selectedCompany!),
           ),
 
           // 2. Pick the trip and the meeting point (station) inside it
@@ -953,7 +894,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
             // 3. Subscription Type & Pricing
             const SizedBox(height: 20),
-            Text('نوع الاشتراك',
+            Text('٣. اختر فترة الاشتراك',
                 style: AppTextStyles.titleMedium
                     .copyWith(color: const Color(0xFF17384A))),
             const SizedBox(height: 8),
@@ -976,6 +917,136 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
           const SizedBox(height: 100),
         ],
+      ),
+    );
+  }
+
+  Widget _stepTitle(String title, {Widget? trailing}) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(children: [
+          Expanded(
+              child: Text(title,
+                  style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF17384A)))),
+          if (trailing != null) trailing,
+        ]),
+      );
+
+  Widget _companyStep(List<CatalogCompany> companies) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _stepTitle('١. اختر شركة النقل'),
+          for (final company in companies)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () => setState(() {
+                  _selectedCompany = company;
+                  _selectedLine = null;
+                  _departureTrip = null;
+                  _returnTrip = null;
+                  _selectedStation = null;
+                }),
+                child: Ink(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BasakUi.card(radius: 18),
+                  child: Row(children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(color: BasakUi.softTeal, shape: BoxShape.circle),
+                      child: const Icon(LucideIcons.building2, color: BasakUi.teal),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(company.name,
+                            style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF17384A))),
+                        Text('${company.lines.length} خط متاح لجامعتك',
+                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+                      ]),
+                    ),
+                    const Icon(LucideIcons.chevronLeft, color: AppColors.textSecondary),
+                  ]),
+                ),
+              ),
+            ),
+        ],
+      );
+
+  Widget _lineStep(CatalogCompany company) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _stepTitle('٢. اختر الخط',
+              trailing: TextButton.icon(
+                onPressed: () => setState(() {
+                  _selectedCompany = null;
+                  _selectedLine = null;
+                  _departureTrip = null;
+                  _returnTrip = null;
+                  _selectedStation = null;
+                }),
+                icon: const Icon(LucideIcons.building2, size: 16),
+                label: Text('${company.name} · تغيير'),
+              )),
+          for (final line in company.lines) _catalogLineCard(line),
+        ],
+      );
+
+  Widget _catalogLineCard(CatalogLine line) {
+    final selected = _selectedLine?.id == line.id;
+    String times(List<String> values) => values.map(BasakUi.time12).join('، ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _onLineSelected(line.toLineModel()),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF4FB) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: selected ? const Color(0xFF00658D) : const Color(0xFFE6EEF3),
+                width: selected ? 1.6 : 1),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(selected ? LucideIcons.circleCheck : LucideIcons.busFront,
+                  color: selected ? const Color(0xFF00658D) : AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(line.name,
+                    style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF17384A))),
+              ),
+              Text('${line.priceTermly.toStringAsFixed(0)} ج.م / ترم',
+                  style: AppTextStyles.labelSmall.copyWith(
+                      color: const Color(0xFF00658D), fontWeight: FontWeight.w800)),
+            ]),
+            const SizedBox(height: 8),
+            Text('${line.originName} ← ${line.destination ?? 'الجامعة'}',
+                style: AppTextStyles.labelSmall.copyWith(
+                    color: const Color(0xFF3F51B5), fontWeight: FontWeight.w700)),
+            if (line.stations.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('المحطات: ${line.stations.join(' ← ')}',
+                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+            ],
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              if (line.departureTimes.isNotEmpty)
+                BasakPill('ذهاب ${times(line.departureTimes)}',
+                    background: const Color(0xFFE7F8F0),
+                    foreground: const Color(0xFF15803D),
+                    icon: LucideIcons.sunrise),
+              if (line.returnTimes.isNotEmpty)
+                BasakPill('عودة ${times(line.returnTimes)}',
+                    background: const Color(0xFFFFF4E5),
+                    foreground: const Color(0xFFB97812),
+                    icon: LucideIcons.sunset),
+            ]),
+          ]),
+        ),
       ),
     );
   }
