@@ -6,10 +6,21 @@ export const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+/** An error with an HTTP status: 401 = not signed in / invalid session, 403 = not allowed. */
+export class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export function errorStatus(error: unknown): number {
+  return error instanceof HttpError ? error.status : 400;
+}
+
 export async function requireAdmin(request: Request) {
   const authorization = request.headers.get('Authorization');
   const token = authorization?.replace(/^Bearer\s+/i, '');
-  if (!token) throw new Error('يلزم تسجيل الدخول كمسؤول.');
+  if (!token) throw new HttpError(401, 'يلزم تسجيل الدخول كمسؤول.');
 
   const url = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
@@ -18,19 +29,21 @@ export async function requireAdmin(request: Request) {
 
   const authClient = createClient(url, anonKey, { auth: { persistSession: false } });
   const { data: { user }, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !user) throw new Error('جلسة الدخول غير صالحة.');
+  if (authError || !user) throw new HttpError(401, 'انتهت جلسة الدخول. سجّل الدخول مرة أخرى.');
 
   const serviceClient = createClient(url, serviceKey, { auth: { persistSession: false } });
   const { data: admin, error: adminError } = await serviceClient
     .from('admins').select('id,role,company_id').eq('id', user.id).maybeSingle();
-  if (adminError || !admin) throw new Error('هذا الإجراء متاح للمسؤولين فقط.');
+  if (adminError || !admin) throw new HttpError(403, 'هذا الإجراء متاح للمسؤولين فقط.');
 
   return { user, admin, serviceClient };
 }
 
 export async function requireSuperAdmin(request: Request) {
   const context = await requireAdmin(request);
-  if (context.admin.role !== 'super_admin') throw new Error('هذا الإجراء متاح لمدير النظام فقط.');
+  if (context.admin.role !== 'super_admin') {
+    throw new HttpError(403, 'هذا الإجراء متاح لمدير النظام فقط. (الحساب المسجل حالياً ليس مدير النظام)');
+  }
   return context;
 }
 

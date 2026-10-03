@@ -1,4 +1,4 @@
-import { corsHeaders, errorMessage, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -30,6 +30,6 @@ Deno.serve(async (request: Request) => {
     if (deleteRowError) throw deleteRowError;
     return jsonResponse({ deleted: true });
   } catch (error) {
-    return jsonResponse({ error: errorMessage(error, 'تعذر حذف المشرف.') }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر حذف المشرف.') }, errorStatus(error));
   }
 });

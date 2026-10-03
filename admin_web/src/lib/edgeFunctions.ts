@@ -7,6 +7,10 @@ import { supabase } from './supabase';
  * - Fetch/CORS errors: the function is usually not deployed (or blocked by JWT verification).
  */
 export async function invokeEdgeFunction<T = unknown>(name: string, body: Record<string, unknown>): Promise<T> {
+  // A refresh failure leaves no session: stop here with a clear message instead
+  // of sending an anonymous request that the function rejects.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('انتهت جلسة الدخول. حدّث الصفحة وسجّل الدخول مرة أخرى.');
   const { data, error } = await supabase.functions.invoke(name, { body });
   if (!error) return data as T;
 

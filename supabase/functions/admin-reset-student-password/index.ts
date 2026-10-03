@@ -1,4 +1,4 @@
-import { corsHeaders, errorMessage, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
 
 // Admin-assisted password reset (Super Admin only). Changes the student's real
 // Supabase Auth password with the service role and flags the account so the app
@@ -64,6 +64,6 @@ Deno.serve(async (request: Request) => {
       temporaryPassword: generated ? temporaryPassword : undefined,
     });
   } catch (error) {
-    return jsonResponse({ error: errorMessage(error, 'تعذر إعادة تعيين كلمة المرور.') }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر إعادة تعيين كلمة المرور.') }, errorStatus(error));
   }
 });

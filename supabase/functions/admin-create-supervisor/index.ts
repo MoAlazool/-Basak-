@@ -1,4 +1,4 @@
-import { corsHeaders, errorMessage, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -83,6 +83,6 @@ Deno.serve(async (request: Request) => {
     }
     return jsonResponse({ id: created.user.id, lineIds });
   } catch (error) {
-    return jsonResponse({ error: errorMessage(error, 'تعذر إضافة المشرف.') }, 400);
+    return jsonResponse({ error: errorMessage(error, 'تعذر إضافة المشرف.') }, errorStatus(error));
   }
 });

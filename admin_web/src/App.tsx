@@ -62,7 +62,15 @@ export function App() {
       // Supabase calls must not run inside this callback (auth lock), so defer.
       setTimeout(() => { void applySession(session?.user.id ?? null); }, 0);
     });
-    return () => { mounted = false; subscription.unsubscribe(); };
+    // The session is shared by every tab of this browser: signing in with another
+    // account in one tab replaces it everywhere. Re-check when it changes so a tab
+    // never keeps acting with an account that is no longer the signed-in one.
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || !/^sb-.*-auth-token$/.test(event.key)) return;
+      void supabase.auth.getSession().then(({ data: { session } }) => applySession(session?.user.id ?? null));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => { mounted = false; subscription.unsubscribe(); window.removeEventListener('storage', onStorage); };
   }, []);
 
   useEffect(() => {
