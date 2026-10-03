@@ -12,12 +12,18 @@ import '../../lines/models/trip_model.dart';
 import '../../lines/models/catalog_model.dart';
 import '../../lines/presentation/trip_timetable.dart';
 import '../../../../core/widgets/basak_ui.dart';
+import 'package:flutter/services.dart';
 import '../models/subscription_model.dart';
+import '../models/payment_method_model.dart';
 import '../../home/presentation/student_home_screen.dart';
 
 final linesRepoProvider = Provider((ref) => LinesRepository());
 final studentCatalogProvider = FutureProvider<List<CatalogCompany>>(
     (ref) => ref.watch(linesRepoProvider).getCatalog());
+
+final paymentMethodsProvider = FutureProvider.autoDispose
+    .family<List<PaymentMethodModel>, String>(
+        (ref, companyId) => ref.watch(subscriptionRepoProvider).getPaymentMethods(companyId));
 
 final allLinesProvider = FutureProvider<List<LineModel>>((ref) async {
   return ref.watch(linesRepoProvider).getAllLines();
@@ -71,6 +77,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isSubmitting = false;
   bool _isUploadingReceipt = false;
   XFile? _receiptPreview;
+  String? _paymentMethodId;
 
   /// Showing the purchase flow while the student already has subscriptions
   /// (e.g. paying the next semester in advance).
@@ -234,9 +241,14 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     }
   }
 
-  Future<void> _submitReceipt(String subscriptionId) async {
+  Future<void> _submitReceipt(String subscriptionId, {bool needsMethod = false}) async {
     final picked = _receiptPreview;
     if (picked == null || _isUploadingReceipt) return;
+    if (needsMethod && _paymentMethodId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('اختر وسيلة الدفع التي حوّلت بها أولاً.')));
+      return;
+    }
 
     setState(() => _isUploadingReceipt = true);
     try {
@@ -257,6 +269,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             subscriptionId: subscriptionId,
             fileBytes: bytes,
             fileExtension: ext,
+            paymentMethodId: _paymentMethodId,
           );
       _refreshSubscriptions();
       ref.invalidate(subscriptionReceiptsProvider(subscriptionId));
@@ -362,7 +375,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               background: const Color(0xFFE2F3FB),
             )
           else
-            _bankTransferCard(sub),
+            _paymentMethodsCard(sub),
           if (!active) ...[
             const SizedBox(height: 14),
             receiptsAsync.when(
@@ -641,7 +654,112 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ]),
       );
 
-  Widget _bankTransferCard(SubscriptionModel sub) => Container(
+  /// The company's payment methods: the student picks the one they used,
+  /// copies the payment details and then uploads the receipt.
+  Widget _paymentMethodsCard(SubscriptionModel sub) {
+    final companyId = sub.companyId;
+    if (companyId == null) return _paymentFallback(sub);
+    return ref.watch(paymentMethodsProvider(companyId)).when(
+          loading: () => const LinearProgressIndicator(),
+          error: (_, __) => _paymentFallback(sub),
+          data: (methods) {
+            if (methods.isEmpty) return _paymentFallback(sub);
+            return Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFE4EDF3))),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Icon(LucideIcons.wallet, color: Color(0xFF00658D)),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text('اختر وسيلة الدفع', style: AppTextStyles.titleMedium)),
+                  Text('${sub.price.toStringAsFixed(0)} ج.م',
+                      style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF00658D))),
+                ]),
+                const SizedBox(height: 10),
+                for (final m in methods) _paymentMethodTile(m),
+                const SizedBox(height: 4),
+                Text('حوّل المبلغ كاملاً ثم ارفع صورة واضحة للإيصال بالأسفل.',
+                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+              ]),
+            );
+          },
+        );
+  }
+
+  Widget _paymentMethodTile(PaymentMethodModel m) {
+    final selected = _paymentMethodId == m.id;
+    final icon = switch (m.type) {
+      'instapay' => LucideIcons.wallet,
+      'vodafone_cash' => LucideIcons.smartphone,
+      _ => LucideIcons.landmark,
+    };
+    return GestureDetector(
+      onTap: () => setState(() => _paymentMethodId = m.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFEAF4FB) : const Color(0xFFF7FAFC),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? const Color(0xFF00658D) : const Color(0xFFE6EEF3), width: selected ? 1.5 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(selected ? LucideIcons.circleCheck : LucideIcons.circle,
+                size: 18, color: selected ? const Color(0xFF00658D) : AppColors.textSecondary),
+            const SizedBox(width: 8),
+            Icon(icon, size: 18, color: const Color(0xFF00658D)),
+            const SizedBox(width: 6),
+            Expanded(child: Text(m.displayName, style: AppTextStyles.titleMedium)),
+            Text(m.typeLabel, style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+          ]),
+          if (selected) ...[
+            const SizedBox(height: 8),
+            if (m.type == 'bank' && m.bankName != null) _payLine('البنك', m.bankName!, copy: false),
+            _payLine(
+                switch (m.type) { 'instapay' => 'عنوان InstaPay', 'vodafone_cash' => 'رقم المحفظة', _ => 'رقم الحساب' },
+                m.payTo),
+            if (m.type == 'bank' && m.iban != null) _payLine('IBAN', m.iban!),
+            if (m.accountHolder != null) _payLine('باسم', m.accountHolder!, copy: false),
+            if ((m.instructions ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(m.instructions!, style: AppTextStyles.bodyMedium),
+              ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _payLine(String label, String value, {bool copy = true}) => Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(children: [
+          Text('$label: ', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+          Expanded(
+            child: Text(value,
+                textDirection: TextDirection.ltr,
+                textAlign: TextAlign.start,
+                style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700)),
+          ),
+          if (copy)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'نسخ',
+              icon: const Icon(LucideIcons.copy, size: 16, color: Color(0xFF00658D)),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: value));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم النسخ')));
+              },
+            ),
+        ]),
+      );
+
+  /// No payment method configured by the company yet.
+  Widget _paymentFallback(SubscriptionModel sub) => Container(
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
             color: Colors.white,
@@ -651,20 +769,14 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           Row(children: [
             const Icon(LucideIcons.landmark, color: Color(0xFF00658D)),
             const SizedBox(width: 9),
-            Text('تعليمات التحويل', style: AppTextStyles.titleMedium)
+            Text('تعليمات الدفع', style: AppTextStyles.titleMedium)
           ]),
           const SizedBox(height: 10),
-          Text(
-              'أكمل التحويل إلى بيانات الحساب التي زودتك بها إدارة الجامعة، ثم أرفق صورة واضحة للإيصال.',
+          Text('لم تضف شركة النقل وسائل دفع بعد. تواصل مع إدارة الشركة للحصول على بيانات التحويل، ثم أرفق صورة الإيصال.',
               style: AppTextStyles.bodyMedium),
           const SizedBox(height: 10),
           Text('المبلغ: ${sub.price.toStringAsFixed(0)} ج.م',
-              style: AppTextStyles.titleMedium
-                  .copyWith(color: const Color(0xFF00658D))),
-          const SizedBox(height: 5),
-          Text('بيانات التحويل البنكي تُدار من إدارة الجامعة.',
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: AppColors.textSecondary)),
+              style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF00658D))),
         ]),
       );
 
@@ -757,7 +869,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                   onPressed:
-                      _isUploadingReceipt ? null : () => _submitReceipt(sub.id),
+                      _isUploadingReceipt
+                          ? null
+                          : () => _submitReceipt(sub.id,
+                              needsMethod: sub.companyId != null &&
+                                  (ref.read(paymentMethodsProvider(sub.companyId!)).valueOrNull?.isNotEmpty ?? false)),
                   icon: _isUploadingReceipt
                       ? const SizedBox.square(
                           dimension: 18,
@@ -1027,6 +1143,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             Text('${line.originName} ← ${line.destination ?? 'الجامعة'}',
                 style: AppTextStyles.labelSmall.copyWith(
                     color: const Color(0xFF3F51B5), fontWeight: FontWeight.w700)),
+            if (line.universities.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('يخدم: ${line.universities.join('، ')}',
+                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+            ],
             if (line.stations.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text('المحطات: ${line.stations.join(' ← ')}',

@@ -29,6 +29,7 @@ class CatalogLine {
   final double priceYearly;
   final double priceDaily;
   final List<String> stations;
+  final List<String> universities;
   final List<String> departureTimes;
   final List<String> returnTimes;
 
@@ -43,6 +44,7 @@ class CatalogLine {
     required this.priceYearly,
     required this.priceDaily,
     required this.stations,
+    this.universities = const [],
     required this.departureTimes,
     required this.returnTimes,
   });
@@ -61,6 +63,7 @@ class CatalogLine {
         priceYearly: (json['price_yearly'] as num?)?.toDouble() ?? 0,
         priceDaily: (json['price_daily'] as num?)?.toDouble() ?? 0,
         stations: _strings(json['stations']),
+        universities: _strings(json['universities']),
         departureTimes: _strings(json['departure_times']),
         returnTimes: _strings(json['return_times']),
       );

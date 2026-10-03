@@ -8,6 +8,7 @@ import 'features/auth/presentation/login_register_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/onboarding/onboarding_controller.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'features/auth/presentation/force_password_change_screen.dart';
 import 'features/splash/splash_gate.dart';
 import 'features/student/student_main_screen.dart';
 import 'features/supervisor/supervisor_main_screen.dart';
@@ -81,7 +82,12 @@ class AuthGate extends ConsumerWidget {
 
     switch (authState.role) {
       case UserRole.student:
-        return const StudentMainScreen();
+        // After an admin password reset the student must choose a new password first.
+        return ref.watch(mustChangePasswordProvider).maybeWhen(
+              data: (mustChange) =>
+                  mustChange ? const ForcePasswordChangeScreen() : const StudentMainScreen(),
+              orElse: () => const StudentMainScreen(),
+            );
       case UserRole.supervisor:
         return const SupervisorMainScreen();
       case UserRole.admin:

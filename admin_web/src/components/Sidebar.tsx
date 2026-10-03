@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Wallet,
   LayoutDashboard,
   Building2,
   Bus,
@@ -34,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onLogo
     { id: 'receipts',     name: 'فحص الإيصالات',     icon: FileCheck2 },
     { id: 'reports',      name: 'التقارير المالية',  icon: BarChart3 },
     { id: 'settings',     name: 'إعدادات الاشتراكات', icon: CalendarRange },
+    { id: 'payment-methods', name: 'وسائل الدفع',     icon: Wallet },
   ];
 
   return (

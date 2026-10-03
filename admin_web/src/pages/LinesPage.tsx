@@ -21,6 +21,7 @@ interface LineRow {
   companies?: { name: string } | null;
   stations: StationRow[];
   line_trips: TripRow[];
+  line_universities: { university_id: string }[];
 }
 interface Option { id: string; name: string }
 
@@ -32,6 +33,8 @@ interface TripDraft {
 }
 interface LineDraft {
   id?: string; company_id: string; name: string; origin_name: string; destination_university_id: string;
+  /** Universities served by the line (shared route, stored once). */
+  university_ids: string[];
   price_termly: string; price_yearly: string; price_daily: string; is_active: boolean;
   stations: StationDraft[]; trips: TripDraft[];
 }
@@ -64,6 +67,9 @@ const draftFromLine = (line: LineRow): LineDraft => {
   return {
     id: line.id, company_id: line.company_id, name: line.name, origin_name: line.origin_name || line.name,
     destination_university_id: line.destination_university_id || '',
+    university_ids: (line.line_universities ?? []).map((u) => u.university_id).length
+      ? (line.line_universities ?? []).map((u) => u.university_id)
+      : (line.destination_university_id ? [line.destination_university_id] : []),
     price_termly: String(line.price_termly), price_yearly: String(line.price_yearly), price_daily: String(line.price_daily),
     is_active: line.is_active, stations,
     trips: (line.line_trips ?? []).filter((t) => t.is_active)
@@ -77,7 +83,7 @@ const draftFromLine = (line: LineRow): LineDraft => {
 };
 
 const emptyDraft = (companyId: string): LineDraft => ({
-  company_id: companyId, name: '', origin_name: '', destination_university_id: '',
+  company_id: companyId, name: '', origin_name: '', destination_university_id: '', university_ids: [],
   price_termly: '3500', price_yearly: '6500', price_daily: '50', is_active: true,
   stations: [{ key: newKey(), name: '' }],
   trips: [emptyTrip('departure', '07:00'), emptyTrip('return', '14:00')],
@@ -105,7 +111,7 @@ export const LinesPage: React.FC = () => {
         .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
           is_active, companies(name), stations(id, name, order_index, is_active),
           line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
-            line_trip_stops(station_id, stop_time))`)
+            line_trip_stops(station_id, stop_time)), line_universities(university_id)`)
         .order('name');
       if (error) throw error;
       setLines((lineRows || []) as unknown as LineRow[]);
@@ -222,6 +228,14 @@ export const LinesPage: React.FC = () => {
                       ))}
                       <span className="text-slate-300">←</span>
                       <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 font-bold text-indigo-700"><GraduationCap className="h-3 w-3" />{uniName(line.destination_university_id) || 'الوجهة غير محددة'}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="text-slate-400">الجامعات:</span>
+                      {(line.line_universities ?? []).length === 0
+                        ? <span className="rounded-lg bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">غير محددة — عدّل الخط واختر الجامعات</span>
+                        : (line.line_universities ?? []).map((u) => (
+                          <span key={u.university_id} className="rounded-lg bg-indigo-50/70 px-2 py-0.5 font-semibold text-indigo-700">{uniName(u.university_id)}</span>
+                        ))}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{dep.length} رحلة ذهاب</span>
@@ -342,7 +356,7 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
   const patchTrip = (key: string, p: Partial<TripDraft>) =>
     setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
   const routeFor = (direction: Direction) => (direction === 'departure' ? d.stations : [...d.stations].reverse());
-  const destName = universities.find((u) => u.id === d.destination_university_id)?.name || 'الجامعة (الوجهة)';
+  const destName = universities.find((u) => u.id === (d.destination_university_id || d.university_ids[0]))?.name || 'الجامعة (الوجهة)';
 
   // Stations
   const moveStation = (i: number, delta: number) => setD((cur) => {
@@ -374,6 +388,7 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
 
   const save = async () => {
     setError('');
+    if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
     const stations = d.stations.map((s) => ({ ...s, name: s.name.trim() }));
     const indexOf = new Map(stations.map((s, i) => [s.key, i]));
     const payload = {
@@ -381,7 +396,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
       company_id: d.company_id,
       name: d.name.trim(),
       origin_name: d.origin_name.trim(),
-      destination_university_id: d.destination_university_id || null,
+      destination_university_id: d.destination_university_id || d.university_ids[0] || null,
+      university_ids: d.university_ids,
       price_termly: Number(d.price_termly), price_yearly: Number(d.price_yearly), price_daily: Number(d.price_daily),
       is_active: d.is_active,
       stations: stations.map((s) => ({ id: s.id ?? null, name: s.name })),
@@ -428,12 +444,34 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
               <label className="text-xs font-semibold text-slate-500">نقطة البداية
                 <input value={d.origin_name} onChange={(e) => patch({ origin_name: e.target.value })} placeholder="مثال: منية النصر" className={`mt-1 ${input}`} />
               </label>
-              <label className="text-xs font-semibold text-slate-500">الوجهة (الجامعة)
+              <label className="text-xs font-semibold text-slate-500">الوجهة (نهاية المسار)
                 <select value={d.destination_university_id} onChange={(e) => patch({ destination_university_id: e.target.value })} className={`mt-1 ${input}`}>
-                  <option value="">اختر الجامعة</option>
-                  {universities.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  <option value="">أول جامعة مختارة</option>
+                  {universities.filter((u) => d.university_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </label>
+              <fieldset className="sm:col-span-2 lg:col-span-4">
+                <legend className="text-xs font-semibold text-slate-500">الجامعات التي يخدمها الخط ({d.university_ids.length} مختارة)</legend>
+                <div className="mt-1 flex flex-wrap gap-2 rounded-xl border border-slate-200 p-2">
+                  {universities.map((u) => {
+                    const on = d.university_ids.includes(u.id);
+                    return (
+                      <label key={u.id} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${on ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'}`}>
+                        <input type="checkbox" checked={on} onChange={() => setD((cur) => {
+                          const ids = on ? cur.university_ids.filter((x) => x !== u.id) : [...cur.university_ids, u.id];
+                          return {
+                            ...cur, university_ids: ids,
+                            destination_university_id: ids.includes(cur.destination_university_id) ? cur.destination_university_id : '',
+                            // A trip can only target a university the line serves.
+                            trips: cur.trips.map((t) => (t.university_id && !ids.includes(t.university_id) ? { ...t, university_id: '' } : t)),
+                          };
+                        })} />
+                        {u.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
               <label className="text-xs font-semibold text-slate-500">سعر الترم (ج.م)
                 <input type="number" min={0} value={d.price_termly} onChange={(e) => patch({ price_termly: e.target.value })} className={`mt-1 ${input}`} />
               </label>
@@ -505,8 +543,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">الجامعة
                       <select value={trip.university_id} onChange={(e) => patchTrip(trip.key, { university_id: e.target.value })} className={`mt-1 ${input}`}>
-                        <option value="">كل الجامعات</option>
-                        {universities.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        <option value="">كل جامعات الخط</option>
+                        {universities.filter((u) => d.university_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     </label>
                   </div>

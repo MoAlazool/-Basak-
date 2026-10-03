@@ -4,6 +4,7 @@ class SubscriptionModel {
   final String id;
   final String studentId;
   final String lineId;
+  final String? companyId;
   final String stationId;
   final String type; // termly | yearly | daily
   final String
@@ -38,6 +39,7 @@ class SubscriptionModel {
     required this.id,
     required this.studentId,
     required this.lineId,
+    this.companyId,
     required this.stationId,
     required this.type,
     required this.status,
@@ -97,6 +99,7 @@ class SubscriptionModel {
       id: json['id'] as String,
       studentId: json['student_id'] as String,
       lineId: json['line_id'] as String,
+      companyId: json['company_id'] as String?,
       stationId: json['station_id'] as String,
       type: json['type'] as String,
       status: json['status'] as String,

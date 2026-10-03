@@ -4,6 +4,7 @@ import '../../../../core/constants/supabase_config.dart';
 import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../models/subscription_model.dart';
+import '../models/payment_method_model.dart';
 
 class SubscriptionRepository {
   final SupabaseClient _client = SupabaseService.client;
@@ -107,10 +108,26 @@ class SubscriptionRepository {
   }
 
   /// Upload receipt photo to Supabase Storage and insert receipt record
+  /// Active payment methods of the subscription's company (managed by the
+  /// company in the dashboard; never hardcoded in the app).
+  Future<List<PaymentMethodModel>> getPaymentMethods(String companyId) async {
+    final rows = await _client
+        .from('company_payment_methods')
+        .select()
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('created_at');
+    return (rows as List<dynamic>)
+        .map((e) => PaymentMethodModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<ReceiptModel> uploadReceipt({
     required String subscriptionId,
     required Uint8List fileBytes,
     required String fileExtension,
+    String? paymentMethodId,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('المستخدم غير مسجل.');
@@ -144,6 +161,7 @@ class SubscriptionRepository {
           .insert({
             'subscription_id': subscriptionId,
             'image_url': storagePath,
+            if (paymentMethodId != null) 'payment_method_id': paymentMethodId,
             'status': 'pending',
           })
           .select()

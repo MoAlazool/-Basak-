@@ -73,12 +73,17 @@ export const OverviewPage: React.FC = () => {
       // Revenue = every paid subscription (also expired and paid-in-advance ones);
       // subscribers = subscriptions valid today, so an upcoming paid semester is not counted twice.
       const today = cairoDateKey(new Date());
-      const [paidSubs, archivedRevenue] = await Promise.all([
-        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status,start_date,end_date')
+      // Revenue counts from the last dashboard reset (Reports page); nothing is deleted.
+      const { data: baseline } = await supabase.rpc('report_baseline', { p_scope: 'financial' });
+      const [allPaidSubs, allArchived] = await Promise.all([
+        loadAll(async (from, to) => await supabase.from('subscriptions').select('line_id,student_id,price,status,start_date,end_date,paid_at')
           .not('paid_at', 'is', null).range(from, to)),
-        loadAll(async (from, to) => await supabase.from('deleted_student_revenue').select('amount').range(from, to)),
+        loadAll(async (from, to) => await supabase.from('deleted_student_revenue').select('amount,archived_at').range(from, to)),
       ]);
-      const activeSubs = paidSubs.filter((sub: any) => sub.status === 'active'
+      const sinceReset = (at?: string | null) => !baseline || (!!at && at > (baseline as string));
+      const paidSubs = allPaidSubs.filter((sub: any) => sinceReset(sub.paid_at));
+      const archivedRevenue = allArchived.filter((row: any) => sinceReset(row.archived_at));
+      const activeSubs = allPaidSubs.filter((sub: any) => sub.status === 'active'
         && (!sub.start_date || sub.start_date <= today) && (!sub.end_date || sub.end_date >= today));
       const totalRevenue =
         paidSubs.reduce((sum, item: any) => sum + Number(item.price || 0), 0) +

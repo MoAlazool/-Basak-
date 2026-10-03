@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope } from '../lib/adminScope';
-import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, Building2 } from 'lucide-react';
+import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, Building2, KeyRound } from 'lucide-react';
+import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
 
 const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) =>
@@ -121,6 +122,7 @@ export const StudentsPage: React.FC = () => {
   const [subscriptionType, setSubscriptionType] = useState<'termly' | 'yearly' | 'daily'>('termly');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resetTarget, setResetTarget] = useState<Student | null>(null);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [periods, setPeriods] = useState<PurchasablePeriod[]>([]);
   const [periodKey, setPeriodKey] = useState('');
@@ -626,6 +628,15 @@ export const StudentsPage: React.FC = () => {
                         {new Date(s.created_at).toLocaleDateString('ar-EG')}
                       </td>
                       <td className="p-4 text-left">
+                        {admin.role === 'super_admin' && (
+                          <button
+                            onClick={() => setResetTarget(s)}
+                            className="ml-3 text-amber-500 hover:text-amber-600 transition"
+                            title="إعادة تعيين كلمة المرور"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDeleteStudent(s.id, s.full_name)}
                           className="text-rose-400 hover:text-rose-600 transition"
@@ -642,6 +653,15 @@ export const StudentsPage: React.FC = () => {
           </div>
         )}
       </div>
+      {resetTarget && (
+        <ResetStudentPasswordDialog
+          student={{
+            id: resetTarget.id, full_name: resetTarget.full_name, phone: resetTarget.phone, university: resetTarget.university,
+            company: one(one(resetTarget.subscriptions?.[0]?.lines)?.companies)?.name ?? null,
+          }}
+          onClose={() => setResetTarget(null)}
+        />
+      )}
     </div>
   );
 };
