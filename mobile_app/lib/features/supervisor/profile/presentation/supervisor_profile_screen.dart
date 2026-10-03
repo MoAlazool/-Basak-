@@ -45,37 +45,46 @@ class SupervisorProfileScreen extends ConsumerWidget {
                 _assignmentCard(data),
                 if (data.lines.isNotEmpty) ...[
                   BasakSectionTitle('المحطات المسندة',
-                      trailing: BasakPill('${data.totals.stations} محطة', icon: LucideIcons.mapPin)),
+                      trailing: BasakPill('${data.totals.stations} محطة',
+                          icon: LucideIcons.mapPin)),
                   for (final line in data.lines) ...[
                     _lineStations(line),
                     const SizedBox(height: 10),
                   ],
                 ],
                 const BasakSectionTitle('تفاصيل الحساب'),
-                _accountCard(data.profile, authUser?.email, authUser?.lastSignInAt),
+                _accountCard(
+                    data.profile, authUser?.email, authUser?.lastSignInAt),
               ],
             ),
           ),
           const BasakSectionTitle('الإعدادات والأمان'),
           Container(
             decoration: BasakUi.card(),
-            child: Column(children: [
-              ListTile(
-                leading: const Icon(LucideIcons.lock, color: BasakUi.muted),
-                title: Text('تغيير كلمة المرور أو البيانات',
-                    style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink)),
-                subtitle: Text('تتم عن طريق إدارة شركتك',
-                    style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(LucideIcons.logOut, color: AppColors.error),
-                title: Text('تسجيل الخروج',
-                    style: AppTextStyles.bodyLarge
-                        .copyWith(color: AppColors.error, fontWeight: FontWeight.w700)),
-                onTap: () => _confirmSignOut(context, ref),
-              ),
-            ]),
+            clipBehavior: Clip.antiAlias,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(children: [
+                ListTile(
+                  leading: const Icon(LucideIcons.lock, color: BasakUi.muted),
+                  title: Text('تغيير كلمة المرور أو البيانات',
+                      style:
+                          AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink)),
+                  subtitle: Text('تتم عن طريق إدارة شركتك',
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: BasakUi.muted)),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading:
+                      const Icon(LucideIcons.logOut, color: AppColors.error),
+                  title: Text('تسجيل الخروج',
+                      style: AppTextStyles.bodyLarge.copyWith(
+                          color: AppColors.error, fontWeight: FontWeight.w700)),
+                  onTap: () => _confirmSignOut(context, ref),
+                ),
+              ]),
+            ),
           ),
         ],
       ),
@@ -85,14 +94,19 @@ class SupervisorProfileScreen extends ConsumerWidget {
   void _confirmSignOut(BuildContext context, WidgetRef ref) => showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('تسجيل الخروج'),
-          content: const Text('هل تريد تسجيل الخروج من حساب المشرف على هذا الجهاز؟'),
+          content:
+              const Text('هل تريد تسجيل الخروج من حساب المشرف على هذا الجهاز؟'),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إلغاء')),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.error, foregroundColor: Colors.white),
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white),
               onPressed: () {
                 Navigator.of(ctx).pop();
                 ref.read(authStateProvider.notifier).signOut();
@@ -110,11 +124,15 @@ class SupervisorProfileScreen extends ConsumerWidget {
           Container(
             width: 76,
             height: 76,
-            decoration: const BoxDecoration(gradient: BasakUi.heroGradient, shape: BoxShape.circle),
+            decoration: const BoxDecoration(
+                gradient: BasakUi.heroGradient, shape: BoxShape.circle),
             alignment: Alignment.center,
             child: Text(
-              profile.fullName.trim().isEmpty ? 'م' : profile.fullName.trim().characters.first,
-              style: AppTextStyles.displayMedium.copyWith(color: Colors.white, fontSize: 30),
+              profile.fullName.trim().isEmpty
+                  ? 'م'
+                  : profile.fullName.trim().characters.first,
+              style: AppTextStyles.displayMedium
+                  .copyWith(color: Colors.white, fontSize: 30),
             ),
           ),
           const SizedBox(height: 12),
@@ -130,9 +148,11 @@ class SupervisorProfileScreen extends ConsumerWidget {
             const BasakPill('مشرف حافلة', icon: LucideIcons.userCheck),
             profile.isActive
                 ? const BasakPill('الحساب نشط',
-                    background: Color(0xFFE7F8F0), foreground: Color(0xFF07865A))
+                    background: Color(0xFFE7F8F0),
+                    foreground: Color(0xFF07865A))
                 : const BasakPill('الحساب موقوف',
-                    background: AppColors.errorLight, foreground: AppColors.error),
+                    background: AppColors.errorLight,
+                    foreground: AppColors.error),
           ]),
         ]),
       );
@@ -148,12 +168,16 @@ class SupervisorProfileScreen extends ConsumerWidget {
           BasakInfoRow(
             icon: LucideIcons.bus,
             label: data.lines.length > 1 ? 'الخطوط' : 'الخط',
-            value: data.lines.isEmpty ? 'لا يوجد خط مسند' : data.lines.map((l) => l.name).join('، '),
+            value: data.lines.isEmpty
+                ? 'لا يوجد خط مسند'
+                : data.lines.map((l) => l.name).join('، '),
           ),
           BasakInfoRow(
             icon: LucideIcons.listChecks,
             label: 'نوع التكليف',
-            value: data.profile.isDirectlyAssigned ? '${data.lines.length} خط مسند من الشركة' : 'لا يوجد خط مسند',
+            value: data.profile.isDirectlyAssigned
+                ? '${data.lines.length} خط مسند من الشركة'
+                : 'لا يوجد خط مسند',
           ),
           BasakInfoRow(
               icon: LucideIcons.users,
@@ -171,11 +195,13 @@ class SupervisorProfileScreen extends ConsumerWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(line.name,
-                  style: AppTextStyles.titleMedium.copyWith(color: BasakUi.ink)),
+                  style:
+                      AppTextStyles.titleMedium.copyWith(color: BasakUi.ink)),
             ),
             if (!line.isActive)
               const BasakPill('متوقف',
-                  background: AppColors.errorLight, foreground: AppColors.error),
+                  background: AppColors.errorLight,
+                  foreground: AppColors.error),
           ]),
           const SizedBox(height: 10),
           if (line.stations.isEmpty)
@@ -185,13 +211,15 @@ class SupervisorProfileScreen extends ConsumerWidget {
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final station in line.stations)
                 BasakPill('${station.orderIndex}. ${station.name}',
-                    background: const Color(0xFFF1F7FA), foreground: BasakUi.ink),
+                    background: const Color(0xFFF1F7FA),
+                    foreground: BasakUi.ink),
             ]),
           if (line.schedules.isNotEmpty) ...[
             const SizedBox(height: 10),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final trip in line.schedules)
-                BasakPill('${trip.university} ${BasakUi.time12(trip.departureTime)}',
+                BasakPill(
+                    '${trip.university} ${BasakUi.time12(trip.departureTime)}',
                     background: const Color(0xFFEEF0FF),
                     foreground: const Color(0xFF4F46E5),
                     icon: LucideIcons.graduationCap),
@@ -200,20 +228,24 @@ class SupervisorProfileScreen extends ConsumerWidget {
         ]),
       );
 
-  Widget _accountCard(SupervisorProfile profile, String? loginEmail, String? lastSignIn) {
+  Widget _accountCard(
+      SupervisorProfile profile, String? loginEmail, String? lastSignIn) {
     final since = profile.createdAt;
     final last = DateTime.tryParse(lastSignIn ?? '')?.toLocal();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BasakUi.card(),
       child: Column(children: [
-        const BasakInfoRow(icon: LucideIcons.badgeCheck, label: 'نوع الحساب', value: 'مشرف'),
-        BasakInfoRow(icon: LucideIcons.phone, label: 'رقم الدخول', value: profile.phone),
+        const BasakInfoRow(
+            icon: LucideIcons.badgeCheck, label: 'نوع الحساب', value: 'مشرف'),
+        BasakInfoRow(
+            icon: LucideIcons.phone, label: 'رقم الدخول', value: profile.phone),
         if (since != null)
           BasakInfoRow(
               icon: LucideIcons.calendarPlus,
               label: 'تاريخ الإنشاء',
-              value: '${since.day} ${BasakUi.arabicMonths[since.month - 1]} ${since.year}'),
+              value:
+                  '${since.day} ${BasakUi.arabicMonths[since.month - 1]} ${since.year}'),
         if (last != null)
           BasakInfoRow(
               icon: LucideIcons.history,
@@ -223,7 +255,8 @@ class SupervisorProfileScreen extends ConsumerWidget {
           icon: LucideIcons.building,
           label: 'حالة الشركة',
           value: profile.companyActive ? 'مفعّلة' : 'غير مفعّلة',
-          valueColor: profile.companyActive ? const Color(0xFF07865A) : AppColors.error,
+          valueColor:
+              profile.companyActive ? const Color(0xFF07865A) : AppColors.error,
         ),
       ]),
     );

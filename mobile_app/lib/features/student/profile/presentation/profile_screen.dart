@@ -205,35 +205,39 @@ class ProfileScreen extends ConsumerWidget {
               GlassContainer(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 borderRadius: 20,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(LucideIcons.logOut,
-                          color: AppColors.textSecondary),
-                      title:
-                          Text('تسجيل الخروج', style: AppTextStyles.bodyLarge),
-                      onTap: () =>
-                          ref.read(authStateProvider.notifier).signOut(),
-                    ),
-                    if (authState.isStudent) const Divider(height: 1),
-                    if (authState.isStudent)
+                // ListTile ink needs a Material above the glass background.
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
+                    children: [
                       ListTile(
-                        leading: const Icon(LucideIcons.trash2,
-                            color: AppColors.error),
-                        title: Text(
-                          'حذف الحساب وإعادة التسجيل',
-                          style: AppTextStyles.bodyLarge.copyWith(
-                              color: AppColors.error,
-                              fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          'لحذف كافة البيانات والاشتراكات والبدء من جديد',
-                          style: AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.error.withOpacity(0.8)),
-                        ),
-                        onTap: () => _showDeleteAccountDialog(context, ref),
+                        leading: const Icon(LucideIcons.logOut,
+                            color: AppColors.textSecondary),
+                        title: Text('تسجيل الخروج',
+                            style: AppTextStyles.bodyLarge),
+                        onTap: () =>
+                            ref.read(authStateProvider.notifier).signOut(),
                       ),
-                  ],
+                      if (authState.isStudent) const Divider(height: 1),
+                      if (authState.isStudent)
+                        ListTile(
+                          leading: const Icon(LucideIcons.trash2,
+                              color: AppColors.error),
+                          title: Text(
+                            'حذف الحساب وإعادة التسجيل',
+                            style: AppTextStyles.bodyLarge.copyWith(
+                                color: AppColors.error,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            'لحذف كافة البيانات والاشتراكات والبدء من جديد',
+                            style: AppTextStyles.labelSmall.copyWith(
+                                color: AppColors.error.withOpacity(0.8)),
+                          ),
+                          onTap: () => _showDeleteAccountDialog(context, ref),
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
