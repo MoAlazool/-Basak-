@@ -6,6 +6,8 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/models/user_role.dart';
 import 'features/auth/presentation/login_register_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/onboarding/onboarding_controller.dart';
+import 'features/onboarding/onboarding_screen.dart';
 import 'features/student/student_main_screen.dart';
 import 'features/supervisor/supervisor_main_screen.dart';
 
@@ -57,8 +59,14 @@ class AuthGate extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authStateProvider);
+    final onboardingDone = ref.watch(onboardingProvider);
 
-    if (authState.isInitialLoading) {
+    // First launch on this device: onboarding comes before any role routing.
+    if (onboardingDone == false) {
+      return OnboardingScreen(isSignedIn: authState.isAuthenticated);
+    }
+
+    if (authState.isInitialLoading || onboardingDone == null) {
       return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(),

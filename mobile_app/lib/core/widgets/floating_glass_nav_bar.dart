@@ -53,21 +53,22 @@ class FloatingGlassNavBar extends StatelessWidget {
       ];
 
   /// Default supervisor navigation tabs configuration
+  /// Supervisor navigation tabs configuration
   static List<NavItem> get supervisorNavItems => const [
         NavItem(
-          icon: LucideIcons.layoutDashboard,
-          activeIcon: LucideIcons.layoutDashboard,
-          label: 'الركاب',
+          icon: LucideIcons.home,
+          activeIcon: LucideIcons.home,
+          label: 'الرئيسية',
         ),
         NavItem(
-          icon: LucideIcons.fileCheck,
-          activeIcon: LucideIcons.fileCheck,
-          label: 'الإيصالات',
-        ),
-        NavItem(
-          icon: LucideIcons.qrCode,
-          activeIcon: LucideIcons.qrCode,
+          icon: LucideIcons.scanLine,
+          activeIcon: LucideIcons.scanLine,
           label: 'مسح QR',
+        ),
+        NavItem(
+          icon: LucideIcons.chartColumn,
+          activeIcon: LucideIcons.chartColumn,
+          label: 'الملخص',
         ),
         NavItem(
           icon: LucideIcons.user,

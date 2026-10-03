@@ -43,6 +43,7 @@ interface Line {
   id: string;
   name: string;
   company_id: string;
+  supervisor_id: string | null;
   price_termly: number;
   price_yearly: number;
   price_daily: number;
@@ -172,6 +173,7 @@ export const LinesPage: React.FC = () => {
 
   // Universities served by the new line, each with its own trip time
   const [universities, setUniversities] = useState<{ id: string; name: string }[]>([]);
+  const [supervisors, setSupervisors] = useState<{ id: string; full_name: string; company_id: string; is_active: boolean }[]>([]);
   const [newLineSchedules, setNewLineSchedules] = useState<ScheduleDraft[]>([]);
   const [scheduleForms, setScheduleForms] = useState<Record<string, ScheduleDraft>>({});
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
@@ -199,6 +201,11 @@ export const LinesPage: React.FC = () => {
         .from('universities').select('id, name').eq('is_active', true).order('name');
       if (uError) throw uError;
       setUniversities(uniData || []);
+
+      const { data: supData, error: supError } = await supabase
+        .from('supervisors').select('id, full_name, company_id, is_active').order('full_name');
+      if (supError) throw supError;
+      setSupervisors(supData || []);
 
       if (admin.role === 'company_admin' && admin.company_id) {
         const ownCompany = [{ id: admin.company_id, name: admin.companyName || '' }];
@@ -295,6 +302,15 @@ export const LinesPage: React.FC = () => {
     if (!next && !confirm('تعطيل هذه المحطة للطلبات الجديدة؟ ستبقى بيانات الاشتراكات السابقة محفوظة.')) return;
     const { error } = await supabase.from('stations').update({ is_active: next }).eq('id', station.id).select('id').single();
     if (error) alert('فشل تغيير حالة المحطة: ' + error.message);
+    else fetchData();
+  };
+
+  // Assigning a supervisor narrows their app to the assigned line(s); with no
+  // assignment a supervisor covers every line of their company.
+  const handleAssignSupervisor = async (line: Line, supervisorId: string) => {
+    const { error } = await supabase.from('lines')
+      .update({ supervisor_id: supervisorId || null }).eq('id', line.id).select('id').single();
+    if (error) alert('فشل تعيين المشرف: ' + error.message);
     else fetchData();
   };
 
@@ -501,6 +517,20 @@ export const LinesPage: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-bold text-slate-800">{line.name}</h3>
                     <p className="text-xs text-slate-500">الشركة: {line.companies?.name || 'غير محدد'}</p>
+                    <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+                      المشرف:
+                      <select
+                        aria-label={`مشرف خط ${line.name}`}
+                        value={line.supervisor_id ?? ''}
+                        onChange={(e) => void handleAssignSupervisor(line, e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                      >
+                        <option value="">كل مشرفي الشركة</option>
+                        {supervisors.filter((s) => s.company_id === line.company_id && (s.is_active || s.id === line.supervisor_id)).map((s) => (
+                          <option key={s.id} value={s.id}>{s.full_name}{s.is_active ? '' : ' (موقوف)'}</option>
+                        ))}
+                      </select>
+                    </label>
                     {activeSchedules(line).length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {activeSchedules(line).slice().sort((a, b) => a.departure_time.localeCompare(b.departure_time)).map((schedule) => (

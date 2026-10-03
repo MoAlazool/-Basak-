@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../core/widgets/floating_glass_nav_bar.dart';
-import 'receipts/presentation/supervisor_receipts_screen.dart';
-import 'rider_counts/presentation/rider_counts_screen.dart';
+import 'home/presentation/supervisor_home_screen.dart';
+import 'monthly/presentation/supervisor_monthly_screen.dart';
+import 'profile/presentation/supervisor_profile_screen.dart';
 import 'qr_scanner/presentation/supervisor_qr_scanner_screen.dart';
-import '../student/profile/presentation/profile_screen.dart';
 
 class SupervisorMainScreen extends StatefulWidget {
   const SupervisorMainScreen({super.key});
@@ -17,11 +17,12 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Receipts review and per-trip rider counts open from the Home tab.
     final screens = [
-      const RiderCountsScreen(),
-      const SupervisorReceiptsScreen(),
+      SupervisorHomeScreen(onOpenScanner: () => setState(() => _currentIndex = 1)),
       const SupervisorQrScannerScreen(),
-      const ProfileScreen(),
+      const SupervisorMonthlyScreen(),
+      const SupervisorProfileScreen(),
     ];
 
     return Scaffold(

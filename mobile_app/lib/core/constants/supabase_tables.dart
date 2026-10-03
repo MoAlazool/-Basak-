@@ -17,4 +17,7 @@ class SupabaseRpcs {
   static const String getLineRiderCounts = 'get_line_rider_counts_with_returns';
   static const String lookupStudentByQr = 'lookup_student_by_qr';
   static const String getStudentLineOptions = 'get_student_line_options';
+  static const String getSupervisorDashboard = 'get_supervisor_dashboard';
+  static const String supervisorCheckInStudent = 'supervisor_check_in_student';
+  static const String getSupervisorMonthlySummary = 'get_supervisor_monthly_summary';
 }

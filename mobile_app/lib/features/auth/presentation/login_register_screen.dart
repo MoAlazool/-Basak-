@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../onboarding/onboarding_controller.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
 
@@ -11,7 +12,8 @@ class LoginRegisterScreen extends StatefulWidget {
 }
 
 class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
-  bool _showSignup = false;
+  // Onboarding's "create account" button opens registration directly.
+  bool _showSignup = authEntryOpensSignup;
 
   @override
   Widget build(BuildContext context) => AnimatedSwitcher(
