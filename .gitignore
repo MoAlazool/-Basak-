@@ -41,9 +41,18 @@ dist/
 **/dist/
 .eslintcache
 
-# Sensitive environment files
+# Sensitive / local environment files (admin_web/.env.production is the
+# committed, browser-safe build config)
+.env
+**/.env
 .env.local
 .env.*.local
+
+# Build outputs and local artifacts that never belong in git
+*.apk
+*.aab
+*.bundle
+.vercel/
 
 # Supabase CLI local state
 supabase/.temp/

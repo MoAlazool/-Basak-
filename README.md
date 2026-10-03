@@ -31,9 +31,10 @@
 │   │   ├── components/   # Sidebar, Topbar, StatsRow, WeeklyChart, TopLines, ReceiptsTable
 │   │   └── pages/        # Overview, Companies, Lines, Supervisors, Reports
 │   └── package.json
-└── supabase/             # ملفات الـ SQL Migrations وسياسات الـ RLS والـ Storage
-    ├── all_migrations_combined.sql  # ملف الـ SQL الموحد للتشغيل بنقرة واحدة
-    └── functions/daily-reset/       # Supabase Edge Function لإعادة التعيين 1:00 ظهراً
+└── supabase/             # قاعدة البيانات والخادم
+    ├── migrations/       # كل تغييرات قاعدة البيانات بالترتيب (المصدر الوحيد للـ SQL)
+    ├── functions/        # Edge Functions (إنشاء/حذف الطلاب والمشرفين ومديري الشركات...)
+    └── tests/            # اختبارات الصلاحيات والتدفق الكامل
 ```
 
 ---
@@ -41,7 +42,11 @@
 ## تشغيل المشروع محلياً
 
 ### 1. إعداد قاعدة البيانات (Supabase)
-انسخ محتويات ملف `supabase/all_migrations_combined.sql` والصقها داخل محرر الـ SQL في لوحة تحكم Supabase واضغط على **Run**.
+طبّق ملفات `supabase/migrations/` بالترتيب الزمني (حسب اسم الملف) على مشروع Supabase، ثم انشر الـ Edge Functions:
+```powershell
+npx.cmd supabase@latest login
+powershell -File supabase/deploy-functions.ps1
+```
 
 ### 2. تشغيل لوحة الأدمن (Admin Web)
 ```bash
