@@ -19,6 +19,27 @@ final subscriptionReceiptsProvider =
     FutureProvider.family<List<ReceiptModel>, String>((ref, id) async {
   return ref.watch(subscriptionRepoProvider).getReceiptsHistory(id);
 });
+final allSubscriptionsProvider =
+    FutureProvider<List<SubscriptionModel>>((ref) async {
+  return ref.watch(subscriptionRepoProvider).getSubscriptions();
+});
+final purchasablePeriodsProvider =
+    FutureProvider.family<List<PurchasablePeriod>, String>((ref, lineId) async {
+  return ref.watch(subscriptionRepoProvider).getPurchasablePeriods(lineId);
+});
+
+/// A period overlaps an open subscription (the database refuses those).
+bool _overlaps(PurchasablePeriod p, SubscriptionModel s) {
+  final start = s.startDate, end = s.endDate;
+  if (start == null || end == null) return true;
+  return !(p.endDate.compareTo(start) < 0 || p.startDate.compareTo(end) > 0);
+}
+
+String _phaseLabel(SubscriptionModel sub) => sub.isExpired
+    ? 'منتهي'
+    : sub.isUpcoming
+        ? 'الفترة القادمة'
+        : 'الفترة الحالية';
 
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
@@ -38,6 +59,17 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isSubmitting = false;
   bool _isUploadingReceipt = false;
   XFile? _receiptPreview;
+
+  /// Showing the purchase flow while the student already has subscriptions
+  /// (e.g. paying the next semester in advance).
+  bool _buying = false;
+  PurchasablePeriod? _selectedPeriod;
+  String? _focusedSubId;
+
+  void _refreshSubscriptions() {
+    ref.invalidate(currentSubscriptionProvider);
+    ref.invalidate(allSubscriptionsProvider);
+  }
 
   List<String> _departureChoices() => _selectedLine?.hasUniversitySchedule == true
       ? [_selectedLine!.scheduleDepartureTime!]
@@ -60,6 +92,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Future<void> _onLineSelected(LineModel line) async {
     setState(() {
       _selectedLine = line;
+      _selectedPeriod = null;
       _selectedStation = null;
       _selectedDepartureTime = null;
       _selectedReturnTime = null;
@@ -98,6 +131,12 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       );
       return;
     }
+    if (_selectedType != 'daily' && _selectedPeriod == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر فترة الاشتراك (الفصل الدراسي).')),
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
@@ -108,7 +147,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             : _selectedLine!.priceDaily;
 
     try {
-      await ref.read(subscriptionRepoProvider).createSubscription(
+      final created = await ref.read(subscriptionRepoProvider).createSubscription(
             lineId: _selectedLine!.id,
             stationId: _selectedStation!.id,
             departureTime: _selectedDepartureTime!,
@@ -116,10 +155,15 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             type: _selectedType,
             price: price,
             scheduleId: _selectedLine!.scheduleId,
+            period: _selectedType == 'daily' ? null : _selectedPeriod,
           );
-      ref.invalidate(currentSubscriptionProvider);
+      _refreshSubscriptions();
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        setState(() {
+          _isSubmitting = false;
+          _buying = false;
+          _focusedSubId = created.id;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('تم إنشاء طلب الاشتراك بنجاح!'),
@@ -178,7 +222,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             fileBytes: bytes,
             fileExtension: ext,
           );
-      ref.invalidate(currentSubscriptionProvider);
+      _refreshSubscriptions();
       ref.invalidate(subscriptionReceiptsProvider(subscriptionId));
       if (mounted) {
         setState(() {
@@ -188,7 +232,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content:
-                Text('تم رفع صورة الإيصال بنجاح وهو الآن قيد مراجعة المشرف.'),
+                Text('تم رفع صورة الإيصال بنجاح وهو الآن قيد مراجعة إدارة الشركة.'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -206,16 +250,24 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final subAsync = ref.watch(currentSubscriptionProvider);
+    final subsAsync = ref.watch(allSubscriptionsProvider);
     final linesAsync = ref.watch(allLinesProvider);
 
     return GlassScaffold(
       body: ColoredBox(
         color: const Color(0xFFF5F8FD),
-        child: subAsync.when(
-          data: (activeSub) {
-            if (activeSub != null) return _buildActiveSubDetailView(activeSub);
-            return _buildSubscriptionSelectionView(linesAsync);
+        child: subsAsync.when(
+          data: (subs) {
+            final open = subs.where((s) => !s.isExpired).toList()
+              ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
+            final history = subs.where((s) => s.isExpired).toList();
+            if (_buying || open.isEmpty) {
+              return _buildSubscriptionSelectionView(linesAsync, open: open);
+            }
+            final focused = open.firstWhere((s) => s.id == _focusedSubId,
+                orElse: () => open.first);
+            return _buildActiveSubDetailView(focused,
+                open: open, history: history);
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, _) => Center(child: Text('تعذر تحميل الاشتراك: $err')),
@@ -224,7 +276,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  Widget _buildActiveSubDetailView(SubscriptionModel sub) {
+  Widget _buildActiveSubDetailView(SubscriptionModel sub,
+      {required List<SubscriptionModel> open,
+      required List<SubscriptionModel> history}) {
     final receiptsAsync = ref.watch(subscriptionReceiptsProvider(sub.id));
     final active = sub.isActive;
     final pendingReview = sub.isPendingReview;
@@ -237,10 +291,23 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           const SizedBox(height: 18),
           Text(active ? 'اشتراكك الجامعي' : 'إتمام الاشتراك',
               style: AppTextStyles.displayMedium),
+          if (open.length > 1) ...[
+            const SizedBox(height: 10),
+            _periodTabs(open, sub),
+          ],
           const SizedBox(height: 12),
           _subscriptionSummary(sub, active),
           const SizedBox(height: 14),
-          if (active)
+          if (active && sub.isUpcoming)
+            _statusMessage(
+              icon: LucideIcons.calendarClock,
+              title: 'تم دفع الفترة القادمة مقدماً',
+              message:
+                  'يبدأ اشتراكك في ${sub.startDate ?? '—'} وينتهي في ${sub.endDate ?? '—'}.',
+              color: const Color(0xFF3F51B5),
+              background: const Color(0xFFEEF0FF),
+            )
+          else if (active)
             _statusMessage(
               icon: LucideIcons.circleCheck,
               title: 'تم اعتماد الاشتراك وتفعيله',
@@ -286,10 +353,93 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               },
             ),
           ],
+          _payNextCard(sub, open),
+          if (history.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text('اشتراكات منتهية', style: AppTextStyles.titleMedium),
+            const SizedBox(height: 8),
+            for (final old in history) _historyTile(old),
+          ],
         ],
       ),
     );
   }
+
+  /// Switch between the current and upcoming subscriptions.
+  Widget _periodTabs(List<SubscriptionModel> open, SubscriptionModel focused) =>
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final s in open)
+          ChoiceChip(
+            label: Text('${_phaseLabel(s)} · ${s.periodLabel ?? _typeLabel(s.type)}'),
+            selected: s.id == focused.id,
+            onSelected: (_) => setState(() {
+              _focusedSubId = s.id;
+              _receiptPreview = null;
+            }),
+          ),
+      ]);
+
+  /// "Pay the next semester in advance" when such a period is payable and not
+  /// already covered by an open subscription.
+  Widget _payNextCard(SubscriptionModel sub, List<SubscriptionModel> open) {
+    final periodsAsync = ref.watch(purchasablePeriodsProvider(sub.lineId));
+    final next = (periodsAsync.valueOrNull ?? const <PurchasablePeriod>[])
+        .where((p) => p.isUpcoming && !open.any((s) => _overlaps(p, s)))
+        .toList();
+    if (next.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+          color: const Color(0xFFEEF0FF),
+          borderRadius: BorderRadius.circular(18)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(LucideIcons.calendarPlus, color: Color(0xFF3F51B5)),
+          const SizedBox(width: 9),
+          Expanded(
+              child: Text('ادفع الفترة القادمة مقدماً',
+                  style: AppTextStyles.titleMedium
+                      .copyWith(color: const Color(0xFF3F51B5)))),
+        ]),
+        const SizedBox(height: 6),
+        Text(next.map((p) => '${p.label} (${p.startDate} ← ${p.endDate})').join('\n'),
+            style: AppTextStyles.bodyMedium),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => setState(() {
+              _buying = true;
+              _selectedType = next.first.subscriptionType;
+              _selectedPeriod = null;
+            }),
+            icon: const Icon(LucideIcons.arrowLeft),
+            label: const Text('اشترك في الفترة القادمة'),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _historyTile(SubscriptionModel s) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(14)),
+        child: Row(children: [
+          const Icon(LucideIcons.history, size: 18, color: AppColors.textSecondary),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+                '${s.periodLabel ?? _typeLabel(s.type)} · ${s.lineName ?? ''}',
+                style: AppTextStyles.bodyMedium),
+          ),
+          Text('${s.startDate ?? ''} ← ${s.endDate ?? ''}',
+              style: AppTextStyles.labelSmall
+                  .copyWith(color: AppColors.textSecondary)),
+        ]),
+      );
 
   Widget _progressHeader(int step) => Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
@@ -364,9 +514,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 active)
           ]),
           const SizedBox(height: 8),
-          Text(_typeLabel(sub.type),
+          Text(
+              sub.periodLabel != null
+                  ? '${sub.periodLabel} · ${_phaseLabel(sub)}'
+                  : _typeLabel(sub.type),
               style: AppTextStyles.labelSmall
                   .copyWith(color: AppColors.textSecondary)),
+          if (sub.startDate != null && sub.endDate != null)
+            Text('من ${sub.startDate} إلى ${sub.endDate}',
+                style: AppTextStyles.labelSmall
+                    .copyWith(color: AppColors.textSecondary)),
           const Divider(height: 22),
           _summaryLine(LucideIcons.mapPin, 'محطة الصعود',
               sub.stationName ?? 'غير محددة'),
@@ -577,13 +734,22 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         _ => 'اشتراك فصلي',
       };
 
-  Widget _buildSubscriptionSelectionView(
-      AsyncValue<List<LineModel>> linesAsync) {
+  Widget _buildSubscriptionSelectionView(AsyncValue<List<LineModel>> linesAsync,
+      {required List<SubscriptionModel> open}) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (open.isNotEmpty)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _buying = false),
+                icon: const Icon(LucideIcons.arrowRight, size: 18),
+                label: const Text('العودة إلى اشتراكاتي'),
+              ),
+            ),
           _progressHeader(1),
           const SizedBox(height: 18),
           Text('اشتراكي الجامعي',
@@ -787,17 +953,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 style: AppTextStyles.titleMedium
                     .copyWith(color: const Color(0xFF17384A))),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                _buildTypeCard(
-                    'termly', 'ترم (فصلي)', _selectedLine!.priceTermly),
-                const SizedBox(width: 10),
-                _buildTypeCard('yearly', 'سنوي', _selectedLine!.priceYearly),
-                const SizedBox(width: 10),
-                _buildTypeCard(
-                    'daily', 'يومي (كاش)', _selectedLine!.priceDaily),
-              ],
-            ),
+            _typeAndPeriodPicker(_selectedLine!, open),
 
             const SizedBox(height: 24),
             ElevatedButton(
@@ -866,11 +1022,78 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
+  /// Subscription types and periods come from the database: the annual card
+  /// only appears when the company/global switch enables it, and only periods
+  /// payable now (current or next) that the student does not already hold.
+  Widget _typeAndPeriodPicker(LineModel line, List<SubscriptionModel> open) {
+    final periodsAsync = ref.watch(purchasablePeriodsProvider(line.id));
+    return periodsAsync.when(
+      loading: () => const LinearProgressIndicator(),
+      error: (e, _) => Text('تعذر تحميل فترات الاشتراك: $e'),
+      data: (all) {
+        final periods =
+            all.where((p) => !open.any((s) => _overlaps(p, s))).toList();
+        final annualOffered = periods.any((p) => p.subscriptionType == 'yearly');
+        if (_selectedType == 'yearly' && !annualOffered) {
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => mounted ? setState(() => _selectedType = 'termly') : null);
+        }
+        final forType =
+            periods.where((p) => p.subscriptionType == _selectedType).toList();
+        if (_selectedType != 'daily' &&
+            (_selectedPeriod == null ||
+                !forType.any((p) => p.key == _selectedPeriod!.key)) &&
+            forType.isNotEmpty) {
+          final preferred = _buying
+              ? forType.firstWhere((p) => p.isUpcoming, orElse: () => forType.first)
+              : forType.first;
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => mounted ? setState(() => _selectedPeriod = preferred) : null);
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _buildTypeCard('termly', 'ترم (فصلي)', line.priceTermly),
+            if (annualOffered) ...[
+              const SizedBox(width: 10),
+              _buildTypeCard('yearly', 'سنوي (فصلان)', line.priceYearly),
+            ],
+            if (!_buying) ...[
+              const SizedBox(width: 10),
+              _buildTypeCard('daily', 'يومي (كاش)', line.priceDaily),
+            ],
+          ]),
+          if (_selectedType != 'daily') ...[
+            const SizedBox(height: 16),
+            Text('فترة الاشتراك',
+                style: AppTextStyles.titleMedium
+                    .copyWith(color: const Color(0xFF17384A))),
+            const SizedBox(height: 8),
+            if (forType.isEmpty)
+              const Text('لا توجد فترة متاحة للدفع الآن لهذا النوع.')
+            else
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final p in forType)
+                  ChoiceChip(
+                    label: Text(
+                        '${p.label}${p.isUpcoming ? ' · دفع مقدم' : ''}\n${p.startDate} ← ${p.endDate}'),
+                    selected: _selectedPeriod?.key == p.key,
+                    onSelected: (_) => setState(() => _selectedPeriod = p),
+                  ),
+              ]),
+          ],
+        ]);
+      },
+    );
+  }
+
   Widget _buildTypeCard(String typeKey, String label, double price) {
     final isSelected = _selectedType == typeKey;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedType = typeKey),
+        onTap: () => setState(() {
+          _selectedType = typeKey;
+          _selectedPeriod = null;
+        }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
           decoration: BoxDecoration(

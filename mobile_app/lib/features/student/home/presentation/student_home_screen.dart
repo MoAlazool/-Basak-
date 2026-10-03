@@ -318,7 +318,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   Widget _subscriptionCard(SubscriptionModel sub) {
     final active = sub.isActive;
-    final statusText = active
+    final statusText = active && sub.isUpcoming
+        ? 'مدفوع · يبدأ ${sub.startDate ?? ''}'
+        : active
         ? 'نشط'
         : sub.isPendingReview
             ? 'قيد المراجعة'
@@ -411,10 +413,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                     color: Colors.white70, size: 15),
                 const SizedBox(width: 7),
                 Expanded(
-                    child: Text('صالح حتى ${sub.endDate}',
+                    child: Text(
+                        sub.isUpcoming
+                            ? 'من ${sub.startDate} حتى ${sub.endDate}'
+                            : 'صالح حتى ${sub.endDate}',
                         style: AppTextStyles.labelSmall
                             .copyWith(color: Colors.white70))),
-                Text(_subscriptionType(sub.type),
+                Text(sub.periodLabel ?? _subscriptionType(sub.type),
                     style:
                         AppTextStyles.labelSmall.copyWith(color: Colors.white)),
               ],

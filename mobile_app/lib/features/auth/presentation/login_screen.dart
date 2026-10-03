@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../providers/auth_provider.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, required this.onSignup});
@@ -78,6 +79,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return 'تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مرة أخرى.';
     }
     return 'تعذر تسجيل الدخول الآن. حاول مرة أخرى.';
+  }
+
+  Future<void> _openForgotPassword() async {
+    final phone = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => ForgotPasswordScreen(initialPhone: _phone.text.trim()),
+    ));
+    if (phone != null && mounted) {
+      setState(() {
+        _phone.text = phone;
+        _password.clear();
+        _error = null;
+      });
+    }
   }
 
   @override
@@ -219,6 +233,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         ? 'كلمة المرور مطلوبة'
                                         : null,
                               ),
+                              if (!_supervisor)
+                                Align(
+                                  alignment: AlignmentDirectional.centerEnd,
+                                  child: TextButton(
+                                    onPressed: loading ? null : _openForgotPassword,
+                                    child: const Text('نسيت كلمة المرور؟'),
+                                  ),
+                                ),
                               const SizedBox(height: 5),
                               Material(
                                 color: Colors.transparent,

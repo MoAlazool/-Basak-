@@ -153,7 +153,7 @@ class SupervisorProfileScreen extends ConsumerWidget {
           BasakInfoRow(
             icon: LucideIcons.listChecks,
             label: 'نوع التكليف',
-            value: data.profile.isDirectlyAssigned ? 'خط مسند بالاسم' : 'كل خطوط الشركة',
+            value: data.profile.isDirectlyAssigned ? '${data.lines.length} خط مسند من الشركة' : 'لا يوجد خط مسند',
           ),
           BasakInfoRow(
               icon: LucideIcons.users,

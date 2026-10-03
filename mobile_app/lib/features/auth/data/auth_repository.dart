@@ -255,4 +255,37 @@ class AuthRepository {
   Future<void> signOut() async {
     await _client.auth.signOut();
   }
+
+  /// Forgot password, step 1 (no sign-in): asks the student's bus company to
+  /// verify them. The answer is the same whether or not the number exists.
+  Future<void> requestPasswordReset(String phone) async {
+    final cleanPhone = normalizeEgyptianPhone(phone);
+    if (!RegExp(r'^01[0125][0-9]{8}$').hasMatch(cleanPhone)) {
+      throw Exception('يرجى إدخال رقم هاتف مصري صحيح مكون من 11 رقماً.');
+    }
+    await _client.rpc(SupabaseRpcs.requestStudentPasswordReset,
+        params: {'p_phone': cleanPhone});
+  }
+
+  /// Forgot password, step 2: the one-time code given by the company admin
+  /// plus the new password. The password goes only to Supabase Auth.
+  Future<void> resetPasswordWithCode({
+    required String phone,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      await _client.functions.invoke('student-reset-password', body: {
+        'phone': normalizeEgyptianPhone(phone),
+        'code': code.trim(),
+        'newPassword': newPassword,
+      });
+    } on FunctionException catch (error) {
+      final details = error.details;
+      final message = details is Map && details['error'] is String
+          ? details['error'] as String
+          : 'تعذر تغيير كلمة المرور. حاول مرة أخرى.';
+      throw Exception(message);
+    }
+  }
 }

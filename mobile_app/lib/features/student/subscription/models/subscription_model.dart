@@ -24,6 +24,16 @@ class SubscriptionModel {
   /// University whose trip this subscription rides on (scheduled lines only).
   final String? universityName;
 
+  /// Semester / annual period (configured centrally in academic_terms).
+  final String? periodCode;
+  final int? academicYear;
+
+  /// e.g. "الفصل الدراسي الثاني 2026/2027" (server computed field).
+  final String? periodLabel;
+
+  /// current | upcoming | expired (server computed field, Cairo date).
+  final String? periodPhase;
+
   SubscriptionModel({
     required this.id,
     required this.studentId,
@@ -44,9 +54,16 @@ class SubscriptionModel {
     this.supervisorPhone,
     this.supervisorName,
     this.universityName,
+    this.periodCode,
+    this.academicYear,
+    this.periodLabel,
+    this.periodPhase,
   });
 
   bool get isActive => status == 'active';
+  bool get isExpired => status == 'expired' || periodPhase == 'expired';
+  bool get isUpcoming => !isExpired && periodPhase == 'upcoming';
+  bool get isCurrent => !isExpired && !isUpcoming;
   bool get isPendingReview => status == 'pending_review';
   bool get isRejected => status == 'rejected';
   bool get isDaily => type == 'daily';
@@ -93,8 +110,50 @@ class SubscriptionModel {
       supervisorPhone: supervisor?['phone'] as String?,
       supervisorName: supervisor?['full_name'] as String?,
       universityName: university?['name'] as String?,
+      periodCode: json['period_code'] as String?,
+      academicYear: (json['academic_year'] as num?)?.toInt(),
+      periodLabel: json['period_label'] as String?,
+      periodPhase: json['period_phase'] as String?,
     );
   }
+}
+
+/// A period the student can pay for now (get_purchasable_periods RPC).
+class PurchasablePeriod {
+  final String periodCode;
+  final int academicYear;
+  final String label;
+
+  /// termly | yearly
+  final String subscriptionType;
+  final String startDate;
+  final String endDate;
+
+  /// current | upcoming
+  final String phase;
+
+  PurchasablePeriod({
+    required this.periodCode,
+    required this.academicYear,
+    required this.label,
+    required this.subscriptionType,
+    required this.startDate,
+    required this.endDate,
+    required this.phase,
+  });
+
+  bool get isUpcoming => phase == 'upcoming';
+  String get key => '$periodCode:$academicYear';
+
+  factory PurchasablePeriod.fromJson(Map<String, dynamic> json) => PurchasablePeriod(
+        periodCode: json['period_code'] as String,
+        academicYear: (json['academic_year'] as num).toInt(),
+        label: json['label'] as String? ?? json['name'] as String? ?? '',
+        subscriptionType: json['subscription_type'] as String,
+        startDate: json['start_date'] as String,
+        endDate: json['end_date'] as String,
+        phase: json['phase'] as String? ?? 'current',
+      );
 }
 
 class ReceiptModel {

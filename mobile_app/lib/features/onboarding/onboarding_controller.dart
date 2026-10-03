@@ -8,6 +8,9 @@ class OnboardingController extends StateNotifier<bool?> {
     _load();
   }
 
+  /// Already completed (tests and previews).
+  OnboardingController.completed() : super(true);
+
   static const _storage = FlutterSecureStorage();
   static const _key = 'basak.onboarding.v1.completed';
 
