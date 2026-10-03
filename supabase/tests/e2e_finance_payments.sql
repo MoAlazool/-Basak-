@@ -67,6 +67,14 @@ BEGIN
   END;
   INSERT INTO e2e_results(step, ok, detail) VALUES ('line: trip university must be one of the line''s', v_ok, v_msg);
 
+  BEGIN
+    -- Universities A and C selected, but both departure trips restricted to A.
+    PERFORM public.save_line(jsonb_set(v_line, '{trips,1,university_id}', to_jsonb(c.uni_a)));
+    v_ok := false;
+  EXCEPTION WHEN check_violation THEN v_ok := true; v_msg := SQLERRM;
+  END;
+  INSERT INTO e2e_results(step, ok, detail) VALUES ('line: every selected university needs a departure trip', v_ok, v_msg);
+
   -- ---- payment methods ----
   INSERT INTO public.company_payment_methods(company_id, method_type, display_name, instapay_address, instructions)
   VALUES (c.company_id, 'instapay', 'InstaPay الشركة', 'basak@instapay', 'حوّل ثم ارفع الإيصال')
@@ -121,8 +129,9 @@ BEGIN
   INSERT INTO e2e_results(step, ok, detail) SELECT 'student (university A): sees only A''s trip + open trips',
     count(*) = 2 AND bool_and(university_id IS NULL OR university_id = c.uni_a), count(*)::text
     FROM public.line_trips WHERE line_id = c.line_id;
-  INSERT INTO e2e_results(step, ok, detail) SELECT 'student: sees the company''s active payment method only',
-    count(*) = 1, string_agg(display_name, ', ') FROM public.company_payment_methods WHERE company_id IN (c.company_id, c.other_company);
+  INSERT INTO e2e_results(step, ok, detail) SELECT 'student: sees only active methods of the available company',
+    count(*) >= 1 AND bool_and(company_id = c.company_id AND is_active), string_agg(display_name, ', ')
+    FROM public.company_payment_methods WHERE company_id IN (c.company_id, c.other_company);
   SELECT id INTO v_station FROM public.stations WHERE line_id = c.line_id;
   INSERT INTO public.subscriptions(student_id, line_id, station_id, type, price,
     departure_trip_id, return_trip_id)
@@ -147,8 +156,9 @@ BEGIN
   IF c.stu_b IS NULL THEN RETURN; END IF;
   INSERT INTO e2e_results(step, ok, detail) SELECT 'student (university B, not served): line hidden',
     count(*) = 0, count(*)::text FROM public.line_trips WHERE line_id = c.line_id;
-  INSERT INTO e2e_results(step, ok, detail) SELECT 'student (B): no access to that company''s payment details',
-    NOT EXISTS (SELECT 1 FROM public.company_payment_methods WHERE id = c.method_id), NULL;
+  -- B may legitimately use the main company; another company is never visible.
+  INSERT INTO e2e_results(step, ok, detail) SELECT 'student (B): no access to another company''s payment details',
+    NOT EXISTS (SELECT 1 FROM public.company_payment_methods WHERE id = c.other_method), NULL;
 END $$;
 RESET ROLE;
 

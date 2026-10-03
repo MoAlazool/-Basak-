@@ -577,6 +577,15 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
                 <Bus className="h-4 w-4" /> إضافة رحلة {tab === 'departure' ? 'ذهاب' : 'عودة'}
               </button>
             </div>
+            {(() => {
+              // Universities with no departure trip would never see the line.
+              const uncovered = d.university_ids.filter((id) => !d.trips.some((t) => t.direction === 'departure' && (!t.university_id || t.university_id === id)));
+              return uncovered.length > 0 && (
+                <p role="alert" className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  لا توجد رحلة ذهاب لـ: {uncovered.map((id) => universities.find((u) => u.id === id)?.name).join('، ')} — طلابها لن يروا الخط. اجعل رحلة لـ«كل جامعات الخط» أو أضف رحلة لها.
+                </p>
+              );
+            })()}
             <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
           </section>
         </div>

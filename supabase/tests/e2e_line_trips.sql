@@ -146,8 +146,9 @@ DECLARE c record; v_trip uuid; v_station uuid; v_ok boolean; v_msg text;
 BEGIN
   SELECT * INTO c FROM e2e_ctx;
   IF c.student_other IS NULL THEN RETURN; END IF;
-  INSERT INTO e2e_results(step, ok, detail) SELECT 'student (other uni): Delta-only trip is hidden',
-    count(*) = 2 AND bool_and(university_id IS NULL), count(*)::text FROM public.line_trips WHERE line_id = c.line_id;
+  -- The line serves Delta only (line_universities), so the whole line is hidden.
+  INSERT INTO e2e_results(step, ok, detail) SELECT 'student (other uni): line serving Delta only is hidden',
+    count(*) = 0, count(*)::text FROM public.line_trips WHERE line_id = c.line_id;
   -- The Delta trip id, looked up as postgres via the ctx-free path: try station 2 at 07:20.
   SELECT id INTO v_station FROM public.stations WHERE line_id = c.line_id AND order_index = 2;
   BEGIN

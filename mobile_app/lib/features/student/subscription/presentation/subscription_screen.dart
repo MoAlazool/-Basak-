@@ -18,7 +18,9 @@ import '../models/payment_method_model.dart';
 import '../../home/presentation/student_home_screen.dart';
 
 final linesRepoProvider = Provider((ref) => LinesRepository());
-final studentCatalogProvider = FutureProvider<List<CatalogCompany>>(
+// autoDispose: refetched each time the subscription page opens, so lines the
+// admin adds or links to a university appear without restarting the app.
+final studentCatalogProvider = FutureProvider.autoDispose<List<CatalogCompany>>(
     (ref) => ref.watch(linesRepoProvider).getCatalog());
 
 final paymentMethodsProvider = FutureProvider.autoDispose
@@ -930,9 +932,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
                     decoration: BasakUi.card(),
-                    child: Text('لا توجد حالياً شركات أو خطوط متاحة لجامعتك.',
-                        textAlign: TextAlign.center,
-                        style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                    child: Column(children: [
+                      Text('لا توجد حالياً شركات أو خطوط متاحة لجامعتك.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                      TextButton.icon(
+                        onPressed: () => ref.invalidate(studentCatalogProvider),
+                        icon: const Icon(LucideIcons.refreshCw, size: 16),
+                        label: const Text('تحديث'),
+                      ),
+                    ]),
                   )
                 : _selectedCompany == null
                     ? _companyStep(companies)
