@@ -72,19 +72,26 @@ class SubscriptionModel {
     final line = json['lines'] as Map<String, dynamic>?;
     final station = json['stations'] as Map<String, dynamic>?;
     final supervisor = line?['supervisors'] as Map<String, dynamic>?;
-    // Scheduled lines: the only valid times are those of the student's university.
-    final schedule = json['line_university_schedules'] as Map<String, dynamic>?;
-    final university = schedule?['universities'] as Map<String, dynamic>?;
-    final availableDepartureTimes = schedule != null
-        ? stationTimes(schedule['departure_time'])
-        : stationTimes(station?['departure_times'] ??
-            json['departure_time'] ??
-            station?['departure_time']);
-    final availableReturnTimes = schedule != null
-        ? stationTimes(schedule['return_time'])
-        : stationTimes(station?['return_times'] ??
-            json['return_time'] ??
-            station?['return_time']);
+    // Times the student may ride from their station: stop times of the active
+    // trips that serve their university (RLS filters the trips), plus their own.
+    final trip = json['departure_trip'] as Map<String, dynamic>?;
+    final university = trip?['universities'] as Map<String, dynamic>?;
+    final stops = (station?['line_trip_stops'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((stop) => (stop['line_trips'] as Map<String, dynamic>?)?['is_active'] == true)
+        .toList();
+    List<String> stopTimes(String direction, dynamic own) => stationTimes([
+          ...stops
+              .where((stop) => (stop['line_trips'] as Map<String, dynamic>?)?['direction'] == direction)
+              .map((stop) => stop['stop_time']),
+          if (own != null) own,
+        ]).toSet().toList();
+    final availableDepartureTimes = stops.isNotEmpty
+        ? stopTimes('departure', json['departure_time'])
+        : stationTimes(station?['departure_times'] ?? json['departure_time']);
+    final availableReturnTimes = stops.isNotEmpty
+        ? stopTimes('return', json['return_time'])
+        : stationTimes(station?['return_times'] ?? json['return_time']);
 
     return SubscriptionModel(
       id: json['id'] as String,

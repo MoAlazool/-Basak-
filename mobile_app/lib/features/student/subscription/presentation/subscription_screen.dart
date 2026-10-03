@@ -8,6 +8,9 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../lines/data/lines_repository.dart';
 import '../../lines/models/line_model.dart';
+import '../../lines/models/trip_model.dart';
+import '../../lines/presentation/trip_timetable.dart';
+import '../../../../core/widgets/basak_ui.dart';
 import '../models/subscription_model.dart';
 import '../../home/presentation/student_home_screen.dart';
 
@@ -54,6 +57,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   String? _selectedDepartureTime;
   String? _selectedReturnTime;
   List<StationModel> _stations = [];
+  List<TripModel> _trips = [];
+  TripModel? _departureTrip;
+  TripModel? _returnTrip;
+  bool _showDepartureTrips = true;
   String _selectedType = 'termly'; // termly | yearly | daily
   bool _isLoadingStations = false;
   bool _isSubmitting = false;
@@ -71,23 +78,37 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     ref.invalidate(allSubscriptionsProvider);
   }
 
-  List<String> _departureChoices() => _selectedLine?.hasUniversitySchedule == true
-      ? [_selectedLine!.scheduleDepartureTime!]
-      : _selectedStation?.departureTimes ?? const [];
+  List<TripModel> _tripsFor(bool departure) =>
+      _trips.where((trip) => trip.isDeparture == departure).toList();
 
-  List<String> _returnChoices() => _selectedLine?.hasUniversitySchedule == true
-      ? [_selectedLine!.scheduleReturnTime!]
-      : _selectedStation?.returnTimes ?? const [];
+  /// Return trips that stop at the chosen boarding station.
+  List<TripModel> get _returnOptions => _selectedStation == null
+      ? const []
+      : _tripsFor(false).where((t) => t.stops.containsKey(_selectedStation!.id)).toList();
 
-  String _stationDeparture(StationModel st) =>
-      _selectedLine?.hasUniversitySchedule == true
-          ? _selectedLine!.scheduleDepartureTime!
-          : st.departureTime;
-
-  String _stationReturn(StationModel st) =>
-      _selectedLine?.hasUniversitySchedule == true
-          ? _selectedLine!.scheduleReturnTime!
-          : st.returnTime;
+  void _onTripStop(TripModel trip, StationModel station) {
+    setState(() {
+      if (trip.isDeparture) {
+        _selectedStation = station;
+        _departureTrip = trip;
+        _selectedDepartureTime = trip.timeAt(station.id);
+        // Keep the return trip only if it still serves this station.
+        if (_returnTrip != null && !_returnTrip!.stops.containsKey(station.id)) {
+          _returnTrip = null;
+          _selectedReturnTime = null;
+        }
+        final returns = _returnOptions;
+        if (_returnTrip == null && returns.length == 1) {
+          _returnTrip = returns.first;
+          _selectedReturnTime = returns.first.timeAt(station.id);
+        }
+        if (_returnTrip == null && returns.isNotEmpty) _showDepartureTrips = false;
+      } else {
+        _returnTrip = trip;
+        _selectedReturnTime = trip.timeAt(station.id);
+      }
+    });
+  }
 
   Future<void> _onLineSelected(LineModel line) async {
     setState(() {
@@ -96,15 +117,23 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       _selectedStation = null;
       _selectedDepartureTime = null;
       _selectedReturnTime = null;
+      _departureTrip = null;
+      _returnTrip = null;
+      _trips = [];
+      _showDepartureTrips = true;
       _isLoadingStations = true;
     });
 
     try {
-      final stations =
-          await ref.read(linesRepoProvider).getStationsForLine(line.id);
+      final repo = ref.read(linesRepoProvider);
+      final results = await Future.wait(
+          [repo.getStationsForLine(line.id), repo.getTripsForLine(line.id)]);
+      final stations = results[0] as List<StationModel>;
+      final trips = results[1] as List<TripModel>;
       if (mounted) {
         setState(() {
           _stations = stations;
+          _trips = trips;
           _isLoadingStations = false;
         });
       }
@@ -123,8 +152,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Future<void> _createSubscription() async {
     if (_selectedLine == null ||
         _selectedStation == null ||
+        _departureTrip == null ||
         _selectedDepartureTime == null ||
-        _selectedReturnTime == null) {
+        (_returnOptions.isNotEmpty && _returnTrip == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('اختر الخط والمحطة وموعدي الذهاب والعودة.')),
@@ -151,10 +181,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             lineId: _selectedLine!.id,
             stationId: _selectedStation!.id,
             departureTime: _selectedDepartureTime!,
-            returnTime: _selectedReturnTime!,
+            returnTime: _selectedReturnTime,
             type: _selectedType,
             price: price,
-            scheduleId: _selectedLine!.scheduleId,
+            departureTripId: _departureTrip!.id,
+            returnTripId: _returnTrip?.id,
             period: _selectedType == 'daily' ? null : _selectedPeriod,
           );
       _refreshSubscriptions();
@@ -816,11 +847,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                                   style: AppTextStyles.labelSmall
                                       .copyWith(color: AppColors.textSecondary),
                                 ),
-                                if (line.hasUniversitySchedule)
+                                if (line.originName != null || line.destinationName != null)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 4),
                                     child: Text(
-                                      '${line.universityName ?? 'جامعتك'} ← ذهاب ${line.scheduleDepartureTime} · عودة ${line.scheduleReturnTime}',
+                                      '${line.originName ?? line.name} ← ${line.destinationName ?? 'الجامعة'}',
                                       style: AppTextStyles.labelSmall.copyWith(
                                           color: const Color(0xFF3F51B5),
                                           fontWeight: FontWeight.w700),
@@ -851,100 +882,73 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             error: (err, _) => Text('خطأ: $err'),
           ),
 
-          // 2. Pick Station
+          // 2. Pick the trip and the meeting point (station) inside it
           if (_selectedLine != null) ...[
             const SizedBox(height: 20),
-            Text('محطة الصعود المحددة',
+            Text('اختر رحلتك ونقطة التجمع',
                 style: AppTextStyles.titleMedium
                     .copyWith(color: const Color(0xFF17384A))),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            Text(
+                '${_selectedLine!.originName ?? _selectedLine!.name} ← ${_selectedLine!.destinationName ?? 'الجامعة'} · اضغط على محطتك داخل الرحلة',
+                style: AppTextStyles.labelSmall
+                    .copyWith(color: AppColors.textSecondary)),
+            const SizedBox(height: 10),
             if (_isLoadingStations)
               const Center(child: CircularProgressIndicator())
-            else
-              Column(
-                children: _stations.map((st) {
-                  final isSelected = _selectedStation?.id == st.id;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: GestureDetector(
-                      onTap: () => setState(() {
-                        _selectedStation = st;
-                        // Scheduled lines: the university trip time is fixed.
-                        _selectedDepartureTime =
-                            _selectedLine?.scheduleDepartureTime;
-                        _selectedReturnTime = _selectedLine?.scheduleReturnTime;
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFFEAF4FB)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFF00658D)
-                                  : const Color(0xFFE6EEF3),
-                              width: isSelected ? 1.5 : 1),
-                        ),
-                        child: Row(children: [
-                          Icon(
-                              isSelected
-                                  ? LucideIcons.circleCheck
-                                  : LucideIcons.mapPin,
-                              color: isSelected
-                                  ? const Color(0xFF00658D)
-                                  : AppColors.textSecondary,
-                              size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: Text(st.name,
-                                  style: AppTextStyles.bodyLarge,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis)),
-                          const SizedBox(width: 8),
-                          Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                    'ذهاب ${_stationDeparture(st).isEmpty ? 'غير محدد' : _stationDeparture(st)}',
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                        color: AppColors.textSecondary)),
-                                Text(
-                                    'عودة ${_stationReturn(st).isEmpty ? 'غير محدد' : _stationReturn(st)}',
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                        color: AppColors.textSecondary))
-                              ]),
-                        ]),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-
-            if (_selectedStation != null) ...[
-              const SizedBox(height: 16),
-              _buildTimePicker(
-                title: _selectedLine!.hasUniversitySchedule
-                    ? 'معاد الذهاب لجامعتك'
-                    : 'اختار معاد الذهاب',
-                choices: _departureChoices(),
-                selected: _selectedDepartureTime,
-                onSelected: (value) =>
-                    setState(() => _selectedDepartureTime = value),
-                color: const Color(0xFF18885B),
+            else ...[
+              TripDirectionTabs(
+                departure: _showDepartureTrips,
+                departureCount: _tripsFor(true).length,
+                returnCount: _selectedStation == null
+                    ? _tripsFor(false).length
+                    : _returnOptions.length,
+                onChanged: (value) => setState(() => _showDepartureTrips = value),
               ),
               const SizedBox(height: 12),
-              _buildTimePicker(
-                title: _selectedLine!.hasUniversitySchedule
-                    ? 'معاد العودة لجامعتك'
-                    : 'اختار معاد العودة',
-                choices: _returnChoices(),
-                selected: _selectedReturnTime,
-                onSelected: (value) =>
-                    setState(() => _selectedReturnTime = value),
-                color: const Color(0xFFB97812),
-              ),
+              if (!_showDepartureTrips && _selectedStation == null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BasakUi.card(),
+                  child: Text('اختر محطة الصعود من رحلات الذهاب أولاً، ثم اختر رحلة العودة.',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                )
+              else
+                TripTimetable(
+                  trips: _tripsFor(_showDepartureTrips),
+                  stations: _stations,
+                  selectedTripId: _showDepartureTrips ? _departureTrip?.id : _returnTrip?.id,
+                  selectedStationId: _selectedStation?.id,
+                  lockedStationId: _showDepartureTrips ? null : _selectedStation?.id,
+                  onSelect: _onTripStop,
+                ),
+              if (_selectedStation != null) ...[
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFEAF4FB),
+                      borderRadius: BorderRadius.circular(16)),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    BasakPill('محطتك: ${_selectedStation!.name}', icon: LucideIcons.mapPin),
+                    if (_departureTrip != null)
+                      BasakPill('ذهاب ${BasakUi.time12(_selectedDepartureTime)}',
+                          background: const Color(0xFFE7F8F0),
+                          foreground: const Color(0xFF15803D),
+                          icon: LucideIcons.sunrise),
+                    BasakPill(
+                        _returnTrip != null
+                            ? 'عودة ${BasakUi.time12(_selectedReturnTime)}'
+                            : (_returnOptions.isEmpty ? 'لا توجد رحلة عودة من محطتك' : 'اختر رحلة العودة'),
+                        background: const Color(0xFFFFF4E5),
+                        foreground: const Color(0xFFB97812),
+                        icon: LucideIcons.sunset),
+                  ]),
+                ),
+              ],
             ],
 
             // 3. Subscription Type & Pricing
@@ -976,55 +980,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  Widget _buildTimePicker({
-    required String title,
-    required List<String> choices,
-    required String? selected,
-    required ValueChanged<String> onSelected,
-    required Color color,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6EEF3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: AppTextStyles.titleMedium.copyWith(color: color)),
-          const SizedBox(height: 8),
-          if (choices.isEmpty)
-            const Text(
-                'لا توجد مواعيد متاحة لهذه المحطة. تواصل مع الإدارة لتحديث الجدول.')
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: choices.map((time) {
-                final isSelected = selected == time;
-                return ChoiceChip(
-                  label: Text(time),
-                  selected: isSelected,
-                  onSelected: (_) => onSelected(time),
-                  selectedColor: color.withOpacity(0.16),
-                  labelStyle: TextStyle(
-                    color: isSelected ? color : AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                );
-              }).toList(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Subscription types and periods come from the database: the annual card
-  /// only appears when the company/global switch enables it, and only periods
-  /// payable now (current or next) that the student does not already hold.
   Widget _typeAndPeriodPicker(LineModel line, List<SubscriptionModel> open) {
     final periodsAsync = ref.watch(purchasablePeriodsProvider(line.id));
     return periodsAsync.when(

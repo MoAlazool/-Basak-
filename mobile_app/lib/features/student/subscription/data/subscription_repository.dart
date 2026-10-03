@@ -12,8 +12,9 @@ class SubscriptionRepository {
   static const _select = '''
           *, period_label, period_phase,
           lines(name, supervisors(full_name, phone)),
-          stations(name, departure_times, return_times),
-          line_university_schedules(departure_time, return_time, universities(name))
+          stations(name, departure_times, return_times,
+            line_trip_stops(stop_time, line_trips(direction, is_active))),
+          departure_trip:departure_trip_id(label, start_time, universities(name))
         ''';
 
   static String _today() => DateTime.now().toIso8601String().substring(0, 10);
@@ -73,10 +74,11 @@ class SubscriptionRepository {
     required String lineId,
     required String stationId,
     required String departureTime,
-    required String returnTime,
+    String? returnTime,
     required String type, // termly | yearly | daily
     required double price,
-    String? scheduleId,
+    String? departureTripId,
+    String? returnTripId,
     PurchasablePeriod? period,
   }) async {
     final user = _client.auth.currentUser;
@@ -87,7 +89,9 @@ class SubscriptionRepository {
         'student_id': user.id,
         'line_id': lineId,
         'station_id': stationId,
-        if (scheduleId != null) 'schedule_id': scheduleId,
+        // The database validates the trips (station + university) and owns the times.
+        if (departureTripId != null) 'departure_trip_id': departureTripId,
+        if (returnTripId != null) 'return_trip_id': returnTripId,
         'departure_time': departureTime,
         'return_time': returnTime,
         'type': type,

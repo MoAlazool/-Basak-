@@ -53,7 +53,7 @@ interface Student {
     departure_time?: string | null;
     return_time?: string | null;
     lines?: LineRef | LineRef[] | null;
-    line_university_schedules?: { universities?: { name: string } | null } | null;
+    departure_trip?: { label: string; universities?: { name: string } | null } | null;
   }[];
 }
 
@@ -68,17 +68,18 @@ interface University {
 
 interface StationOption {
   id: string; name: string; is_active: boolean; order_index: number;
-  departure_times: string[] | null; return_times: string[] | null;
 }
 
-interface ScheduleOption {
-  id: string; university_id: string; departure_time: string; return_time: string; is_active: boolean;
+interface TripOption {
+  id: string; direction: 'departure' | 'return'; label: string; start_time: string;
+  university_id: string | null; is_active: boolean;
+  line_trip_stops: { station_id: string; stop_time: string }[];
 }
 
 interface LineOption {
   id: string; name: string; company_id: string; price_termly: number; price_yearly: number; price_daily: number;
   stations: StationOption[];
-  line_university_schedules: ScheduleOption[];
+  line_trips: TripOption[];
 }
 
 interface CompanyOption { id: string; name: string; }
@@ -86,20 +87,25 @@ interface CompanyOption { id: string; name: string; }
 const activeStations = (line?: LineOption) =>
   (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
 const fmtTime = (time: string) => time.slice(0, 5);
-const lineUsesSchedules = (line?: LineOption) =>
-  (line?.line_university_schedules ?? []).some((schedule) => schedule.is_active);
-// The trip a student of this university rides on (undefined for legacy station-time lines).
-const scheduleFor = (line: LineOption | undefined, universityId: string | undefined) =>
-  (line?.line_university_schedules ?? []).find((schedule) => schedule.is_active && schedule.university_id === universityId);
+// Active trips of a line open to this university (or to every university).
+const tripsServing = (line: LineOption | undefined, direction: 'departure' | 'return', universityId: string | undefined) =>
+  (line?.line_trips ?? []).filter((trip) => trip.is_active && trip.direction === direction
+    && (!trip.university_id || trip.university_id === universityId));
+// Trips that stop at the station, with the stop time there, earliest first.
+const stopOptions = (line: LineOption | undefined, direction: 'departure' | 'return', stationId: string, universityId: string | undefined) =>
+  tripsServing(line, direction, universityId)
+    .map((trip) => ({ trip, time: trip.line_trip_stops.find((stop) => stop.station_id === stationId)?.stop_time }))
+    .filter((option): option is { trip: TripOption; time: string } => !!option.time)
+    .sort((a, b) => a.time.localeCompare(b.time));
 const lineServesUniversity = (line: LineOption, universityId: string | undefined) =>
-  !lineUsesSchedules(line) || !!scheduleFor(line, universityId);
+  tripsServing(line, 'departure', universityId).length > 0;
 
 export const StudentsPage: React.FC = () => {
   const admin = useAdminScope();
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
-  const [departureTime, setDepartureTime] = useState('');
-  const [returnTime, setReturnTime] = useState('');
+  const [departureTripId, setDepartureTripId] = useState('');
+  const [returnTripId, setReturnTripId] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
   const [lines, setLines] = useState<LineOption[]>([]);
@@ -133,7 +139,7 @@ export const StudentsPage: React.FC = () => {
         .select(`
           id, phone, full_name, university, college, profile_image_url, created_at,
           subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name, companies(name)),
-            line_university_schedules(universities(name)))
+            departure_trip:departure_trip_id(label, universities(name)))
         `)
         .order('created_at', { ascending: false });
 
@@ -157,7 +163,7 @@ export const StudentsPage: React.FC = () => {
       }
 
       const { data: lineRows, error: lineError } = await supabase.from('lines')
-        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index,departure_times,return_times),line_university_schedules(id,university_id,departure_time,return_time,is_active)')
+        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
         .eq('is_active', true).order('name');
       if (lineError) throw lineError;
       const availableLines = (lineRows || []) as unknown as LineOption[];
@@ -181,12 +187,11 @@ export const StudentsPage: React.FC = () => {
       const uniId = (uniData || []).find((university) => university.name === uniName)?.id;
       const firstLine = availableLines.find((line) => line.company_id === companyId && lineServesUniversity(line, uniId));
       const firstStation = activeStations(firstLine)[0];
-      const firstSchedule = scheduleFor(firstLine, uniId);
       setSelectedCompanyId(companyId);
       setSelectedLineId(firstLine?.id || '');
       setSelectedStationId(firstStation?.id || '');
-      setDepartureTime(firstSchedule?.departure_time || firstStation?.departure_times?.[0] || '');
-      setReturnTime(firstSchedule?.return_time || firstStation?.return_times?.[0] || '');
+      setDepartureTripId(stopOptions(firstLine, 'departure', firstStation?.id || '', uniId)[0]?.trip.id || '');
+      setReturnTripId(stopOptions(firstLine, 'return', firstStation?.id || '', uniId)[0]?.trip.id || '');
     } catch (err: any) {
       console.error('Error fetching students data:', err);
     } finally {
@@ -197,9 +202,9 @@ export const StudentsPage: React.FC = () => {
   const universityIdOf = (name: string) => universities.find((university) => university.name === name)?.id;
 
   const applyTimes = (line: LineOption | undefined, station: StationOption | undefined, universityName = selectedUniversity) => {
-    const schedule = scheduleFor(line, universityIdOf(universityName));
-    setDepartureTime(schedule?.departure_time || station?.departure_times?.[0] || '');
-    setReturnTime(schedule?.return_time || station?.return_times?.[0] || '');
+    const universityId = universityIdOf(universityName);
+    setDepartureTripId(stopOptions(line, 'departure', station?.id || '', universityId)[0]?.trip.id || '');
+    setReturnTripId(stopOptions(line, 'return', station?.id || '', universityId)[0]?.trip.id || '');
   };
 
   const applyLine = (lineId: string, source: LineOption[] = lines, universityName = selectedUniversity) => {
@@ -238,7 +243,8 @@ export const StudentsPage: React.FC = () => {
   const companyLines = lines.filter((line) => line.company_id === selectedCompanyId && lineServesUniversity(line, selectedUniversityId));
   const selectedLine = companyLines.find((line) => line.id === selectedLineId);
   const selectedStation = activeStations(selectedLine).find((station) => station.id === selectedStationId);
-  const selectedSchedule = scheduleFor(selectedLine, selectedUniversityId);
+  const departureOptions = stopOptions(selectedLine, 'departure', selectedStationId, selectedUniversityId);
+  const returnOptions = stopOptions(selectedLine, 'return', selectedStationId, selectedUniversityId);
 
   // Payable periods come from the database (academic_terms + annual switch).
   useEffect(() => {
@@ -289,8 +295,8 @@ export const StudentsPage: React.FC = () => {
       alert('اختر خطاً ومحطة نشطين تابعين للشركة المختارة ويخدمان جامعة الطالب.');
       return;
     }
-    if (!departureTime || !returnTime) {
-      alert('هذه المحطة ليس لها مواعيد ذهاب وعودة. أضف المواعيد من صفحة الخطوط أولاً.');
+    if (!departureTripId || (returnOptions.length > 0 && !returnTripId)) {
+      alert('اختر رحلة الذهاب والعودة. إن لم تظهر رحلات، أضفها للخط من صفحة الخطوط.');
       return;
     }
     if (password.length < 6) {
@@ -308,7 +314,8 @@ export const StudentsPage: React.FC = () => {
 
       await invokeEdgeFunction('admin-create-student', {
         fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password,
-        lineId: selectedLineId, stationId: selectedStationId, subscriptionType, departureTime, returnTime,
+        lineId: selectedLineId, stationId: selectedStationId, subscriptionType,
+        departureTripId, returnTripId: returnTripId || null,
         ...(subscriptionType !== 'daily' ? { periodCode, academicYear: Number(academicYear) } : {}),
       });
 
@@ -455,23 +462,21 @@ export const StudentsPage: React.FC = () => {
 
           <div>
             <label className="text-xs font-semibold text-slate-500">موعد الذهاب والعودة</label>
-            {selectedSchedule ? (
-              <div className="mt-1 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-800">
-                ذهاب {fmtTime(selectedSchedule.departure_time)} · عودة {fmtTime(selectedSchedule.return_time)}
-                <span className="block text-[11px] font-medium text-indigo-600">موعد جامعة {selectedUniversity} على هذا الخط</span>
-              </div>
-            ) : (
+            {/* Trips that stop at the student's station and serve their university. */}
             <div className="mt-1 grid grid-cols-2 gap-2">
-              <select aria-label="موعد الذهاب" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" required>
-                {(selectedStation?.departure_times ?? []).length === 0 && <option value="">لا مواعيد ذهاب</option>}
-                {(selectedStation?.departure_times ?? []).map((time) => <option key={time} value={time}>ذهاب {fmtTime(time)}</option>)}
+              <select aria-label="رحلة الذهاب" value={departureTripId} onChange={(e) => setDepartureTripId(e.target.value)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" required>
+                {departureOptions.length === 0 && <option value="">لا رحلات ذهاب من هذه المحطة</option>}
+                {departureOptions.map(({ trip, time }) => (
+                  <option key={trip.id} value={trip.id}>ذهاب {fmtTime(time)}{trip.label ? ` · ${trip.label}` : ''}</option>
+                ))}
               </select>
-              <select aria-label="موعد العودة" value={returnTime} onChange={(e) => setReturnTime(e.target.value)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" required>
-                {(selectedStation?.return_times ?? []).length === 0 && <option value="">لا مواعيد عودة</option>}
-                {(selectedStation?.return_times ?? []).map((time) => <option key={time} value={time}>عودة {fmtTime(time)}</option>)}
+              <select aria-label="رحلة العودة" value={returnTripId} onChange={(e) => setReturnTripId(e.target.value)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                {returnOptions.length === 0 && <option value="">لا رحلات عودة</option>}
+                {returnOptions.map(({ trip, time }) => (
+                  <option key={trip.id} value={trip.id}>عودة {fmtTime(time)}{trip.label ? ` · ${trip.label}` : ''}</option>
+                ))}
               </select>
             </div>
-            )}
           </div>
 
           <div>
@@ -599,7 +604,7 @@ export const StudentsPage: React.FC = () => {
                                 <span className="font-semibold text-slate-700">{one(sub.lines)?.name || '—'}</span>
                                 {sub.departure_time && (
                                   <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">
-                                    {one(sub.line_university_schedules)?.universities?.name ? `${one(sub.line_university_schedules)?.universities?.name} ← ` : ''}
+                                    {one(sub.departure_trip)?.universities?.name ? `${one(sub.departure_trip)?.universities?.name} ← ` : ''}
                                     {fmtTime(sub.departure_time)}{sub.return_time ? ` / ${fmtTime(sub.return_time)}` : ''}
                                   </span>
                                 )}

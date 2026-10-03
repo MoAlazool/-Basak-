@@ -62,6 +62,10 @@ class LineModel {
   final bool isActive;
   final String? companyName;
 
+  /// Route ends: start location and destination university.
+  final String? originName;
+  final String? destinationName;
+
   /// True when the line runs per-university trips (line_university_schedules).
   final bool usesUniversitySchedules;
 
@@ -83,6 +87,8 @@ class LineModel {
     required this.priceDaily,
     required this.isActive,
     this.companyName,
+    this.originName,
+    this.destinationName,
     this.usesUniversitySchedules = false,
     this.scheduleId,
     this.universityName,
@@ -108,6 +114,8 @@ class LineModel {
       priceDaily: priceDaily,
       isActive: isActive,
       companyName: companyName,
+      originName: originName,
+      destinationName: destinationName,
       usesUniversitySchedules:
           option['uses_university_schedules'] as bool? ?? false,
       scheduleId: option['schedule_id'] as String?,
@@ -130,6 +138,8 @@ class LineModel {
       companyName: json['companies'] != null
           ? json['companies']['name'] as String?
           : null,
+      originName: json['origin_name'] as String?,
+      destinationName: (json['destination'] as Map<String, dynamic>?)?['name'] as String?,
     );
   }
 }

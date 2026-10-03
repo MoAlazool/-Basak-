@@ -1,757 +1,558 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAdminScope } from '../lib/adminScope';
-import { MapPin, Plus, Clock, ChevronDown, ChevronUp, Power, Pencil, Save, X, GraduationCap, Trash2 } from 'lucide-react';
+import {
+  ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
+  Plus, Power, Save, Trash2, UserCheck, Wand2, X,
+} from 'lucide-react';
 
-interface Station {
-  id: string;
-  line_id: string;
-  name: string;
-  order_index: number;
-  departure_times: string[];
-  return_times: string[];
-  is_active: boolean;
+// ── Types ───────────────────────────────────────────────────────────
+type Direction = 'departure' | 'return';
+
+interface StationRow { id: string; name: string; order_index: number; is_active: boolean }
+interface TripStopRow { station_id: string; stop_time: string }
+interface TripRow {
+  id: string; direction: Direction; label: string; start_time: string; arrival_time: string | null;
+  university_id: string | null; is_active: boolean; line_trip_stops: TripStopRow[];
+}
+interface LineRow {
+  id: string; name: string; company_id: string; origin_name: string | null; destination_university_id: string | null;
+  price_termly: number; price_yearly: number; price_daily: number; is_active: boolean;
+  companies?: { name: string } | null;
+  stations: StationRow[];
+  line_trips: TripRow[];
+}
+interface Option { id: string; name: string }
+
+/** Editor state — stations by position; trip stop times keyed by station key. */
+interface StationDraft { key: string; id?: string; name: string }
+interface TripDraft {
+  key: string; id?: string; direction: Direction; label: string; start_time: string; arrival_time: string;
+  university_id: string; is_active: boolean; times: Record<string, string>;
+}
+interface LineDraft {
+  id?: string; company_id: string; name: string; origin_name: string; destination_university_id: string;
+  price_termly: string; price_yearly: string; price_daily: string; is_active: boolean;
+  stations: StationDraft[]; trips: TripDraft[];
 }
 
-interface StationForm {
-  name: string;
-  departure_times: string[];
-  return_times: string[];
-}
+// ── Helpers ─────────────────────────────────────────────────────────
+const hhmm = (t?: string | null) => (t ? t.slice(0, 5) : '');
+const fmt12 = (t?: string | null) => {
+  if (!t) return '—';
+  const [h, m] = t.slice(0, 5).split(':').map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`;
+};
+const addMinutes = (t: string, minutes: number) => {
+  const [h, m] = t.split(':').map(Number);
+  const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+let keySeq = 0;
+const newKey = () => `k${++keySeq}`;
+const activeStations = (line: LineRow) =>
+  (line.stations ?? []).filter((s) => s.is_active).sort((a, b) => a.order_index - b.order_index);
+const tripsOf = (line: LineRow, direction: Direction) =>
+  (line.line_trips ?? []).filter((t) => t.direction === direction).sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-interface UniversitySchedule {
-  id: string;
-  university_id: string;
-  departure_time: string;
-  return_time: string;
-  is_active: boolean;
-  universities?: { name: string } | null;
-}
+const emptyTrip = (direction: Direction, start = ''): TripDraft => ({
+  key: newKey(), direction, label: '', start_time: start, arrival_time: '', university_id: '', is_active: true, times: {},
+});
 
-interface ScheduleDraft {
-  university_id: string;
-  departure_time: string;
-  return_time: string;
-}
-
-const emptyScheduleDraft = (): ScheduleDraft => ({ university_id: '', departure_time: '', return_time: '' });
-
-const activeSchedules = (line?: Line): UniversitySchedule[] =>
-  (line?.line_university_schedules ?? []).filter((schedule) => schedule.is_active);
-
-interface Line {
-  id: string;
-  name: string;
-  company_id: string;
-  supervisor_id: string | null;
-  price_termly: number;
-  price_yearly: number;
-  price_daily: number;
-  is_active: boolean;
-  companies?: { name: string };
-  stations?: Station[];
-  line_university_schedules?: UniversitySchedule[];
-}
-
-// ── Helper: editable list of time inputs ──────────────────────────
-interface TimeListEditorProps {
-  label: string;
-  color: 'emerald' | 'amber';
-  times: string[];
-  onChange: (times: string[]) => void;
-}
-
-const TimeListEditor: React.FC<TimeListEditorProps> = ({ label, color, times, onChange }) => {
-  const colorMap = {
-    emerald: {
-      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      btn: 'bg-emerald-500 hover:bg-emerald-600',
-      dot: 'bg-emerald-400',
-      label: 'text-emerald-600',
-    },
-    amber: {
-      badge: 'bg-amber-50 text-amber-700 border-amber-200',
-      btn: 'bg-amber-500 hover:bg-amber-600',
-      dot: 'bg-amber-400',
-      label: 'text-amber-600',
-    },
-  }[color];
-
-  const addTime = () => onChange([...times, '']);
-  const removeTime = (i: number) => onChange(times.filter((_, idx) => idx !== i));
-  const updateTime = (i: number, val: string) =>
-    onChange(times.map((t, idx) => (idx === i ? val : t)));
-
-  return (
-    <div className="flex-1 min-w-0">
-      <p className={`text-xs font-bold mb-2 ${colorMap.label}`}>
-        <Clock className="inline h-3.5 w-3.5 mr-1" />
-        {label}
-      </p>
-      <div className="space-y-1.5">
-        {times.map((t, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <span className={`h-2 w-2 rounded-full flex-shrink-0 ${colorMap.dot}`} />
-            <input
-              type="time"
-              value={t}
-              onChange={(e) => updateTime(i, e.target.value)}
-              className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:border-blue-400 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => removeTime(i)}
-              className="text-slate-300 hover:text-rose-400 transition flex-shrink-0"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={addTime}
-          className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-white transition ${colorMap.btn}`}
-        >
-          <Plus className="h-3 w-3" />
-          إضافة وقت
-        </button>
-      </div>
-    </div>
-  );
+const draftFromLine = (line: LineRow): LineDraft => {
+  const stations = activeStations(line).map((s) => ({ key: s.id, id: s.id, name: s.name }));
+  return {
+    id: line.id, company_id: line.company_id, name: line.name, origin_name: line.origin_name || line.name,
+    destination_university_id: line.destination_university_id || '',
+    price_termly: String(line.price_termly), price_yearly: String(line.price_yearly), price_daily: String(line.price_daily),
+    is_active: line.is_active, stations,
+    trips: (line.line_trips ?? []).filter((t) => t.is_active)
+      .sort((a, b) => a.direction.localeCompare(b.direction) || a.start_time.localeCompare(b.start_time))
+      .map((t) => ({
+        key: t.id, id: t.id, direction: t.direction, label: t.label || '', start_time: hhmm(t.start_time),
+        arrival_time: hhmm(t.arrival_time), university_id: t.university_id || '', is_active: t.is_active,
+        times: Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
+      })),
+  };
 };
 
-// ── Helper: one university + departure/return time row ────────────
-interface ScheduleRowEditorProps {
-  universities: { id: string; name: string }[];
-  value: ScheduleDraft;
-  takenIds: string[];
-  onChange: (patch: Partial<ScheduleDraft>) => void;
-  onRemove?: () => void;
-}
+const emptyDraft = (companyId: string): LineDraft => ({
+  company_id: companyId, name: '', origin_name: '', destination_university_id: '',
+  price_termly: '3500', price_yearly: '6500', price_daily: '50', is_active: true,
+  stations: [{ key: newKey(), name: '' }],
+  trips: [emptyTrip('departure', '07:00'), emptyTrip('return', '14:00')],
+});
 
-const ScheduleRowEditor: React.FC<ScheduleRowEditorProps> = ({ universities, value, takenIds, onChange, onRemove }) => (
-  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr_auto] items-center">
-    <select value={value.university_id} onChange={(e) => onChange({ university_id: e.target.value })}
-      aria-label="الجامعة" className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
-      <option value="">اختر الجامعة</option>
-      {universities.map((university) => (
-        <option key={university.id} value={university.id} disabled={takenIds.includes(university.id)}>{university.name}</option>
-      ))}
-    </select>
-    <label className="flex items-center gap-1 text-[11px] text-emerald-700">ذهاب
-      <input type="time" value={value.departure_time} onChange={(e) => onChange({ departure_time: e.target.value })}
-        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs" />
-    </label>
-    <label className="flex items-center gap-1 text-[11px] text-amber-700">عودة
-      <input type="time" value={value.return_time} onChange={(e) => onChange({ return_time: e.target.value })}
-        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs" />
-    </label>
-    {onRemove ? (
-      <button type="button" onClick={onRemove} className="text-slate-400 hover:text-rose-500" title="إزالة"><X className="h-4 w-4" /></button>
-    ) : <span />}
-  </div>
-);
-
-// ── Main Page ─────────────────────────────────────────────────────
+// ── Page ────────────────────────────────────────────────────────────
 export const LinesPage: React.FC = () => {
   const admin = useAdminScope();
-  const [lines, setLines] = useState<Line[]>([]);
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedLine, setExpandedLine] = useState<string | null>(null);
-  const [editingStationId, setEditingStationId] = useState<string | null>(null);
-  const [editingStation, setEditingStation] = useState<StationForm | null>(null);
-  const [pageError, setPageError] = useState('');
-
-  // Line form
-  const [selectedCompanyId, setSelectedCompanyId] = useState('');
-  const [lineName, setLineName] = useState('');
-  const [priceTermly, setPriceTermly] = useState('3500');
-  const [priceYearly, setPriceYearly] = useState('6500');
-  const [priceDaily, setPriceDaily] = useState('50');
-  const [lineSubmitting, setLineSubmitting] = useState(false);
-
-  // Universities served by the new line, each with its own trip time
-  const [universities, setUniversities] = useState<{ id: string; name: string }[]>([]);
-  const [supervisors, setSupervisors] = useState<{ id: string; full_name: string; company_id: string; is_active: boolean }[]>([]);
+  const [lines, setLines] = useState<LineRow[]>([]);
+  const [companies, setCompanies] = useState<Option[]>([]);
+  const [universities, setUniversities] = useState<Option[]>([]);
+  const [supervisors, setSupervisors] = useState<{ id: string; full_name: string }[]>([]);
   const [lineSupervisors, setLineSupervisors] = useState<Record<string, string[]>>({});
-  const [newLineSchedules, setNewLineSchedules] = useState<ScheduleDraft[]>([]);
-  const [scheduleForms, setScheduleForms] = useState<Record<string, ScheduleDraft>>({});
-  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
-  const [editingSchedule, setEditingSchedule] = useState<ScheduleDraft | null>(null);
-
-  // Station forms (per line)
-  const [stationForms, setStationForms] = useState<Record<string, StationForm>>({});
-
-  useEffect(() => { fetchData(); }, []);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [draft, setDraft] = useState<LineDraft | null>(null);
+  const [busyLine, setBusyLine] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
       setPageError('');
       setLoading(true);
-      const { data: linesData, error: lError } = await supabase
-        .from('lines')
-        .select(`*, companies(name), stations(id, name, order_index, departure_times, return_times, is_active),
-          line_university_schedules(id, university_id, departure_time, return_time, is_active, universities(name))`)
+      const { data: lineRows, error } = await supabase.from('lines')
+        .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
+          is_active, companies(name), stations(id, name, order_index, is_active),
+          line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
+            line_trip_stops(station_id, stop_time))`)
         .order('name');
-      if (lError) throw lError;
-      if (!linesData) throw new Error('لم تُرجع قاعدة البيانات قائمة الخطوط.');
-      setLines((linesData || []) as unknown as Line[]);
+      if (error) throw error;
+      setLines((lineRows || []) as unknown as LineRow[]);
 
-      const { data: uniData, error: uError } = await supabase
-        .from('universities').select('id, name').eq('is_active', true).order('name');
+      const [{ data: uniRows, error: uError }, { data: supRows }, { data: assignRows }] = await Promise.all([
+        supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
+        supabase.from('supervisors').select('id, full_name').order('full_name'),
+        supabase.from('supervisor_lines').select('supervisor_id, line_id'),
+      ]);
       if (uError) throw uError;
-      setUniversities(uniData || []);
-
-      const { data: supData, error: supError } = await supabase
-        .from('supervisors').select('id, full_name, company_id, is_active').order('full_name');
-      if (supError) throw supError;
-      setSupervisors(supData || []);
-
-      const { data: assignData, error: assignError } = await supabase
-        .from('supervisor_lines').select('supervisor_id, line_id');
-      if (assignError) throw assignError;
+      setUniversities(uniRows || []);
+      setSupervisors(supRows || []);
       const byLine: Record<string, string[]> = {};
-      (assignData || []).forEach((row) => { (byLine[row.line_id] ||= []).push(row.supervisor_id); });
+      (assignRows || []).forEach((row) => { (byLine[row.line_id] ||= []).push(row.supervisor_id); });
       setLineSupervisors(byLine);
 
       if (admin.role === 'company_admin' && admin.company_id) {
-        const ownCompany = [{ id: admin.company_id, name: admin.companyName || '' }];
-        setCompanies(ownCompany);
-        setSelectedCompanyId(admin.company_id);
+        setCompanies([{ id: admin.company_id, name: admin.companyName || '' }]);
       } else {
-        const { data: compData, error: cError } = await supabase
-          .from('companies').select('id, name').eq('is_active', true);
+        const { data: compRows, error: cError } = await supabase.from('companies').select('id, name').eq('is_active', true).order('name');
         if (cError) throw cError;
-        if (!compData) throw new Error('لم تُرجع قاعدة البيانات قائمة الشركات.');
-        setCompanies(compData || []);
-        if (compData && compData.length > 0) setSelectedCompanyId(compData[0].id);
+        setCompanies(compRows || []);
       }
     } catch (err) {
-      console.error('Error fetching lines data:', err);
-      setPageError(err instanceof Error ? err.message : 'تعذر تحميل الخطوط والمحطات.');
+      setPageError(err instanceof Error ? err.message : 'تعذر تحميل الخطوط.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateLine = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lineName.trim() || !selectedCompanyId) return;
-    const schedules = newLineSchedules.filter((row) => row.university_id || row.departure_time || row.return_time);
-    const scheduleError = validateSchedules(schedules);
-    if (scheduleError) { alert(scheduleError); return; }
-    try {
-      setLineSubmitting(true);
-      const { data: created, error } = await supabase.from('lines').insert({
-        company_id: selectedCompanyId,
-        name: lineName.trim(),
-        price_termly: parseFloat(priceTermly),
-        price_yearly: parseFloat(priceYearly),
-        price_daily: parseFloat(priceDaily),
-        is_active: true,
-      }).select('id').single();
-      if (error) throw error;
-      if (schedules.length > 0) {
-        const { error: schedulesError } = await supabase.from('line_university_schedules')
-          .insert(schedules.map((row) => ({ ...row, line_id: created.id })));
-        if (schedulesError) {
-          alert('تم حفظ الخط لكن تعذر حفظ مواعيد الجامعات: ' + schedulesError.message + ' — أضفها من بطاقة الخط.');
-        }
-      }
-      setLineName('');
-      setNewLineSchedules([]);
-      fetchData();
-    } catch (err: any) {
-      alert('فشل إضافة الخط: ' + err.message);
-    } finally {
-      setLineSubmitting(false);
-    }
-  };
+  useEffect(() => { void fetchData(); }, []);
 
-  const handleAddStation = async (lineId: string) => {
-    const form = stationForms[lineId];
-    if (!form?.name?.trim()) { alert('أدخل اسم المحطة أولاً'); return; }
+  const uniName = (id?: string | null) => universities.find((u) => u.id === id)?.name;
 
-    const line = lines.find((l) => l.id === lineId);
-    const nextOrder = Math.max(0, ...(line?.stations ?? []).map((station) => station.order_index)) + 1;
-
-    // Filter out empty time strings
-    const depTimes = (form.departure_times || []).filter((t) => t.trim()).sort();
-    const retTimes = (form.return_times || []).filter((t) => t.trim()).sort();
-    if (activeSchedules(line).length === 0 && (depTimes.length === 0 || retTimes.length === 0)) {
-      alert('أضف موعد ذهاب واحدًا وموعد عودة واحدًا على الأقل، أو أضف جامعات بمواعيدها لهذا الخط.');
-      return;
-    }
-
-    const { error } = await supabase.from('stations').insert({
-      line_id: lineId,
-      name: form.name.trim(),
-      order_index: nextOrder,
-      departure_times: depTimes,
-      return_times: retTimes,
-      departure_time: depTimes[0] ?? null,
-      return_time: retTimes[0] ?? null,
-    });
-
-    if (error) {
-      alert('فشل إضافة المحطة: ' + error.message);
-    } else {
-      setStationForms((prev) => ({
-        ...prev,
-        [lineId]: { name: '', departure_times: [], return_times: [] },
-      }));
-      fetchData();
-    }
-  };
-
-  const handleToggleStation = async (station: Station) => {
-    const next = !station.is_active;
-    if (!next && !confirm('تعطيل هذه المحطة للطلبات الجديدة؟ ستبقى بيانات الاشتراكات السابقة محفوظة.')) return;
-    const { error } = await supabase.from('stations').update({ is_active: next }).eq('id', station.id).select('id').single();
-    if (error) alert('فشل تغيير حالة المحطة: ' + error.message);
-    else fetchData();
-  };
-
-  const handleToggleLine = async (line: Line) => {
+  const toggleLine = async (line: LineRow) => {
     const next = !line.is_active;
-    if (!next && !confirm('تعطيل الخط للاشتراكات الجديدة؟ ستظل اشتراكات الطلاب الحالية وسجلاتها محفوظة.')) return;
-    const { error } = await supabase.from('lines').update({ is_active: next }).eq('id', line.id).select('id').single();
-    if (error) alert('فشل تغيير حالة الخط: ' + error.message);
-    else fetchData();
+    if (!next && !confirm(`تعطيل خط "${line.name}"؟\nسيبقى بكل بياناته واشتراكاته وسجلاته، لكنه لن يظهر للطلاب ولن يُسند لمشرفين جدد.`)) return;
+    setBusyLine(line.id);
+    const { error } = await supabase.rpc('set_line_active', { p_line_id: line.id, p_active: next });
+    setBusyLine(null);
+    if (error) alert('تعذر تغيير حالة الخط: ' + error.message);
+    else void fetchData();
   };
 
-  const startStationEdit = (station: Station) => {
-    setEditingStationId(station.id);
-    setEditingStation({
-      name: station.name,
-      departure_times: (station.departure_times ?? []).map((time) => time.slice(0, 5)).sort(),
-      return_times: (station.return_times ?? []).map((time) => time.slice(0, 5)).sort(),
-    });
+  const deleteLine = async (line: LineRow) => {
+    if (!confirm(`حذف خط "${line.name}" نهائياً مع محطاته ورحلاته؟\nلا يمكن التراجع. الخطوط التي لها اشتراكات أو سجلات لا تُحذف — عطّلها بدلاً من ذلك.`)) return;
+    setBusyLine(line.id);
+    const { error } = await supabase.rpc('delete_line', { p_line_id: line.id });
+    setBusyLine(null);
+    if (error) alert(error.message);
+    else void fetchData();
   };
 
-  const saveStationEdit = async (stationId: string) => {
-    if (!editingStation?.name.trim()) { alert('اسم المحطة مطلوب.'); return; }
-    const departureTimes = editingStation.departure_times.filter(Boolean).sort();
-    const returnTimes = editingStation.return_times.filter(Boolean).sort();
-    const stationLine = lines.find((line) => line.stations?.some((station) => station.id === stationId));
-    if (activeSchedules(stationLine).length === 0 && (!departureTimes.length || !returnTimes.length)) {
-      alert('أضف موعد ذهاب وموعد عودة على الأقل.'); return;
-    }
-    const { error } = await supabase.from('stations').update({
-      name: editingStation.name.trim(),
-      departure_times: departureTimes,
-      return_times: returnTimes,
-      departure_time: departureTimes[0] ?? null,
-      return_time: returnTimes[0] ?? null,
-    }).eq('id', stationId).select('id').single();
-    if (error) alert('فشل حفظ مواعيد المحطة: ' + error.message);
-    else { setEditingStationId(null); setEditingStation(null); fetchData(); }
-  };
-
-  const validateSchedules = (rows: ScheduleDraft[]): string | null => {
-    for (const row of rows) {
-      if (!row.university_id || !row.departure_time || !row.return_time) {
-        return 'لكل جامعة اختر الجامعة وموعد الذهاب وموعد العودة.';
-      }
-    }
-    const ids = rows.map((row) => row.university_id);
-    if (new Set(ids).size !== ids.length) return 'لا يمكن تكرار نفس الجامعة في نفس الخط. عدّل موعدها بدلاً من ذلك.';
-    return null;
-  };
-
-  const getScheduleForm = (lineId: string): ScheduleDraft => scheduleForms[lineId] ?? emptyScheduleDraft();
-  const updateScheduleForm = (lineId: string, patch: Partial<ScheduleDraft>) =>
-    setScheduleForms((prev) => ({ ...prev, [lineId]: { ...getScheduleForm(lineId), ...patch } }));
-
-  const handleAddSchedule = async (lineId: string) => {
-    const draft = getScheduleForm(lineId);
-    const error = validateSchedules([draft]);
-    if (error) { alert(error); return; }
-    const { error: insertError } = await supabase.from('line_university_schedules').insert({ ...draft, line_id: lineId });
-    if (insertError) {
-      alert(insertError.message.includes('line_university_schedules_unique')
-        ? 'هذه الجامعة مضافة بالفعل لهذا الخط. عدّل موعدها بدلاً من إضافتها مرة أخرى.'
-        : 'فشل إضافة موعد الجامعة: ' + insertError.message);
-      return;
-    }
-    setScheduleForms((prev) => ({ ...prev, [lineId]: emptyScheduleDraft() }));
-    fetchData();
-  };
-
-  const saveScheduleEdit = async (scheduleId: string) => {
-    if (!editingSchedule?.departure_time || !editingSchedule.return_time) { alert('أدخل موعد الذهاب والعودة.'); return; }
-    const { error } = await supabase.from('line_university_schedules').update({
-      departure_time: editingSchedule.departure_time,
-      return_time: editingSchedule.return_time,
-    }).eq('id', scheduleId).select('id').single();
-    if (error) alert('فشل حفظ الموعد: ' + error.message);
-    else { setEditingScheduleId(null); setEditingSchedule(null); fetchData(); }
-  };
-
-  const handleToggleSchedule = async (schedule: UniversitySchedule) => {
-    const next = !schedule.is_active;
-    if (!next && !confirm('إيقاف هذه الجامعة على الخط؟ لن يتمكن طلابها من الاشتراك الجديد، ويبقى المشتركون الحاليون على موعدهم حتى انتهاء اشتراكهم.')) return;
-    const { error } = await supabase.from('line_university_schedules').update({ is_active: next }).eq('id', schedule.id).select('id').single();
-    if (error) alert('فشل تغيير حالة الموعد: ' + error.message);
-    else fetchData();
-  };
-
-  const handleDeleteSchedule = async (schedule: UniversitySchedule) => {
-    if (!confirm(`حذف موعد ${schedule.universities?.name ?? 'الجامعة'} من هذا الخط؟`)) return;
-    const { error } = await supabase.from('line_university_schedules').delete().eq('id', schedule.id);
-    if (error) {
-      alert(error.code === '23503'
-        ? 'هذا الموعد مرتبط باشتراكات طلاب. أوقفه بدلاً من حذفه.'
-        : 'فشل حذف الموعد: ' + error.message);
-    } else fetchData();
-  };
-
-  const getForm = (lineId: string): StationForm =>
-    stationForms[lineId] ?? { name: '', departure_times: [], return_times: [] };
-
-  const updateForm = (lineId: string, patch: Partial<StationForm>) =>
-    setStationForms((prev) => ({ ...prev, [lineId]: { ...getForm(lineId), ...patch } }));
-
-  // Format time for display (remove seconds)
-  const fmt = (t: string) => t?.substring(0, 5) ?? '';
+  const defaultCompany = admin.role === 'company_admin' ? admin.company_id || '' : companies[0]?.id || '';
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">إدارة خطوط السير والمحطات</h1>
-        <p className="text-sm text-slate-500">
-          إضافة خطوط السير، التسعير، ومحطات التوقف مع مواعيد ذهاب وعودة متعددة لكل محطة
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">إدارة خطوط السير</h1>
+          <p className="text-sm text-slate-500">كل خط = نقطة بداية ← محطات بالترتيب ← الجامعة، وله رحلات ذهاب وعودة بموعد لكل محطة</p>
+        </div>
+        <button
+          onClick={() => setDraft(emptyDraft(defaultCompany))}
+          disabled={!defaultCompany}
+          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+        >
+          <Plus className="h-4 w-4" /> إنشاء خط جديد
+        </button>
       </div>
 
-      {pageError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الخطوط: {pageError}<button className="mr-3 underline" onClick={fetchData}>إعادة المحاولة</button></div>}
+      {pageError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          تعذر تحميل الخطوط: {pageError}
+          <button className="mr-3 underline" onClick={() => void fetchData()}>إعادة المحاولة</button>
+        </div>
+      )}
 
-      {/* ── Add Line Form ─────────────────────────────────── */}
-      <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-bold text-slate-700">إضافة خط باص جديد</h2>
-        <form onSubmit={handleCreateLine} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
-          <div className="lg:col-span-2">
-            <label className="text-xs font-semibold text-slate-500">اسم الخط</label>
-            <input type="text" placeholder="مثال: منية النصر - ميت تمامه - البجلات"
-              value={lineName} onChange={(e) => setLineName(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
-          </div>
-          {admin.role === 'super_admin' && <div>
-            <label className="text-xs font-semibold text-slate-500">الشركة المشغلة</label>
-            <select value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required>
-              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>}
-          <div>
-            <label className="text-xs font-semibold text-slate-500">سعر الترم (ج.م)</label>
-            <input type="number" value={priceTermly} onChange={(e) => setPriceTermly(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500">سعر السنوي (ج.م)</label>
-            <input type="number" value={priceYearly} onChange={(e) => setPriceYearly(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500">سعر اليومي كاش (ج.م)</label>
-            <input type="number" value={priceDaily} onChange={(e) => setPriceDaily(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-6 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
-                <GraduationCap className="h-4 w-4" />
-                الجامعات التي يخدمها الخط وموعد كل جامعة
-              </p>
-              <button type="button" onClick={() => setNewLineSchedules((rows) => [...rows, emptyScheduleDraft()])}
-                className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700">
-                <Plus className="h-3 w-3" /> إضافة جامعة
-              </button>
-            </div>
-            {newLineSchedules.length === 0 ? (
-              <p className="mt-2 text-[11px] text-slate-500">بدون جامعات يستخدم الخط مواعيد المحطات. أضف جامعة ليظهر لكل طالب موعد جامعته فقط.</p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {newLineSchedules.map((row, index) => (
-                  <ScheduleRowEditor key={index} universities={universities} value={row}
-                    takenIds={newLineSchedules.filter((_, i) => i !== index).map((other) => other.university_id)}
-                    onChange={(patch) => setNewLineSchedules((rows) => rows.map((item, i) => (i === index ? { ...item, ...patch } : item)))}
-                    onRemove={() => setNewLineSchedules((rows) => rows.filter((_, i) => i !== index))} />
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="sm:col-span-2 lg:col-span-6 flex justify-end">
-            <button type="submit" disabled={lineSubmitting}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
-              <Plus className="h-4 w-4" />
-              {lineSubmitting ? 'جاري الحفظ...' : 'حفظ الخط الجديد'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* ── Lines List ───────────────────────────────────── */}
-      <div className="space-y-4">
-        {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-          </div>
-        ) : lines.length === 0 ? (
-          <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-500">
-            لا توجد خطوط مسجلة بعد.
-          </div>
-        ) : (
-          lines.map((line) => {
-            const isExpanded = expandedLine === line.id;
-            const form = getForm(line.id);
-            const sortedStations = (line.stations ?? []).slice().sort((a, b) => a.order_index - b.order_index);
-
+      {loading ? (
+        <div className="flex h-40 items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+        </div>
+      ) : lines.length === 0 ? (
+        <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-slate-500">
+          لا توجد خطوط بعد. اضغط «إنشاء خط جديد» لإضافة الخط بمحطاته ورحلاته في خطوة واحدة.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {lines.map((line) => {
+            const stations = activeStations(line);
+            const dep = tripsOf(line, 'departure').filter((t) => t.is_active);
+            const ret = tripsOf(line, 'return').filter((t) => t.is_active);
+            const isOpen = expanded === line.id;
+            const sups = (lineSupervisors[line.id] ?? []).map((id) => supervisors.find((s) => s.id === id)?.full_name).filter(Boolean);
             return (
-              <div key={line.id} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-                {/* Line Header */}
-                <div className="flex flex-wrap items-center justify-between gap-4 p-5 border-b border-slate-100">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-800">{line.name}</h3>
-                    <p className="text-xs text-slate-500">الشركة: {line.companies?.name || 'غير محدد'}</p>
-                    {/* Assignments are managed from the Supervisors page (supervisor_lines). */}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                      المشرفون:
-                      {(lineSupervisors[line.id] ?? []).length === 0
-                        ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">لا يوجد مشرف مسند</span>
-                        : (lineSupervisors[line.id] ?? []).map((id) => {
-                          const sup = supervisors.find((s) => s.id === id);
-                          return (
-                            <span key={id} className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-700">
-                              {sup?.full_name ?? 'مشرف'}{sup && !sup.is_active ? ' (موقوف)' : ''}
-                            </span>
-                          );
-                        })}
+              <div key={line.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${line.is_active ? 'border-slate-100' : 'border-slate-200 opacity-75'}`}>
+                <div className="flex flex-wrap items-start justify-between gap-4 p-5">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-bold text-slate-800">{line.name}</h3>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${line.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {line.is_active ? 'نشط' : 'معطّل'}
+                      </span>
+                      <span className="text-xs text-slate-400">{line.companies?.name}</span>
                     </div>
-                    {activeSchedules(line).length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {activeSchedules(line).slice().sort((a, b) => a.departure_time.localeCompare(b.departure_time)).map((schedule) => (
-                          <span key={schedule.id} className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-                            {schedule.universities?.name ?? 'جامعة'} ← {fmt(schedule.departure_time)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {/* Route: origin → stations → destination */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 font-bold text-blue-700"><Flag className="h-3 w-3" />{line.origin_name || line.name}</span>
+                      {stations.map((s) => (
+                        <React.Fragment key={s.id}>
+                          <span className="text-slate-300">←</span>
+                          <span className="rounded-lg bg-slate-50 px-2 py-1 text-slate-600">{s.name}</span>
+                        </React.Fragment>
+                      ))}
+                      <span className="text-slate-300">←</span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 font-bold text-indigo-700"><GraduationCap className="h-3 w-3" />{uniName(line.destination_university_id) || 'الوجهة غير محددة'}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{dep.length} رحلة ذهاب</span>
+                      <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">{ret.length} رحلة عودة</span>
+                      <span>ترم {line.price_termly} · سنوي {line.price_yearly} · يومي {line.price_daily} ج.م</span>
+                      <span className="inline-flex items-center gap-1"><UserCheck className="h-3.5 w-3.5" />{sups.length ? sups.join('، ') : 'بدون مشرف (من صفحة المشرفين)'}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">الترم: {line.price_termly} ج.م</span>
-                    <span className="rounded-lg bg-teal-50 px-3 py-1 text-xs font-bold text-teal-700">سنوي: {line.price_yearly} ج.م</span>
-                    <span className="rounded-lg bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">يومي: {line.price_daily} ج.م</span>
-                    <button onClick={() => setExpandedLine(isExpanded ? null : line.id)}
-                      className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition">
-                      <MapPin className="h-3.5 w-3.5" />
-                      المحطات والجامعات ({sortedStations.length})
-                      {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={() => setExpanded(isOpen ? null : line.id)} className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+                      <Clock className="h-3.5 w-3.5" /> المواعيد {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                     </button>
-                    <button onClick={() => handleToggleLine(line)}
-                      className={`${line.is_active ? 'text-rose-400 hover:text-rose-600' : 'text-emerald-500 hover:text-emerald-700'} transition`} title={line.is_active ? 'تعطيل الخط' : 'تفعيل الخط'}>
-                      <Power className="h-4 w-4" />
+                    <button onClick={() => setDraft(draftFromLine(line))} className="flex items-center gap-1 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">
+                      <Pencil className="h-3.5 w-3.5" /> تعديل
+                    </button>
+                    <button disabled={busyLine === line.id} onClick={() => void toggleLine(line)}
+                      className={`flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold ${line.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                      <Power className="h-3.5 w-3.5" /> {line.is_active ? 'تعطيل' : 'تفعيل'}
+                    </button>
+                    <button disabled={busyLine === line.id} onClick={() => void deleteLine(line)} className="flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100">
+                      <Trash2 className="h-3.5 w-3.5" /> حذف
                     </button>
                   </div>
                 </div>
-
-                {/* Stations Panel */}
-                {isExpanded && (
-                  <div className="p-5 bg-slate-50/40 space-y-4">
-
-                    {/* University schedules */}
-                    <div className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
-                      <p className="mb-3 flex items-center gap-1.5 text-xs font-bold text-indigo-700">
-                        <GraduationCap className="h-4 w-4" />
-                        مواعيد الجامعات على هذا الخط
-                      </p>
-                      {(line.line_university_schedules ?? []).length === 0 ? (
-                        <p className="mb-3 text-[11px] text-slate-500">لا توجد جامعات بعد — الخط يستخدم مواعيد المحطات لكل الطلاب.</p>
-                      ) : (
-                        <div className="mb-3 overflow-x-auto">
-                          <table className="w-full text-right text-xs">
-                            <thead className="text-slate-500"><tr><th className="p-2">الجامعة</th><th className="p-2">الذهاب</th><th className="p-2">العودة</th><th className="p-2">الحالة</th><th className="p-2">إجراءات</th></tr></thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {(line.line_university_schedules ?? []).slice().sort((a, b) => a.departure_time.localeCompare(b.departure_time)).map((schedule) => (
-                                <tr key={schedule.id} className={schedule.is_active ? '' : 'opacity-60'}>
-                                  <td className="p-2 font-bold text-slate-700">{schedule.universities?.name ?? '—'}</td>
-                                  {editingScheduleId === schedule.id && editingSchedule ? (
-                                    <>
-                                      <td className="p-2"><input type="time" value={editingSchedule.departure_time} onChange={(e) => setEditingSchedule({ ...editingSchedule, departure_time: e.target.value })} className="rounded-lg border px-2 py-1" aria-label="موعد الذهاب" /></td>
-                                      <td className="p-2"><input type="time" value={editingSchedule.return_time} onChange={(e) => setEditingSchedule({ ...editingSchedule, return_time: e.target.value })} className="rounded-lg border px-2 py-1" aria-label="موعد العودة" /></td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <td className="p-2 font-bold text-emerald-700">{fmt(schedule.departure_time)}</td>
-                                      <td className="p-2 font-bold text-amber-700">{fmt(schedule.return_time)}</td>
-                                    </>
-                                  )}
-                                  <td className="p-2">{schedule.is_active ? <span className="text-emerald-600">نشط</span> : <span className="text-rose-500">موقوف</span>}</td>
-                                  <td className="p-2">
-                                    <div className="flex gap-2">
-                                      {editingScheduleId === schedule.id ? (
-                                        <>
-                                          <button onClick={() => saveScheduleEdit(schedule.id)} className="text-blue-600" title="حفظ"><Save className="h-4 w-4" /></button>
-                                          <button onClick={() => { setEditingScheduleId(null); setEditingSchedule(null); }} className="text-slate-400" title="إلغاء"><X className="h-4 w-4" /></button>
-                                        </>
-                                      ) : (
-                                        <button onClick={() => { setEditingScheduleId(schedule.id); setEditingSchedule({ university_id: schedule.university_id, departure_time: fmt(schedule.departure_time), return_time: fmt(schedule.return_time) }); }} className="text-blue-500" title="تعديل الموعد"><Pencil className="h-4 w-4" /></button>
-                                      )}
-                                      <button onClick={() => handleToggleSchedule(schedule)} className={schedule.is_active ? 'text-rose-400' : 'text-emerald-500'} title={schedule.is_active ? 'إيقاف' : 'تفعيل'}><Power className="h-4 w-4" /></button>
-                                      <button onClick={() => handleDeleteSchedule(schedule)} className="text-slate-400 hover:text-rose-500" title="حذف"><Trash2 className="h-4 w-4" /></button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap items-end gap-2">
-                        <div className="flex-1 min-w-[260px]">
-                          <ScheduleRowEditor universities={universities} value={getScheduleForm(line.id)}
-                            takenIds={(line.line_university_schedules ?? []).map((schedule) => schedule.university_id)}
-                            onChange={(patch) => updateScheduleForm(line.id, patch)} />
-                        </div>
-                        <button onClick={() => handleAddSchedule(line.id)}
-                          className="flex items-center gap-1 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700">
-                          <Plus className="h-3.5 w-3.5" /> إضافة الجامعة
-                        </button>
-                      </div>
-                      <p className="mt-2 text-[11px] text-slate-500">يرى كل طالب موعد جامعته فقط، ولا يظهر الخط لطلاب الجامعات غير المضافة.</p>
-                    </div>
-
-                    {/* Existing Stations */}
-                    {sortedStations.map((st, idx) => (
-                      <div key={st.id} className={`rounded-xl border border-slate-100 bg-white p-4 shadow-sm ${st.is_active === false ? 'opacity-60' : ''}`}>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
-                              {idx + 1}
-                            </span>
-                            <MapPin className="h-4 w-4 text-blue-400" />
-                            <span className="font-bold text-slate-800 text-sm">{st.name}</span>
-                            {st.is_active === false && <span className="text-[10px] text-rose-500">معطّلة</span>}
-                          </div>
-                          <div className="flex gap-3">
-                            <button onClick={() => startStationEdit(st)} className="text-blue-500 hover:text-blue-700" title="تعديل المحطة والمواعيد"><Pencil className="h-4 w-4" /></button>
-                            <button onClick={() => handleToggleStation(st)} className={st.is_active === false ? 'text-emerald-500' : 'text-rose-400'} title={st.is_active === false ? 'تفعيل المحطة' : 'تعطيل المحطة'}><Power className="h-4 w-4" /></button>
-                          </div>
-                        </div>
-
-                        {editingStationId === st.id && editingStation && <div className="mb-4 space-y-3 rounded-xl bg-blue-50/60 p-3">
-                          <input value={editingStation.name} onChange={(e) => setEditingStation({ ...editingStation, name: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" aria-label="اسم المحطة" />
-                          <div className="flex flex-wrap gap-4">
-                            <TimeListEditor label="مواعيد الذهاب" color="emerald" times={editingStation.departure_times} onChange={(times) => setEditingStation({ ...editingStation, departure_times: times })} />
-                            <TimeListEditor label="مواعيد العودة" color="amber" times={editingStation.return_times} onChange={(times) => setEditingStation({ ...editingStation, return_times: times })} />
-                          </div>
-                          <div className="flex justify-end gap-2"><button onClick={() => saveStationEdit(st.id)} className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"><Save className="h-3 w-3" />حفظ التعديلات</button><button onClick={() => { setEditingStationId(null); setEditingStation(null); }} className="rounded-lg border px-3 py-1.5 text-xs">إلغاء</button></div>
-                        </div>}
-
-                        {/* Times display */}
-                        <div className="grid grid-cols-2 gap-3">
-                          {/* Departure times */}
-                          <div>
-                            <p className="text-[11px] font-bold text-emerald-600 mb-1.5">
-                              <Clock className="inline h-3 w-3 mr-1" />
-                              مواعيد الذهاب ({st.departure_times?.length || 0})
-                            </p>
-                            {(st.departure_times || []).length > 0 ? (
-                              <div className="flex flex-wrap gap-1.5">
-                                {st.departure_times.map((t, i) => (
-                                  <span key={i} className="rounded-lg bg-emerald-50 border border-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                                    {fmt(t)}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">لم تُحدد بعد</span>
-                            )}
-                          </div>
-
-                          {/* Return times */}
-                          <div>
-                            <p className="text-[11px] font-bold text-amber-600 mb-1.5">
-                              <Clock className="inline h-3 w-3 mr-1" />
-                              مواعيد العودة ({st.return_times?.length || 0})
-                            </p>
-                            {(st.return_times || []).length > 0 ? (
-                              <div className="flex flex-wrap gap-1.5">
-                                {st.return_times.map((t, i) => (
-                                  <span key={i} className="rounded-lg bg-amber-50 border border-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-                                    {fmt(t)}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">لم تُحدد بعد</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* No stations yet */}
-                    {sortedStations.length === 0 && (
-                      <p className="text-xs text-slate-400 text-center py-2">لا توجد محطات مسجلة لهذا الخط حتى الآن.</p>
-                    )}
-
-                    {/* ── Add Station Form ──────────────────── */}
-                    <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-                      <p className="mb-3 text-xs font-bold text-blue-700 flex items-center gap-1.5">
-                        <Plus className="h-3.5 w-3.5" />
-                        إضافة محطة جديدة
-                      </p>
-
-                      {/* Station Name */}
-                      <div className="mb-4">
-                        <label className="text-xs font-semibold text-slate-500">اسم المحطة</label>
-                        <input
-                          type="text"
-                          placeholder="مثال: ميت تمامه"
-                          value={form.name}
-                          onChange={(e) => updateForm(line.id, { name: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                        />
-                      </div>
-
-                      {activeSchedules(line).length > 0 && (
-                        <p className="mb-3 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] text-indigo-700">مواعيد هذا الخط تُحدد حسب الجامعة. مواعيد المحطة اختيارية.</p>
-                      )}
-                      {/* Times editors — side by side, fully independent */}
-                      <div className="flex gap-4 flex-wrap">
-                        <TimeListEditor
-                          label="مواعيد الذهاب"
-                          color="emerald"
-                          times={form.departure_times}
-                          onChange={(t) => updateForm(line.id, { departure_times: t })}
-                        />
-                        <TimeListEditor
-                          label="مواعيد العودة"
-                          color="amber"
-                          times={form.return_times}
-                          onChange={(t) => updateForm(line.id, { return_times: t })}
-                        />
-                      </div>
-
-                      <div className="mt-4 flex justify-end">
-                        <button
-                          onClick={() => handleAddStation(line.id)}
-                          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          إضافة المحطة
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {isOpen && <Timetable line={line} uniName={uniName} />}
               </div>
             );
-          })
-        )}
+          })}
+        </div>
+      )}
+
+      {draft && (
+        <LineEditor
+          initial={draft}
+          companies={companies}
+          universities={universities}
+          canPickCompany={admin.role === 'super_admin' && !draft.id}
+          onClose={() => setDraft(null)}
+          onSaved={() => { setDraft(null); void fetchData(); }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ── Read-only timetable (departure / return tabs, stop list per trip) ─
+const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => string | undefined }> = ({ line, uniName }) => {
+  const [tab, setTab] = useState<Direction>('departure');
+  const stations = activeStations(line);
+  const trips = tripsOf(line, tab).filter((t) => t.is_active);
+  const ordered = tab === 'departure' ? stations : [...stations].reverse();
+  return (
+    <div className="border-t border-slate-100 bg-slate-50/50 p-5">
+      <div className="mb-4 inline-flex rounded-xl bg-white p-1 shadow-sm">
+        {(['departure', 'return'] as Direction[]).map((d) => (
+          <button key={d} onClick={() => setTab(d)}
+            className={`rounded-lg px-4 py-1.5 text-xs font-bold ${tab === d ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+            {d === 'departure' ? 'الذهاب' : 'العودة'} ({tripsOf(line, d).filter((t) => t.is_active).length})
+          </button>
+        ))}
+      </div>
+      {trips.length === 0 ? (
+        <p className="text-sm text-slate-400">لا توجد رحلات {tab === 'departure' ? 'ذهاب' : 'عودة'}.</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {trips.map((trip) => {
+            const times = Object.fromEntries((trip.line_trip_stops ?? []).map((s) => [s.station_id, s.stop_time]));
+            return (
+              <div key={trip.id} className="rounded-2xl border-r-4 border-emerald-400 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xl font-extrabold text-slate-800">{fmt12(trip.start_time)}</p>
+                    <p className="text-xs text-slate-500">{trip.label || (tab === 'departure' ? 'رحلة ذهاب' : 'رحلة عودة')}</p>
+                  </div>
+                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                    {trip.university_id ? uniName(trip.university_id) : 'كل الجامعات'}
+                  </span>
+                </div>
+                <ol className="relative space-y-2 border-r-2 border-emerald-100 pr-4">
+                  {ordered.map((s) => (
+                    <li key={s.id} className="relative flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                      <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
+                      <span className="text-slate-700">{s.name}</span>
+                      <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
+                        {times[s.id] ? fmt12(times[s.id]) : 'لا يقف'}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                {trip.arrival_time && <p className="mt-3 text-xs text-slate-500">الوصول: {fmt12(trip.arrival_time)}</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Create / edit a complete line in one save ───────────────────────
+interface LineEditorProps {
+  initial: LineDraft;
+  companies: Option[];
+  universities: Option[];
+  canPickCompany: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universities, canPickCompany, onClose, onSaved }) => {
+  const [d, setD] = useState<LineDraft>(initial);
+  const [tab, setTab] = useState<Direction>('departure');
+  const [gap, setGap] = useState('10');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const patch = (p: Partial<LineDraft>) => setD((cur) => ({ ...cur, ...p }));
+  const patchTrip = (key: string, p: Partial<TripDraft>) =>
+    setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
+  const routeFor = (direction: Direction) => (direction === 'departure' ? d.stations : [...d.stations].reverse());
+  const destName = universities.find((u) => u.id === d.destination_university_id)?.name || 'الجامعة (الوجهة)';
+
+  // Stations
+  const moveStation = (i: number, delta: number) => setD((cur) => {
+    const list = [...cur.stations];
+    const j = i + delta;
+    if (j < 0 || j >= list.length) return cur;
+    [list[i], list[j]] = [list[j], list[i]];
+    return { ...cur, stations: list };
+  });
+  const removeStation = (key: string) => setD((cur) => ({
+    ...cur,
+    stations: cur.stations.filter((s) => s.key !== key),
+    trips: cur.trips.map((t) => { const times = { ...t.times }; delete times[key]; return { ...t, times }; }),
+  }));
+
+  // Fill a trip's stop times from its start time, N minutes between stations.
+  const autoFill = (trip: TripDraft) => {
+    if (!trip.start_time) { setError('حدد موعد انطلاق الرحلة أولاً.'); return; }
+    const step = Math.max(0, Number(gap) || 0);
+    const times: Record<string, string> = {};
+    routeFor(trip.direction).forEach((s, i) => { times[s.key] = addMinutes(trip.start_time, step * (i + 1)); });
+    const arrival = addMinutes(trip.start_time, step * (d.stations.length + 1));
+    patchTrip(trip.key, { times, arrival_time: trip.direction === 'departure' ? arrival : trip.arrival_time || arrival });
+  };
+
+  const duplicate = (trip: TripDraft) => setD((cur) => ({
+    ...cur, trips: [...cur.trips, { ...trip, key: newKey(), id: undefined, label: '', times: { ...trip.times } }],
+  }));
+
+  const save = async () => {
+    setError('');
+    const stations = d.stations.map((s) => ({ ...s, name: s.name.trim() }));
+    const indexOf = new Map(stations.map((s, i) => [s.key, i]));
+    const payload = {
+      id: d.id ?? null,
+      company_id: d.company_id,
+      name: d.name.trim(),
+      origin_name: d.origin_name.trim(),
+      destination_university_id: d.destination_university_id || null,
+      price_termly: Number(d.price_termly), price_yearly: Number(d.price_yearly), price_daily: Number(d.price_daily),
+      is_active: d.is_active,
+      stations: stations.map((s) => ({ id: s.id ?? null, name: s.name })),
+      trips: d.trips.map((t) => ({
+        id: t.id ?? null, direction: t.direction, label: t.label.trim(), start_time: t.start_time,
+        arrival_time: t.arrival_time || null, university_id: t.university_id || null, is_active: t.is_active,
+        stops: Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
+          .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
+      })),
+    };
+    setSaving(true);
+    const { error: rpcError } = await supabase.rpc('save_line', { p_line: payload });
+    setSaving(false);
+    if (rpcError) setError(rpcError.message);
+    else onSaved();
+  };
+
+  const tripsInTab = d.trips.filter((t) => t.direction === tab);
+  const input = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40 p-0 sm:p-6" dir="rtl">
+      <div className="flex w-full max-w-5xl flex-col overflow-hidden bg-white shadow-2xl sm:rounded-3xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h2 className="text-lg font-bold text-slate-800">{d.id ? `تعديل خط: ${initial.name}` : 'إنشاء خط جديد'}</h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label="إغلاق"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          {/* 1. Line details */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-slate-700">١. بيانات الخط</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {canPickCompany && (
+                <label className="text-xs font-semibold text-slate-500">الشركة المشغلة
+                  <select value={d.company_id} onChange={(e) => patch({ company_id: e.target.value })} className={`mt-1 ${input}`}>
+                    {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="text-xs font-semibold text-slate-500">اسم الخط
+                <input value={d.name} onChange={(e) => patch({ name: e.target.value })} placeholder="مثال: منية النصر - جامعة الدلتا" className={`mt-1 ${input}`} />
+              </label>
+              <label className="text-xs font-semibold text-slate-500">نقطة البداية
+                <input value={d.origin_name} onChange={(e) => patch({ origin_name: e.target.value })} placeholder="مثال: منية النصر" className={`mt-1 ${input}`} />
+              </label>
+              <label className="text-xs font-semibold text-slate-500">الوجهة (الجامعة)
+                <select value={d.destination_university_id} onChange={(e) => patch({ destination_university_id: e.target.value })} className={`mt-1 ${input}`}>
+                  <option value="">اختر الجامعة</option>
+                  {universities.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">سعر الترم (ج.م)
+                <input type="number" min={0} value={d.price_termly} onChange={(e) => patch({ price_termly: e.target.value })} className={`mt-1 ${input}`} />
+              </label>
+              <label className="text-xs font-semibold text-slate-500">سعر السنوي (ج.م)
+                <input type="number" min={0} value={d.price_yearly} onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input}`} />
+              </label>
+              <label className="text-xs font-semibold text-slate-500">سعر اليومي كاش (ج.م)
+                <input type="number" min={0} value={d.price_daily} onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input}`} />
+              </label>
+            </div>
+          </section>
+
+          {/* 2. Route */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-slate-700">٢. المسار والمحطات (بالترتيب)</h3>
+            <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
+              <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700"><Flag className="h-4 w-4" /> البداية: {d.origin_name || '—'}</div>
+              {d.stations.map((s, i) => (
+                <div key={s.key} className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-500 shadow-sm">{i + 1}</span>
+                  <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
+                  <input value={s.name} placeholder={`اسم المحطة ${i + 1}`}
+                    onChange={(e) => setD((cur) => ({ ...cur, stations: cur.stations.map((x) => (x.key === s.key ? { ...x, name: e.target.value } : x)) }))}
+                    className={input} />
+                  <button onClick={() => moveStation(i, -1)} disabled={i === 0} className="rounded-lg p-1.5 text-slate-400 hover:bg-white disabled:opacity-30" title="لأعلى"><ArrowUp className="h-4 w-4" /></button>
+                  <button onClick={() => moveStation(i, 1)} disabled={i === d.stations.length - 1} className="rounded-lg p-1.5 text-slate-400 hover:bg-white disabled:opacity-30" title="لأسفل"><ArrowDown className="h-4 w-4" /></button>
+                  <button onClick={() => removeStation(s.key)} disabled={d.stations.length === 1} className="rounded-lg p-1.5 text-slate-400 hover:text-rose-500 disabled:opacity-30" title="حذف المحطة"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              ))}
+              <button onClick={() => setD((cur) => ({ ...cur, stations: [...cur.stations, { key: newKey(), name: '' }] }))}
+                className="flex items-center gap-1 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-white">
+                <Plus className="h-3.5 w-3.5" /> إضافة محطة
+              </button>
+              <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700"><GraduationCap className="h-4 w-4" /> الوجهة: {destName}</div>
+            </div>
+          </section>
+
+          {/* 3. Trips */}
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-slate-700">٣. الرحلات ومواعيد المحطات</h3>
+              <label className="flex items-center gap-2 text-xs text-slate-500">
+                <Wand2 className="h-4 w-4 text-blue-500" /> التعبئة التلقائية: كل
+                <input type="number" min={0} value={gap} onChange={(e) => setGap(e.target.value)} className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs" />
+                دقيقة بين المحطات
+              </label>
+            </div>
+            <div className="inline-flex rounded-xl bg-slate-100 p-1">
+              {(['departure', 'return'] as Direction[]).map((dir) => (
+                <button key={dir} onClick={() => setTab(dir)}
+                  className={`rounded-lg px-4 py-1.5 text-xs font-bold ${tab === dir ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>
+                  {dir === 'departure' ? 'رحلات الذهاب' : 'رحلات العودة'} ({d.trips.filter((t) => t.direction === dir).length})
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              {tripsInTab.map((trip) => (
+                <div key={trip.key} className="space-y-3 rounded-2xl border border-slate-200 p-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق {tab === 'departure' ? `من ${d.origin_name || 'البداية'}` : `من ${destName}`}
+                      <input type="time" value={trip.start_time} onChange={(e) => patchTrip(trip.key, { start_time: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">موعد الوصول (اختياري)
+                      <input type="time" value={trip.arrival_time} onChange={(e) => patchTrip(trip.key, { arrival_time: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">اسم الرحلة (اختياري)
+                      <input value={trip.label} placeholder={tab === 'departure' ? 'مثال: أول رحلة صباحية' : 'مثال: عودة الظهر'} onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">الجامعة
+                      <select value={trip.university_id} onChange={(e) => patchTrip(trip.key, { university_id: e.target.value })} className={`mt-1 ${input}`}>
+                        <option value="">كل الجامعات</option>
+                        {universities.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="space-y-1.5">
+                    {routeFor(tab).map((s) => (
+                      <div key={s.key} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
+                        <span className="flex-1 truncate text-sm text-slate-700">{s.name || 'محطة بدون اسم'}</span>
+                        <input type="time" value={trip.times[s.key] ?? ''}
+                          onChange={(e) => patchTrip(trip.key, { times: { ...trip.times, [s.key]: e.target.value } })}
+                          className="w-28 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs" aria-label={`موعد ${s.name}`} />
+                        {trip.times[s.key] && (
+                          <button onClick={() => { const times = { ...trip.times }; delete times[s.key]; patchTrip(trip.key, { times }); }}
+                            className="text-slate-300 hover:text-rose-400" title="الرحلة لا تقف هنا"><X className="h-3.5 w-3.5" /></button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex gap-2">
+                      <button onClick={() => autoFill(trip)} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700"><Wand2 className="h-3 w-3" /> تعبئة تلقائية</button>
+                      <button onClick={() => duplicate(trip)} className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-600"><Copy className="h-3 w-3" /> نسخ الرحلة</button>
+                    </div>
+                    <button onClick={() => setD((cur) => ({ ...cur, trips: cur.trips.filter((t) => t.key !== trip.key) }))}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /> حذف الرحلة</button>
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => setD((cur) => ({ ...cur, trips: [...cur.trips, emptyTrip(tab)] }))}
+                className="flex min-h-[120px] items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50">
+                <Bus className="h-4 w-4" /> إضافة رحلة {tab === 'departure' ? 'ذهاب' : 'عودة'}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
+          </section>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
+          {error ? <p role="alert" className="flex-1 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : <span className="flex-1 text-xs text-slate-400">يُحفظ الخط بمحطاته ورحلاته في عملية واحدة.</span>}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600">إلغاء</button>
+            <button onClick={() => void save()} disabled={saving}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+              <Save className="h-4 w-4" /> {saving ? 'جاري الحفظ...' : 'حفظ الخط'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

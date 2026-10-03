@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../models/line_model.dart';
+import '../models/trip_model.dart';
 
 class LinesRepository {
   final SupabaseClient _client = SupabaseService.client;
@@ -11,7 +12,7 @@ class LinesRepository {
   Future<List<LineModel>> getAllLines() async {
     final response = await _client
         .from(SupabaseTables.lines)
-        .select('*, companies(name)')
+        .select('*, companies(name), destination:destination_university_id(name)')
         .eq('is_active', true)
         .order('name');
     final options = await _client.rpc(SupabaseRpcs.getStudentLineOptions);
@@ -24,6 +25,21 @@ class LinesRepository {
         .map((e) => LineModel.fromJson(e as Map<String, dynamic>))
         .where((line) => optionsByLine.containsKey(line.id))
         .map((line) => line.withStudentOption(optionsByLine[line.id]!))
+        .toList();
+  }
+
+  /// Trips of a line (both directions) that serve the student's university;
+  /// RLS returns only those, with their stop times.
+  Future<List<TripModel>> getTripsForLine(String lineId) async {
+    final response = await _client
+        .from('line_trips')
+        .select('id, direction, label, start_time, arrival_time, universities(name), '
+            'line_trip_stops(station_id, stop_time)')
+        .eq('line_id', lineId)
+        .eq('is_active', true)
+        .order('start_time');
+    return (response as List<dynamic>)
+        .map((e) => TripModel.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
