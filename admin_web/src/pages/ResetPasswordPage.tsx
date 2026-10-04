@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowRight, Bus, Eye, EyeOff, LockKeyhole } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LockKeyhole } from 'lucide-react';
+import { BasakLogo } from '../components/BasakLogo';
 import { supabase } from '../lib/supabase';
 
 interface ResetPasswordPageProps {
@@ -48,7 +49,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onComplete
     <main className="min-h-screen flex items-center justify-center p-4" dir="rtl" style={{ background: 'radial-gradient(ellipse 80% 60% at 20% 10%, #EAF7FD 0%, #F3FAFD 50%, #ffffff 100%)' }}>
       <section className="w-full max-w-md rounded-3xl border border-white/70 bg-white/80 p-8 shadow-2xl backdrop-blur-xl">
         <div className="mb-7 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#1F6F8B] to-[#7EC8E3] text-white shadow-lg"><Bus className="h-7 w-7" /></div>
+          <BasakLogo className="mb-3 h-14 w-14" />
           <h1 className="text-2xl font-extrabold text-slate-800">تعيين كلمة مرور جديدة</h1>
           <p className="mt-2 text-sm text-slate-500">اختر كلمة مرور لحساب إدارة باصك.</p>
         </div>
