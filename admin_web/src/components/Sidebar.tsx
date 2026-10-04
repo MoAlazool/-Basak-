@@ -13,6 +13,7 @@ import {
   Users,
   CalendarRange,
 } from 'lucide-react';
+import { BasakLogo } from './BasakLogo';
 
 interface SidebarProps {
   activeTab: string;
@@ -52,9 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onLogo
       <div>
         {/* Brand */}
         <div className="flex items-center gap-3 px-2 py-3 mb-6 border-b border-white/40">
-          <div className="h-10 w-10 min-w-[40px] rounded-xl bg-gradient-to-tr from-[#3E8FBF] to-[#7EC8E3] flex items-center justify-center text-white shadow-md shadow-[#7EC8E3]/30">
-            <Bus className="h-5 w-5" />
-          </div>
+          <BasakLogo className="h-10 w-10 min-w-[40px]" />
           <div className="hidden lg:block">
             <h1 className="text-base font-extrabold text-[#1F2937] leading-tight">باصك</h1>
             <p className="text-[11px] font-medium text-[#5B6B7A]">لوحة تحكم الإدارة</p>

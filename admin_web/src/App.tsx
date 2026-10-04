@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { BasakLogo } from './components/BasakLogo';
 import { OverviewPage } from './pages/OverviewPage';
 import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
@@ -107,6 +108,14 @@ export function App() {
         }}
       >
         <div className="mx-auto max-w-[1400px] p-4 sm:p-6 space-y-0">
+          {/* Brand header on mobile, where the sidebar is hidden */}
+          <div className="md:hidden flex items-center gap-2.5 mb-4">
+            <BasakLogo className="h-9 w-9" />
+            <div>
+              <p className="text-base font-extrabold text-[#1F2937] leading-tight">باصك</p>
+              <p className="text-[11px] font-medium text-[#5B6B7A]">لوحة تحكم الإدارة</p>
+            </div>
+          </div>
           {activeTab === 'overview' && <OverviewPage />}
           {activeTab === 'companies' && admin.role === 'super_admin' && <CompaniesPage />}
           {activeTab === 'company-admins' && admin.role === 'super_admin' && <CompanyAdminsPage />}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Bus, Eye, EyeOff, ShieldCheck, LogIn } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck, LogIn } from 'lucide-react';
+import { BasakLogo } from '../components/BasakLogo';
 import { supabase } from '../lib/supabase';
 import { AdminProfile } from '../lib/adminScope';
 
@@ -114,9 +115,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         >
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-[#3E8FBF] to-[#7EC8E3] flex items-center justify-center text-white shadow-lg shadow-[#7EC8E3]/30 mb-3">
-              <Bus className="h-8 w-8" />
-            </div>
+            <BasakLogo className="h-16 w-16 mb-3" />
             <h1 className="text-2xl font-extrabold text-[#1F2937]">باصك</h1>
             <p className="text-sm font-medium text-[#5B6B7A] mt-1">لوحة تحكم الإدارة</p>
           </div>
