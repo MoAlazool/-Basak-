@@ -1,7 +1,8 @@
 # Builds the signed release APKs (for direct install) and the Play Store App
 # Bundle. Run from anywhere:
 #   powershell -ExecutionPolicy Bypass -File mobile_app\tool\build_release.ps1
-# -ApkOnly builds a single APK for every phone instead (no per-CPU split, no AAB).
+# -ApkOnly builds a single APK for every phone instead (no per-CPU split, no AAB);
+# add -Arm64 for a smaller APK that installs on 64-bit phones only.
 #
 # Why a copy: Flutter's AOT compiler (gen_snapshot) cannot read files under a
 # non-ASCII path such as "باصك (Basak)", and Gradle resolves junctions back to
@@ -12,7 +13,8 @@
 param(
   [string]$BuildDir = "C:\basak_build\mobile_app",
   [string]$Flutter = "C:\src\flutter\bin\flutter.bat",
-  [switch]$ApkOnly
+  [switch]$ApkOnly,
+  [switch]$Arm64
 )
 $ErrorActionPreference = "Stop"
 $src = Split-Path -Parent $PSScriptRoot          # ...\mobile_app
@@ -35,6 +37,14 @@ Copy-Item (Join-Path $src "android\local.properties") "$BuildDir\android\local.p
 Push-Location $BuildDir
 try {
   & $Flutter pub get
+  if ($ApkOnly -and $Arm64) {
+    # 64-bit phones only, about half the size; 32-bit phones cannot install it.
+    # (A split build: a plain one would still carry other CPUs' plugin libraries.)
+    & $Flutter build apk --release --split-per-abi --target-platform android-arm64 `
+      "--android-project-arg=force-version-code-ignoring-abi=true"
+    if ($LASTEXITCODE -ne 0) { throw "APK build failed" }
+    return
+  }
   if ($ApkOnly) {
     # One file for every phone: 32- and 64-bit ARM in the same APK.
     & $Flutter build apk --release --target-platform android-arm,android-arm64
