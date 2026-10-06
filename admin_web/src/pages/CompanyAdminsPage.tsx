@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Mail, Plus, ShieldCheck, UserRound, KeyRound } from 'lucide-react';
+import { Building2, Mail, Plus, ShieldCheck, UserRound, KeyRound, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { keys, usePageData } from '../lib/query';
@@ -16,6 +16,7 @@ export const CompanyAdminsPage: React.FC = () => {
   const [notice, setNotice] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState('');
 
   const page = usePageData(keys.platform('companyAdmins'), async () => {
     const [{ data: companyRows, error: companyError }, { data: adminRows, error: adminError }] = await Promise.all([
@@ -56,6 +57,21 @@ export const CompanyAdminsPage: React.FC = () => {
       setError(createError instanceof Error ? createError.message : 'تعذر إنشاء مدير الشركة.');
     }
     setSubmitting(false);
+  };
+
+  const deleteAdmin = async (admin: CompanyAdmin) => {
+    if (!confirm(`هل أنت متأكد من حذف مدير الشركة "${admin.full_name}"؟ سيُحذف حساب الدخول الخاص به ولن يتمكن من الدخول إلى لوحة التحكم.`)) return;
+    setDeletingId(admin.id);
+    setError('');
+    setNotice('');
+    try {
+      await invokeEdgeFunction('admin-delete-company-admin', { adminId: admin.id });
+      setNotice(`تم حذف مدير الشركة "${admin.full_name}".`);
+      await load();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'تعذر حذف مدير الشركة.');
+    }
+    setDeletingId('');
   };
 
   return (
@@ -101,12 +117,19 @@ export const CompanyAdminsPage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-right text-sm">
-              <thead className="bg-slate-50 text-slate-500"><tr><th className="p-4">المدير</th><th className="p-4">البريد</th><th className="p-4">الشركة المخصصة</th><th className="p-4">تاريخ الإنشاء</th></tr></thead>
+              <thead className="bg-slate-50 text-slate-500"><tr><th className="p-4">المدير</th><th className="p-4">البريد</th><th className="p-4">الشركة المخصصة</th><th className="p-4">تاريخ الإنشاء</th><th className="p-4"><span className="sr-only">إجراءات</span></th></tr></thead>
               <tbody className="divide-y divide-slate-100">{admins.map((admin) => <tr key={admin.id}>
                 <td className="p-4 font-semibold text-slate-800"><span className="inline-flex items-center gap-2"><UserRound className="h-4 w-4 text-sky-600" />{admin.full_name}</span></td>
                 <td className="p-4 text-slate-600">{admin.email}</td>
                 <td className="p-4 text-slate-600"><span className="inline-flex items-center gap-2"><Building2 className="h-4 w-4" />{companies.find((company) => company.id === admin.company_id)?.name || 'شركة غير مفعّلة'}</span></td>
                 <td className="p-4 text-slate-500">{new Date(admin.created_at).toLocaleDateString('ar-EG')}</td>
+                <td className="p-4 text-left">
+                  <button type="button" onClick={() => void deleteAdmin(admin)} disabled={deletingId !== ''}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                    title="حذف مدير الشركة" aria-label={`حذف مدير الشركة ${admin.full_name}`}>
+                    <Trash2 className="h-4 w-4" />{deletingId === admin.id ? 'جاري الحذف...' : 'حذف'}
+                  </button>
+                </td>
               </tr>)}</tbody>
             </table>
           </div>

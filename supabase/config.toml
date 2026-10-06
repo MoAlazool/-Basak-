@@ -10,6 +10,9 @@ verify_jwt = false
 [functions.admin-create-company-admin]
 verify_jwt = false
 
+[functions.admin-delete-company-admin]
+verify_jwt = false
+
 [functions.admin-create-student]
 verify_jwt = false
 
