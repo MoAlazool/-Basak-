@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAdminScope } from '../lib/adminScope';
+import { useCompany } from '../lib/adminScope';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Bus, Pencil, Save, X } from 'lucide-react';
 
@@ -11,7 +13,6 @@ interface Supervisor {
   company_id: string;
   is_active: boolean;
   created_at: string;
-  companies?: { name: string } | null;
 }
 
 interface LineOption { id: string; name: string; company_id: string; is_active: boolean; }
@@ -46,19 +47,11 @@ const LinePicker: React.FC<{
 };
 
 export const SupervisorsPage: React.FC = () => {
-  const admin = useAdminScope();
-  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [lines, setLines] = useState<LineOption[]>([]);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState('');
-
+  const companyId = useCompany().id;
   // New supervisor form
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [companyId, setCompanyId] = useState('');
   const [lineIds, setLineIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -67,52 +60,33 @@ export const SupervisorsPage: React.FC = () => {
   const [editingLines, setEditingLines] = useState<string[]>([]);
   const [savingLines, setSavingLines] = useState(false);
 
-  useEffect(() => {
-    void fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setPageError('');
-      const [supRes, lineRes, assignRes] = await Promise.all([
-        supabase.from('supervisors')
-          .select('id, phone, full_name, company_id, is_active, created_at, companies(name)')
-          .order('created_at', { ascending: false }),
-        supabase.from('lines').select('id, name, company_id, is_active').order('name'),
-        supabase.from('supervisor_lines').select('supervisor_id, line_id'),
-      ]);
-      if (supRes.error) throw supRes.error;
-      if (lineRes.error) throw lineRes.error;
-      if (assignRes.error) throw assignRes.error;
-      setSupervisors((supRes.data || []) as unknown as Supervisor[]);
-      setLines((lineRes.data || []) as LineOption[]);
-      const map: Record<string, string[]> = {};
-      (assignRes.data || []).forEach((row) => {
-        (map[row.supervisor_id] ||= []).push(row.line_id);
-      });
-      setAssignments(map);
-
-      if (admin.role === 'company_admin' && admin.company_id) {
-        setCompanies([{ id: admin.company_id, name: admin.companyName || '' }]);
-        setCompanyId(admin.company_id);
-      } else {
-        const { data: compData, error: cError } = await supabase
-          .from('companies').select('id, name').eq('is_active', true).order('name');
-        if (cError) throw cError;
-        setCompanies(compData || []);
-        setCompanyId((current) => current || compData?.[0]?.id || '');
-      }
-    } catch (err) {
-      console.error('Error fetching supervisors:', err);
-      setPageError(err instanceof Error ? err.message : 'تعذر تحميل المشرفين.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const page = usePageData(keys.company(companyId, 'supervisors'), async () => {
+    const [supRes, lineRes, assignRes] = await Promise.all([
+      supabase.from('supervisors')
+        .select('id, phone, full_name, company_id, is_active, created_at')
+        .eq('company_id', companyId).order('created_at', { ascending: false }),
+      supabase.from('lines').select('id, name, company_id, is_active').eq('company_id', companyId).order('name'),
+      supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', companyId),
+    ]);
+    if (supRes.error) throw supRes.error;
+    if (lineRes.error) throw lineRes.error;
+    if (assignRes.error) throw assignRes.error;
+    const assignments: Record<string, string[]> = {};
+    (assignRes.data || []).forEach((row) => { (assignments[row.supervisor_id] ||= []).push(row.line_id); });
+    return {
+      supervisors: (supRes.data || []) as unknown as Supervisor[],
+      lines: (lineRes.data || []) as LineOption[],
+      assignments,
+    };
+  });
+  const supervisors = page.data?.supervisors ?? [];
+  const lines = useMemo(() => page.data?.lines ?? [], [page.data]);
+  const assignments = page.data?.assignments ?? {};
+  const loading = page.loading;
+  const pageError = page.error;
+  const fetchData = page.reload;
 
   const linesById = useMemo(() => new Map(lines.map((line) => [line.id, line])), [lines]);
-  const companyLines = (id: string) => lines.filter((line) => line.company_id === id);
 
   const handleAddSupervisor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -229,19 +203,10 @@ export const SupervisorsPage: React.FC = () => {
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
           </div>
 
-          {admin.role === 'super_admin' && <div>
-            <label className="text-xs font-semibold text-slate-500">الشركة التابع لها</label>
-            <select value={companyId}
-              onChange={(e) => { setCompanyId(e.target.value); setLineIds([]); }}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required>
-              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>}
-
           <div className="sm:col-span-2 lg:col-span-4">
             <label className="text-xs font-semibold text-slate-500">الخطوط المسؤول عنها (يمكن اختيار أكثر من خط)</label>
             <div className="mt-2">
-              <LinePicker lines={companyLines(companyId)} selected={lineIds} onChange={setLineIds} />
+              <LinePicker lines={lines} selected={lineIds} onChange={setLineIds} />
             </div>
           </div>
 
@@ -258,9 +223,7 @@ export const SupervisorsPage: React.FC = () => {
       {/* Supervisors Table */}
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-x-auto">
         {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-          </div>
+          <SkeletonRows />
         ) : supervisors.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا يوجد مشرفون مسجلون حالياً.</div>
         ) : (
@@ -269,7 +232,6 @@ export const SupervisorsPage: React.FC = () => {
               <tr>
                 <th className="p-4 font-bold">اسم المشرف</th>
                 <th className="p-4 font-bold">رقم الهاتف</th>
-                <th className="p-4 font-bold">الشركة</th>
                 <th className="p-4 font-bold">الخطوط المسندة</th>
                 <th className="p-4 font-bold">الحالة</th>
                 <th className="p-4 font-bold">إجراءات</th>
@@ -288,11 +250,10 @@ export const SupervisorsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4 text-slate-600 font-mono text-xs">{s.phone}</td>
-                    <td className="p-4 text-slate-600">{s.companies?.name || '-'}</td>
                     <td className="p-4">
                       {editing ? (
                         <div className="space-y-2">
-                          <LinePicker lines={companyLines(s.company_id)} selected={editingLines} onChange={setEditingLines} />
+                          <LinePicker lines={lines} selected={editingLines} onChange={setEditingLines} />
                           {editingLines.length === 0 && (
                             <p className="text-[11px] text-amber-700">بدون خطوط لن يرى المشرف أي خط في التطبيق.</p>
                           )}

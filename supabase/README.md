@@ -25,7 +25,7 @@
 
 4. **`migrations/20260926000004_daily_reset_logic.sql`**:
    - دالة `toggle_student_daily_ride` لتسجيل "نازل بكرة" مع التحقق من شرط الإغلاق الساعة 1:00 ظهراً ومنع التعديل بأثر رجعي.
-   - دالة `reset_daily_rides_at_1pm` لإعادة التعيين التلقائي (أُزيلت في `20261008000001_security_review_fixes.sql`؛ نافذة التصويت ٤ م - ٦ ص تُفرض داخل `toggle_student_daily_ride`).
+   - دالة `reset_daily_rides_at_1pm` لإعادة التعيين التلقائي (أُزيلت في `20261007000003_security_review_fixes.sql`؛ نافذة التصويت ٤ م - ٦ ص تُفرض داخل `toggle_student_daily_ride`).
    - دالة `get_line_rider_counts` لحساب أعداد الركاب في المحطات اليوم وغداً بناءً على التبديل المباشر.
    - دالة `lookup_student_by_qr` للبحث عن الطالب بالـ QR دون تسجيل أي حضور.
 
@@ -43,3 +43,53 @@
 1. افتح مشروعك في [Supabase Dashboard](https://supabase.com/dashboard).
 2. انتقل إلى **SQL Editor**.
 3. قم بنسخ وتشغيل الملفات من `1` إلى `6` بالترتيب.
+
+---
+
+## Wallet cards (Apple Wallet / Google Wallet)
+
+Each student can save their permanent QR as a wallet card. The card belongs to the
+student (serial / object id = `students.id`, barcode = the bare `students.qr_code_value`)
+and is branded by the transport company they ride with. Whether a student may ride is
+still decided only by `supervisor_check_in_student()` at scan time.
+
+**Pieces**
+
+| What | Where |
+|---|---|
+| What a card shows (one rule for both wallets) | `wallet_card_content(student_id)` in `migrations/20261009000001_wallet_card_per_company.sql` |
+| Company design, logo and contact | `wallet_card_settings` (per company) and `companies.logo_path / contact_phone / contact_label`, edited on the dashboard page "بطاقة المحفظة" |
+| Issue a card | function `student-wallet-pass` |
+| Apple's pass web service (register / what changed / latest pass) | function `wallet-apple-web` |
+| Deliver changes to installed cards | function `wallet-sync` (woken by database triggers through `pg_net`, and by the dashboard for a company rollout) |
+| Student photo for Google Wallet | function `wallet-photo` (unguessable link, small copy only) |
+
+Line and pickup station appear only for an **approved** subscription (valid today, or
+approved in advance). Nothing runs on a timer: a subscription that starts or ends by date
+alone is picked up the next time the student is scanned or opens the QR screen.
+
+**One-time setup**
+
+1. Apple (paid Apple Developer account): create a *Pass Type ID*, create its certificate
+   from a signing request, and convert certificate + key to PEM. Download Apple's
+   "Worldwide Developer Relations - G4" certificate. The certificate expires yearly.
+2. Google: create a Google Wallet *issuer* account and a Google Cloud service account
+   with the Wallet API enabled, add the service account as a user of the issuer, and
+   create a JSON key.
+3. Set the secrets (PEM values may use `\n` for line breaks):
+
+   ```bash
+   supabase secrets set --project-ref <ref> --env-file wallet-secrets.env
+   # APPLE_PASS_TYPE_ID, APPLE_TEAM_ID, APPLE_PASS_CERT_PEM, APPLE_PASS_KEY_PEM, APPLE_WWDR_PEM
+   # GOOGLE_WALLET_ISSUER_ID, GOOGLE_WALLET_SA_EMAIL, GOOGLE_WALLET_SA_PRIVATE_KEY
+   ```
+
+   Never commit these. Until a platform's secrets are set, its button answers "not enabled yet".
+4. Apply the two wallet migrations, then deploy:
+
+   ```bash
+   supabase functions deploy student-wallet-pass wallet-apple-web wallet-sync wallet-photo --no-verify-jwt --project-ref <ref>
+   ```
+
+**Tests**: `deno test supabase/functions/_shared/wallet/` (card contents) and
+`supabase/tests/local/wallet/` (end to end on a local stack, see `tests/local/README.md`).

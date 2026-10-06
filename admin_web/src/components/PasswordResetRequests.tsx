@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { KeyRound, Phone, RefreshCw, X, Copy } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { keys, unwrap, usePageData } from '../lib/query';
 
 interface ResetRequest {
   id: string;
@@ -26,28 +27,21 @@ const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 /**
- * Student "Forgot password" requests (scoped by the database to the admin's
- * company). The admin verifies the student by phone, then issues a one-time
- * code that the student types into the app together with a new password.
+ * Student "Forgot password" requests. In a workspace: those of that company's
+ * members. Without a company (platform admin): everyone's, including students
+ * who ride with no company. The admin verifies the student by phone, then issues
+ * a one-time code that the student types into the app with a new password.
  */
-export const PasswordResetRequests: React.FC = () => {
-  const [requests, setRequests] = useState<ResetRequest[]>([]);
-  const [error, setError] = useState('');
+export const PasswordResetRequests: React.FC<{ companyId: string | null }> = ({ companyId }) => {
   const [issued, setIssued] = useState<{ request: ResetRequest; code: string; expiresAt: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const { data, error: loadError } = await supabase.rpc('admin_list_password_reset_requests');
-    if (loadError) { setError(loadError.message); return; }
-    setError('');
-    setRequests((data || []) as ResetRequest[]);
-  }, []);
-
-  useEffect(() => {
-    void load();
-    const interval = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(interval);
-  }, [load]);
+  // New requests arrive through the live topic of the workspace or the platform.
+  const page = usePageData(companyId ? keys.company(companyId, 'resetRequests') : keys.platform('resetRequests'), () =>
+    unwrap<ResetRequest[]>(supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId })));
+  const requests = page.data ?? [];
+  const error = page.error;
+  const load = page.reload;
 
   const issueCode = async (request: ResetRequest) => {
     if (!confirm(`تأكد أولاً من هوية الطالب "${request.student_name}" بالاتصال على ${request.student_phone}. إصدار الرمز الآن؟`)) return;

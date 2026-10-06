@@ -36,8 +36,19 @@ export async function requireAdmin(request: Request) {
     .from('admins').select('id,role,company_id').eq('id', user.id).maybeSingle();
   if (adminError || !admin) throw new HttpError(403, 'هذا الإجراء متاح للمسؤولين فقط.');
 
+  // A company's admins lose access while the company is suspended or archived.
+  if (admin.role === 'company_admin') {
+    const { data: company, error: companyError } = await serviceClient
+      .from('companies').select('status').eq('id', admin.company_id).maybeSingle();
+    if (companyError || company?.status !== 'active') {
+      throw new HttpError(403, 'حساب شركتك موقوف حالياً. تواصل مع إدارة المنصة.');
+    }
+  }
+
   return { user, admin, serviceClient };
 }
+
+export type AdminContext = Awaited<ReturnType<typeof requireAdmin>>;
 
 export async function requireSuperAdmin(request: Request) {
   const context = await requireAdmin(request);
@@ -45,6 +56,30 @@ export async function requireSuperAdmin(request: Request) {
     throw new HttpError(403, 'هذا الإجراء متاح لمدير النظام فقط. (الحساب المسجل حالياً ليس مدير النظام)');
   }
   return context;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Refuses a company admin acting on any company but their own. */
+export function assertCompanyAccess(context: AdminContext, companyId: string | null | undefined) {
+  if (context.admin.role === 'company_admin' && companyId !== context.admin.company_id) {
+    throw new HttpError(403, 'هذا الإجراء خارج صلاحيات شركتك.');
+  }
+}
+
+/**
+ * The company a request acts on: a company admin is pinned to their own
+ * whatever the client sends; the platform admin must name an existing one.
+ */
+export async function resolveCompany(context: AdminContext, requested: unknown): Promise<string> {
+  if (context.admin.role === 'company_admin') return context.admin.company_id as string;
+  const companyId = String(requested ?? '').trim();
+  if (!UUID.test(companyId)) throw new HttpError(400, 'اختر الشركة أولاً.');
+  const { data: company, error } = await context.serviceClient
+    .from('companies').select('id').eq('id', companyId).maybeSingle();
+  if (error) throw error;
+  if (!company) throw new HttpError(404, 'الشركة غير موجودة.');
+  return companyId;
 }
 
 export function jsonResponse(body: unknown, status = 200) {

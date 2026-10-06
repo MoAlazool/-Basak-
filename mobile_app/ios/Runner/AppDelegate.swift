@@ -1,8 +1,11 @@
 import Flutter
+import PassKit
 import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private let walletPasses = WalletPassPresenter()
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -12,5 +15,84 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    // Student Wallet card: the app receives an already signed .pkpass from the
+    // server and only asks iOS to show its "add this pass" sheet.
+    let channel = FlutterMethodChannel(
+      name: "basak/wallet", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    channel.setMethodCallHandler { [walletPasses] call, result in
+      walletPasses.handle(call, result: result)
+    }
+    engineBridge.pluginRegistry.registrar(forPlugin: "BasakWallet")?
+      .register(AddPassButtonFactory(), withId: "basak/add_pass_button")
   }
+}
+
+/// Presents PKAddPassesViewController for a pass and reports "added" or "cancelled".
+final class WalletPassPresenter: NSObject, PKAddPassesViewControllerDelegate {
+  private var pending: FlutterResult?
+  private var pass: PKPass?
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "addPass" else { return result(FlutterMethodNotImplemented) }
+    guard let data = (call.arguments as? FlutterStandardTypedData)?.data else {
+      return result(FlutterError(code: "invalid_pass", message: "No pass data.", details: nil))
+    }
+    guard pending == nil else {
+      return result(FlutterError(code: "busy", message: "A pass is already being added.", details: nil))
+    }
+    guard PKAddPassesViewController.canAddPasses() else {
+      return result(FlutterError(code: "unavailable", message: "This device cannot add passes.", details: nil))
+    }
+    do {
+      let pass = try PKPass(data: data)
+      guard let sheet = PKAddPassesViewController(pass: pass), let presenter = Self.topViewController() else {
+        return result(FlutterError(code: "unavailable", message: "Cannot present the pass.", details: nil))
+      }
+      sheet.delegate = self
+      self.pass = pass
+      pending = result
+      presenter.present(sheet, animated: true)
+    } catch {
+      result(FlutterError(code: "invalid_pass", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  func addPassesViewControllerDidFinish(_ controller: PKAddPassesViewController) {
+    controller.dismiss(animated: true) { [weak self] in
+      guard let self = self else { return }
+      let added = self.pass.map { PKPassLibrary().containsPass($0) } ?? false
+      self.pending?(added ? "added" : "cancelled")
+      self.pending = nil
+      self.pass = nil
+    }
+  }
+
+  private static func topViewController() -> UIViewController? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let window = scenes.flatMap { $0.windows }.first { $0.isKeyWindow } ?? scenes.first?.windows.first
+    var top = window?.rootViewController
+    while let presented = top?.presentedViewController { top = presented }
+    return top
+  }
+}
+
+/// Apple's official "Add to Apple Wallet" button, shown inside the Flutter screen.
+final class AddPassButtonFactory: NSObject, FlutterPlatformViewFactory {
+  func create(withFrame frame: CGRect, viewIdentifier viewId: Int64, arguments args: Any?) -> FlutterPlatformView {
+    return AddPassButtonView(frame: frame)
+  }
+}
+
+final class AddPassButtonView: NSObject, FlutterPlatformView {
+  private let button: PKAddPassButton
+
+  init(frame: CGRect) {
+    button = PKAddPassButton(addPassButtonStyle: .black)
+    button.frame = frame
+    // Taps are handled on the Flutter side, which requests the pass first.
+    button.isUserInteractionEnabled = false
+  }
+
+  func view() -> UIView { button }
 }

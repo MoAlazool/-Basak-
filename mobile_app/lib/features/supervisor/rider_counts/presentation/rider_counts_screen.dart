@@ -1,3 +1,4 @@
+import '../../data/supervisor_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
@@ -30,11 +31,15 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
     _loadCounts();
   }
 
-  Future<void> _loadCounts() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  /// [silent] keeps the current numbers on screen while fresh ones are fetched
+  /// (used when a student confirms or cancels and the server announces it).
+  Future<void> _loadCounts({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -64,6 +69,10 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The dashboard is refreshed by live events; when it changes, so may these counts.
+    ref.listen(supervisorDashboardProvider, (_, next) {
+      if (next.hasValue && !next.isLoading) _loadCounts(silent: true);
+    });
     final totalRiders = _counts.fold<int>(0, (sum, st) => sum + st.ridingCount);
     final totalReturners =
         _counts.fold<int>(0, (sum, st) => sum + st.returningCount);

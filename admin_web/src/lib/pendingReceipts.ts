@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { keys } from './query';
 
 export interface PendingReceiptRow {
   id: string;
@@ -88,10 +89,10 @@ const hhmm = (value?: string | null) => (value ? String(value).slice(0, 5) : '')
  * separate scoped queries. Nested embeds silently returned null when a relation
  * was ambiguous or blocked, which left the review table without student data.
  */
-export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
+export async function fetchPendingReceipts(companyId: string): Promise<PendingReceiptRow[]> {
   const { data: receiptRows, error } = await supabase.from('receipts')
     .select('id, image_url, attempt_number, created_at, subscription_id, amount')
-    .eq('status', 'pending').order('created_at', { ascending: true });
+    .eq('company_id', companyId).eq('status', 'pending').order('created_at', { ascending: true });
   if (error) throw error;
   const receipts = (receiptRows || []) as Row[];
   if (!receipts.length) return [];
@@ -158,49 +159,40 @@ export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
   }));
 }
 
-/** One shared query keeps the dashboard and the dedicated receipt page in sync. */
-export function usePendingReceipts() {
-  const [receipts, setReceipts] = useState<PendingReceiptRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+/** The receipts one company still has to review. New ones arrive through the workspace's live topic. */
+export function usePendingReceipts(companyId: string) {
+  const client = useQueryClient();
+  const key = keys.company(companyId, 'receipts', 'pending');
+  const query = useQuery({ queryKey: key, queryFn: () => fetchPendingReceipts(companyId) });
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      setReceipts(await fetchPendingReceipts());
-    } catch (loadError) {
-      console.error('Could not load pending receipts:', loadError);
-      setError(loadError instanceof Error ? loadError.message : 'تعذر تحميل الإيصالات.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Approving or rejecting removes the row at once; if the database refuses, it comes back.
+  const review = useMutation({
+    mutationFn: async ({ id, decision, reason }: { id: string; decision: 'approved' | 'rejected'; reason?: string }) => {
+      const { data, error } = await supabase.from('receipts')
+        .update(decision === 'approved' ? { status: 'approved' } : { status: 'rejected', rejection_reason: reason })
+        .eq('id', id).select('id').single();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error('لم يُحفظ القرار؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
+    },
+    onMutate: async ({ id }) => {
+      await client.cancelQueries({ queryKey: key });
+      const before = client.getQueryData<PendingReceiptRow[]>(key);
+      client.setQueryData<PendingReceiptRow[]>(key, (rows) => (rows ?? []).filter((row) => row.id !== id));
+      return { before };
+    },
+    onError: (_error, _input, context) => { if (context?.before) client.setQueryData(key, context.before); },
+    onSettled: () => {
+      for (const name of ['receipts', 'overview', 'students', 'reports']) {
+        void client.invalidateQueries({ queryKey: keys.company(companyId, name) });
+      }
+    },
+  });
 
-  useEffect(() => {
-    let inFlight = false;
-    const loadIfVisible = () => {
-      if (inFlight || document.visibilityState !== 'visible') return;
-      inFlight = true;
-      void refresh().finally(() => { inFlight = false; });
-    };
-
-    loadIfVisible();
-    const channel = supabase
-      .channel('admin-pending-receipts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts' }, loadIfVisible)
-      .subscribe();
-    const interval = window.setInterval(loadIfVisible, 30_000);
-    window.addEventListener('focus', loadIfVisible);
-    document.addEventListener('visibilitychange', loadIfVisible);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', loadIfVisible);
-      document.removeEventListener('visibilitychange', loadIfVisible);
-      void supabase.removeChannel(channel);
-    };
-  }, [refresh]);
-
-  return { receipts, loading, error, refresh };
+  return {
+    receipts: query.data ?? [],
+    loading: query.isPending,
+    error: query.error?.message ?? '',
+    refresh: () => void query.refetch(),
+    review: (id: string, decision: 'approved' | 'rejected', reason?: string) => review.mutateAsync({ id, decision, reason }),
+  };
 }

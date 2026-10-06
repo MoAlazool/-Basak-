@@ -1,17 +1,20 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/sync/session.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
-import '../../../auth/providers/auth_provider.dart';
+import '../../wallet/data/wallet_pass_repository.dart';
+import '../../wallet/presentation/add_to_wallet_button.dart';
 import '../data/student_qr_repository.dart';
 
 final studentQrRepoProvider = Provider((ref) => StudentQrRepository());
 final studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
-  ref.watch(currentUserIdProvider);
+  ref.watch(sessionUserIdProvider);
   return ref.watch(studentQrRepoProvider).getStudentPassDetails();
 });
 
@@ -231,6 +234,13 @@ class StudentQrScreen extends ConsumerWidget {
                       ]),
                     ),
                     const SizedBox(height: 13),
+                    if (AddToWalletButton.canOffer(
+                        pass,
+                        WalletPassRepository.platformFor(
+                            defaultTargetPlatform))) ...[
+                      AddToWalletButton(pass: pass),
+                      const SizedBox(height: 13),
+                    ],
                     Container(
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(

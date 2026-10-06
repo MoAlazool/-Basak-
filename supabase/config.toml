@@ -4,6 +4,9 @@ project_id = "hnwpkkryxovhmsrokdsd"
 # These functions verify the caller themselves (auth.getUser + admins table),
 # so the gateway JWT check is disabled. This also lets the browser CORS
 # preflight (OPTIONS, sent without a token) reach the function.
+[functions.admin-create-company]
+verify_jwt = false
+
 [functions.admin-create-company-admin]
 verify_jwt = false
 
@@ -29,4 +32,20 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.student-change-password]
+verify_jwt = false
+
+[functions.student-wallet-pass]
+verify_jwt = false
+
+# Called by iPhones (Apple Wallet's pass web service) with "Authorization:
+# ApplePass <token>", never with a Supabase JWT.
+[functions.wallet-apple-web]
+verify_jwt = false
+
+# Called by the database (with its own secret) and by the dashboard.
+[functions.wallet-sync]
+verify_jwt = false
+
+# Fetched by Google Wallet: the unguessable link is the only credential.
+[functions.wallet-photo]
 verify_jwt = false

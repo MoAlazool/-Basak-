@@ -1,15 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
-import { useAdminScope } from '../lib/adminScope';
-import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, Building2, KeyRound } from 'lucide-react';
+import { useAdminScope, useCompany } from '../lib/adminScope';
+import { useQueryClient } from '@tanstack/react-query';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
+import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
+import { MembershipRequests } from '../components/MembershipRequests';
 
 const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) =>
   url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
 
 /** One request for all photos; a missing file yields no URL instead of a failed request per row. */
+const PAGE_SIZE = 25;
+
 async function signAvatarUrls(paths: string[]): Promise<Record<string, string>> {
   if (!paths.length) return {};
   const { data, error } = await supabase.storage.from('student-avatars').createSignedUrls(paths, 600);
@@ -58,7 +64,7 @@ interface Student {
   }[];
 }
 
-type LineRef = { name: string; companies?: { name: string } | { name: string }[] | null };
+type LineRef = { name: string };
 
 const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
 
@@ -83,7 +89,6 @@ interface LineOption {
   line_trips: TripOption[];
 }
 
-interface CompanyOption { id: string; name: string; }
 
 const activeStations = (line?: LineOption) =>
   (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
@@ -103,15 +108,13 @@ const lineServesUniversity = (line: LineOption, universityId: string | undefined
 
 export const StudentsPage: React.FC = () => {
   const admin = useAdminScope();
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const company = useCompany();
+  const selectedCompanyId = company.id;
   const [departureTripId, setDepartureTripId] = useState('');
   const [returnTripId, setReturnTripId] = useState('');
-  const [students, setStudents] = useState<Student[]>([]);
-  const [universities, setUniversities] = useState<University[]>([]);
-  const [lines, setLines] = useState<LineOption[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [search, setSearch] = useState('');   // what the list is actually filtered by (debounced)
+  const [pageIndex, setPageIndex] = useState(0);
 
   // Add Student Form
   const [fullName, setFullName] = useState('');
@@ -123,83 +126,79 @@ export const StudentsPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetTarget, setResetTarget] = useState<Student | null>(null);
-  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [periods, setPeriods] = useState<PurchasablePeriod[]>([]);
   const [periodKey, setPeriodKey] = useState('');
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    const timer = window.setTimeout(() => { setSearch(searchQuery.trim()); setPageIndex(0); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
-  const fetchInitialData = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch students with active subscriptions and line names
-      const { data: studentsData, error: sErr } = await supabase
-        .from('students')
-        .select(`
-          id, phone, full_name, university, college, profile_image_url, created_at,
-          subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name, companies(name)),
-            departure_trip:departure_trip_id(label, universities(name)))
-        `)
-        .order('created_at', { ascending: false });
-
-      if (sErr) throw sErr;
-      const loadedStudents = (studentsData || []) as unknown as Student[];
-      setStudents(loadedStudents);
-      void signAvatarUrls(loadedStudents.map((st) => st.profile_image_url).filter((x): x is string => !!x))
-        .then(setAvatarUrls);
-
-      // Fetch active universities
-      const { data: uniData, error: uniError } = await supabase
-        .from('universities')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-
-      if (uniError) throw uniError;
-      setUniversities(uniData || []);
-      if (uniData && uniData.length > 0) {
-        setSelectedUniversity((current) => current || uniData[0].name);
-      }
-
-      const { data: lineRows, error: lineError } = await supabase.from('lines')
-        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
-        .eq('is_active', true).order('name');
-      if (lineError) throw lineError;
-      const availableLines = (lineRows || []) as unknown as LineOption[];
-      setLines(availableLines);
-
-      let companyOptions: CompanyOption[];
-      if (admin.role === 'company_admin' && admin.company_id) {
-        companyOptions = [{ id: admin.company_id, name: admin.companyName || 'شركتي' }];
-      } else {
-        const { data: companyRows, error: companyError } = await supabase
-          .from('companies').select('id,name').eq('is_active', true).order('name');
-        if (companyError) throw companyError;
-        companyOptions = (companyRows || []) as CompanyOption[];
-      }
-      setCompanies(companyOptions);
-      const companyId = companyOptions.some((company) => company.id === selectedCompanyId)
-        ? selectedCompanyId
-        : (companyOptions.find((company) => availableLines.some((line) => line.company_id === company.id)) ?? companyOptions[0])?.id || '';
-      // State from this load is not visible to the apply* helpers yet, so resolve here.
-      const uniName = selectedUniversity || uniData?.[0]?.name || '';
-      const uniId = (uniData || []).find((university) => university.name === uniName)?.id;
-      const firstLine = availableLines.find((line) => line.company_id === companyId && lineServesUniversity(line, uniId));
-      const firstStation = activeStations(firstLine)[0];
-      setSelectedCompanyId(companyId);
-      setSelectedLineId(firstLine?.id || '');
-      setSelectedStationId(firstStation?.id || '');
-      setDepartureTripId(stopOptions(firstLine, 'departure', firstStation?.id || '', uniId)[0]?.trip.id || '');
-      setReturnTripId(stopOptions(firstLine, 'return', firstStation?.id || '', uniId)[0]?.trip.id || '');
-    } catch (err: any) {
-      console.error('Error fetching students data:', err);
-    } finally {
-      setLoading(false);
+  // The company's active members, a page at a time, each with their subscriptions to
+  // this company only. Searching is done by the database, not over what happens to be loaded.
+  const studentsPage = usePageData(keys.company(company.id, 'students', { search, pageIndex }), async () => {
+    let query = supabase
+      .from('students')
+      .select(`
+        id, phone, full_name, university, college, profile_image_url, created_at,
+        company_students!inner(company_id, status),
+        subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name),
+          departure_trip:departure_trip_id(label, universities(name)))
+      `, { count: 'exact' })
+      .eq('company_students.company_id', company.id)
+      .eq('company_students.status', 'active')
+      .eq('subscriptions.company_id', company.id);
+    if (search) {
+      const term = search.replace(/[%,()]/g, ' ');
+      query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%,university.ilike.%${term}%`);
     }
-  };
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    return { rows: (data || []) as unknown as Student[], total: count ?? 0 };
+  }, { keepPrevious: true });
+  const students = studentsPage.data?.rows ?? [];
+  const totalStudents = studentsPage.data?.total ?? 0;
+  const loading = studentsPage.loading;
+
+  // Signed photo links expire, so they are fetched for the rows on screen and never stored.
+  const photoPaths = students.map((st) => st.profile_image_url).filter((x): x is string => !!x);
+  const avatarUrls = usePageData(keys.company(company.id, 'avatars', photoPaths), () => signAvatarUrls(photoPaths),
+    { enabled: photoPaths.length > 0, keepPrevious: true }).data ?? {};
+
+  // What the add-student form chooses from.
+  const options = usePageData(keys.company(company.id, 'lineOptions'), async () => {
+    const [uniRes, lineRes] = await Promise.all([
+      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('lines')
+        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
+        .eq('company_id', company.id).eq('is_active', true).order('name'),
+    ]);
+    if (uniRes.error) throw new Error(uniRes.error.message);
+    if (lineRes.error) throw new Error(lineRes.error.message);
+    return { universities: (uniRes.data || []) as University[], lines: (lineRes.data || []) as unknown as LineOption[] };
+  });
+  const universities = options.data?.universities ?? [];
+  const lines = options.data?.lines ?? [];
+
+  // First arrival of the options picks sensible defaults; later refreshes keep what the admin chose.
+  useEffect(() => {
+    if (!options.data || selectedLineId) return;
+    const uniName = selectedUniversity || options.data.universities[0]?.name || '';
+    const uniId = options.data.universities.find((university) => university.name === uniName)?.id;
+    const firstLine = options.data.lines.find((line) => lineServesUniversity(line, uniId));
+    const firstStation = activeStations(firstLine)[0];
+    if (!selectedUniversity) setSelectedUniversity(uniName);
+    setSelectedLineId(firstLine?.id || '');
+    setSelectedStationId(firstStation?.id || '');
+    setDepartureTripId(stopOptions(firstLine, 'departure', firstStation?.id || '', uniId)[0]?.trip.id || '');
+    setReturnTripId(stopOptions(firstLine, 'return', firstStation?.id || '', uniId)[0]?.trip.id || '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.data]);
+
+  const fetchInitialData = studentsPage.reload;
+  const client = useQueryClient();
 
   const universityIdOf = (name: string) => universities.find((university) => university.name === name)?.id;
 
@@ -218,7 +217,6 @@ export const StudentsPage: React.FC = () => {
   };
 
   const applyCompany = (companyId: string, source: LineOption[] = lines, universityName = selectedUniversity) => {
-    setSelectedCompanyId(companyId);
     const universityId = universityIdOf(universityName);
     const firstLine = source.find((line) => line.company_id === companyId && lineServesUniversity(line, universityId));
     applyLine(firstLine?.id || '', source, universityName);
@@ -289,10 +287,6 @@ export const StudentsPage: React.FC = () => {
       alert('اختر الجامعة من القائمة.');
       return;
     }
-    if (!selectedCompanyId) {
-      alert('اختر الشركة أولاً.');
-      return;
-    }
     if (!selectedLine || !selectedStation) {
       alert('اختر خطاً ومحطة نشطين تابعين للشركة المختارة ويخدمان جامعة الطالب.');
       return;
@@ -314,14 +308,17 @@ export const StudentsPage: React.FC = () => {
     try {
       setIsSubmitting(true);
 
-      await invokeEdgeFunction('admin-create-student', {
+      const created = await invokeEdgeFunction<{ id?: string; invited?: boolean }>('admin-create-student', {
         fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password,
         lineId: selectedLineId, stationId: selectedStationId, subscriptionType,
         departureTripId, returnTripId: returnTripId || null,
         ...(subscriptionType !== 'daily' ? { periodCode, academicYear: Number(academicYear) } : {}),
       });
 
-      alert('تم تسجيل الطالب بنجاح!');
+      alert(created?.invited
+        ? 'لهذا الرقم حساب في باصك بالفعل، فأُرسلت له دعوة للانضمام إلى شركتك. يظهر في قائمتك بعد أن يوافق من التطبيق (بحسابه وكلمة مروره الحاليين).'
+        : 'تم تسجيل الطالب بنجاح!');
+      void client.invalidateQueries({ queryKey: keys.company(company.id, 'invites') });
       setFullName('');
       setPhone('');
       setPassword('');
@@ -333,14 +330,38 @@ export const StudentsPage: React.FC = () => {
     }
   };
 
+  // A company ends its relationship with a student; the person's account, QR,
+  // wallet card and any other company they ride with are not touched.
+  const handleRemoveStudent = async (studentId: string, studentName: string) => {
+    if (!confirm(`إزالة الطالب "${studentName}" من ${company.name}؟\nتنتهي اشتراكاته المفتوحة مع الشركة ولا يظهر في قوائمها. يبقى حسابه في التطبيق كما هو، وتبقى الإيرادات المسجلة في تقارير الشركة.`)) {
+      return;
+    }
+    const { error } = await supabase.rpc('company_remove_student', { p_company_id: company.id, p_student_id: studentId });
+    if (error) alert('تعذرت إزالة الطالب: ' + error.message);
+    else await fetchInitialData();
+  };
+
+  // A member's name belongs to their account, which other companies may share:
+  // the company proposes the fix and the platform admin applies it.
+  const requestCorrection = async (student: Student) => {
+    const value = window.prompt(`الاسم الصحيح للطالب (رباعي). الاسم الحالي: ${student.full_name}\nيُرسل الطلب لإدارة المنصة للاعتماد.`, student.full_name);
+    if (!value || value.trim() === student.full_name) return;
+    const { error } = await supabase.rpc('request_student_correction', {
+      p_company_id: company.id, p_student_id: student.id, p_field: 'full_name', p_new_value: value.trim(),
+    });
+    if (error) alert('تعذر إرسال الطلب: ' + error.message);
+    else { alert('أُرسل طلب التصحيح إلى إدارة المنصة.'); void client.invalidateQueries({ queryKey: keys.company(company.id, 'corrections') }); }
+  };
+
+  // Deleting the whole account is the platform admin's call (or the student's own, in the app).
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
-    if (!confirm(`هل أنت متأكد من حذف الطالب "${studentName}"؟ سيتم حذف حسابه واشتراكاته وبياناته، مع الاحتفاظ بمبلغ الإيراد في السجل المالي.`)) {
+    if (!confirm(`حذف حساب الطالب "${studentName}" نهائياً من المنصة؟\nيُحذف حسابه وبياناته واشتراكاته لدى كل الشركات، مع الاحتفاظ بمبالغ الإيرادات في السجل المالي. لا يمكن التراجع.`)) {
       return;
     }
 
     try {
       await invokeEdgeFunction('admin-delete-student', { studentId });
-      alert('تم حذف الطالب بنجاح.');
+      alert('تم حذف حساب الطالب.');
       fetchInitialData();
     } catch (err: any) {
       alert('فشل حذف الطالب: ' + err.message);
@@ -357,14 +378,8 @@ export const StudentsPage: React.FC = () => {
     pending_payment: 'بانتظار الدفع', pending_review: 'قيد مراجعة الإيصال', active: 'نشط', rejected: 'مرفوض', expired: 'منتهي',
   };
 
-  const filteredStudents = students.filter((s) => {
-    const q = searchQuery.toLowerCase();
-    return (
-      s.full_name.toLowerCase().includes(q) ||
-      s.phone.includes(q) ||
-      (s.university && s.university.toLowerCase().includes(q))
-    );
-  });
+  const filteredStudents = students;
+  const pageCount = Math.max(1, Math.ceil(totalStudents / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -375,7 +390,8 @@ export const StudentsPage: React.FC = () => {
         </p>
       </div>
 
-      <PasswordResetRequests />
+      <PasswordResetRequests companyId={company.id} />
+      <MembershipRequests companyId={company.id} />
 
       {/* Add Student Card */}
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -430,23 +446,6 @@ export const StudentsPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Company */}
-          <div>
-            <label className="text-xs font-semibold text-slate-500">الشركة</label>
-            <div className="relative mt-1">
-              <Building2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => applyCompany(e.target.value)}
-                disabled={admin.role === 'company_admin'}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-600"
-                required
-              >
-                {companies.length === 0 && <option value="">لا توجد شركات مفعّلة</option>}
-                {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-              </select>
-            </div>
-          </div>
 
           <div>
             <label className="text-xs font-semibold text-slate-500">الخط والمحطة</label>
@@ -544,16 +543,16 @@ export const StudentsPage: React.FC = () => {
             />
           </div>
           <span className="text-xs font-semibold text-slate-400">
-            إجمالي الطلاب: {students.length}
+            إجمالي الطلاب: {totalStudents.toLocaleString('ar-EG')}{studentsPage.refreshing ? ' • جاري التحديث…' : ''}
           </span>
         </div>
 
         {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-          </div>
+          <SkeletonRows rows={5} />
+        ) : studentsPage.error ? (
+          <div role="alert" className="p-8 text-center text-rose-700">تعذر تحميل الطلاب: {studentsPage.error}</div>
         ) : filteredStudents.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">لا يوجد طلاب مطابقون للبحث.</div>
+          <div className="p-8 text-center text-slate-500">{search ? 'لا يوجد طلاب مطابقون للبحث.' : 'لا يوجد طلاب مسجلون في هذه الشركة بعد.'}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-right text-sm">
@@ -602,7 +601,6 @@ export const StudentsPage: React.FC = () => {
                                 {sub.period_label && (
                                   <span className="font-semibold text-slate-600" title={`${sub.start_date ?? ''} → ${sub.end_date ?? ''}`}>{sub.period_label}</span>
                                 )}
-                                <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700"><Building2 className="h-3 w-3" />{one(one(sub.lines)?.companies)?.name || '—'}</span>
                                 <span className="font-semibold text-slate-700">{one(sub.lines)?.name || '—'}</span>
                                 {sub.departure_time && (
                                   <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">
@@ -638,12 +636,28 @@ export const StudentsPage: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => handleDeleteStudent(s.id, s.full_name)}
-                          className="text-rose-400 hover:text-rose-600 transition"
-                          title="حذف الطالب والاشتراكات"
+                          onClick={() => void requestCorrection(s)}
+                          className="ml-3 text-slate-400 hover:text-sky-600 transition"
+                          title="طلب تصحيح الاسم (تعتمده إدارة المنصة)"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <PencilLine className="h-4 w-4" />
                         </button>
+                        <button
+                          onClick={() => void handleRemoveStudent(s.id, s.full_name)}
+                          className="text-slate-400 hover:text-rose-600 transition"
+                          title="إزالة الطالب من الشركة"
+                        >
+                          <UserMinus className="h-4 w-4" />
+                        </button>
+                        {admin.role === 'super_admin' && (
+                          <button
+                            onClick={() => handleDeleteStudent(s.id, s.full_name)}
+                            className="mr-3 text-rose-400 hover:text-rose-600 transition"
+                            title="حذف الحساب نهائياً من المنصة"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -652,12 +666,19 @@ export const StudentsPage: React.FC = () => {
             </table>
           </div>
         )}
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 p-3 text-xs text-slate-500">
+            <button disabled={pageIndex === 0} onClick={() => setPageIndex(pageIndex - 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">السابق</button>
+            <span>صفحة {(pageIndex + 1).toLocaleString('ar-EG')} من {pageCount.toLocaleString('ar-EG')}</span>
+            <button disabled={pageIndex >= pageCount - 1} onClick={() => setPageIndex(pageIndex + 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">التالي</button>
+          </div>
+        )}
       </div>
       {resetTarget && (
         <ResetStudentPasswordDialog
           student={{
             id: resetTarget.id, full_name: resetTarget.full_name, phone: resetTarget.phone, university: resetTarget.university,
-            company: one(one(resetTarget.subscriptions?.[0]?.lines)?.companies)?.name ?? null,
+            company: company.name,
           }}
           onClose={() => setResetTarget(null)}
         />

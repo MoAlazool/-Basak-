@@ -51,16 +51,22 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
     if (MediaQuery.of(context).disableAnimations && !_c.isCompleted) {
       _c.duration = const Duration(milliseconds: 900);
     }
-    // Play only once the logo is decoded, so it never fades in half-loaded.
+    // Play once the logo is decoded, so it never fades in half-loaded, but
+    // never hold the launch more than half a second for it.
     if (!_started) {
       _started = true;
-      precacheImage(_logoAsset, context).whenComplete(() {
-        if (!mounted) return;
-        _c.forward().whenComplete(() {
-          if (mounted) setState(() => _done = true);
-        });
-      });
+      Future.any([
+        precacheImage(_logoAsset, context),
+        Future<void>.delayed(const Duration(milliseconds: 500)),
+      ]).whenComplete(_play);
     }
+  }
+
+  void _play() {
+    if (!mounted || _c.isAnimating || _c.isCompleted) return;
+    _c.forward().whenComplete(() {
+      if (mounted) setState(() => _done = true);
+    });
   }
 
   void _measureTarget() {

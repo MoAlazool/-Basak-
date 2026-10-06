@@ -28,6 +28,8 @@ SELECT other_company, 'vodafone_cash', 'E2E other wallet', '01000000000' FROM e2
 UPDATE e2e_ctx SET other_method = (SELECT id FROM public.company_payment_methods WHERE display_name = 'E2E other wallet');
 GRANT ALL ON e2e_ctx TO authenticated;
 DELETE FROM public.subscriptions WHERE student_id IN (SELECT stu_a FROM e2e_ctx UNION SELECT stu_b FROM e2e_ctx);
+-- Counted after the cleanup above, so the reset checks compare like with like.
+UPDATE e2e_ctx SET subs_before = (SELECT count(*) FROM public.subscriptions), receipts_before = (SELECT count(*) FROM public.receipts);
 
 -- =================================================================== COMPANY ADMIN
 SET LOCAL ROLE authenticated;
@@ -109,13 +111,11 @@ BEGIN
   INSERT INTO e2e_results(step, ok, detail) SELECT 'password: company admin cannot read the reset audit',
     count(*) = 0, count(*)::text FROM public.password_admin_resets;
 
-  -- ---- reset is super-admin only ----
-  BEGIN
-    PERFORM public.admin_reset_reports('financial', 'RESET FINANCIAL DATA');
-    v_ok := false;
-  EXCEPTION WHEN insufficient_privilege THEN v_ok := true;
-  END;
-  INSERT INTO e2e_results(step, ok, detail) VALUES ('reset: company admin is refused', v_ok, NULL);
+  -- ---- a company resets its own reports, and only its own ----
+  v_id := (public.admin_reset_reports('financial', 'RESET FINANCIAL DATA', 'E2E company', c.other_company)->>'id')::uuid;
+  INSERT INTO e2e_results(step, ok, detail) SELECT 'reset: a company admin''s reset is recorded for its own company',
+    company_id = c.company_id, company_id::text FROM public.report_resets WHERE id = v_id;
+  PERFORM public.admin_undo_report_reset(v_id);
 END $$;
 RESET ROLE;
 
@@ -204,12 +204,12 @@ BEGIN
       AND r2->'rows'->0->>'payment_method' = 'InstaPay الشركة', r2->'rows'->0->>'student_name');
 
   BEGIN
-    PERFORM public.admin_reset_reports('all', 'reset all data');
+    PERFORM public.admin_reset_reports('all', 'reset all data', NULL, c.company_id);
     v_ok := false;
   EXCEPTION WHEN check_violation THEN v_ok := true;
   END;
   INSERT INTO e2e_results(step, ok, detail) VALUES ('reset: wrong confirmation phrase refused', v_ok, NULL);
-  v_reset := public.admin_reset_reports('financial', 'RESET FINANCIAL DATA', 'E2E');
+  v_reset := public.admin_reset_reports('financial', 'RESET FINANCIAL DATA', 'E2E', c.company_id);
   r2 := public.admin_subscription_report('{}'::jsonb);
   INSERT INTO e2e_results(step, ok, detail) VALUES ('reset: dashboard counts start from zero',
     (r2->'totals'->>'count')::int = 0 AND (r2->'totals'->>'revenue')::numeric = 0, (r2->'totals')::text);
@@ -219,7 +219,7 @@ BEGIN
   INSERT INTO e2e_results(step, ok, detail) VALUES ('reset: full history still available',
     (r2->'totals'->>'count')::int = (r->'totals'->>'count')::int, (r2->'totals'->>'count'));
   BEGIN
-    PERFORM public.admin_reset_reports('financial', 'RESET FINANCIAL DATA');
+    PERFORM public.admin_reset_reports('financial', 'RESET FINANCIAL DATA', NULL, c.company_id);
     v_ok := false;
   EXCEPTION WHEN check_violation THEN v_ok := true;
   END;

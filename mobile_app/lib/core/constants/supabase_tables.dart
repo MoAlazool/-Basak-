@@ -24,4 +24,9 @@ class SupabaseRpcs {
   static const String getStudentCatalog = 'get_student_catalog';
   static const String getPurchasablePeriods = 'get_purchasable_periods';
   static const String requestStudentPasswordReset = 'request_student_password_reset';
+  static const String walletRefreshMyCard = 'wallet_refresh_my_card';
+}
+
+class SupabaseFunctions {
+  static const String studentWalletPass = 'student-wallet-pass';
 }

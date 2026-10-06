@@ -133,6 +133,7 @@ class StudentQrRepository {
       );
       await OfflineCache.saveStudentPass(details.toCacheJson());
       OfflineCache.markOnline();
+      _refreshWalletCard();
       return details;
     } catch (error) {
       // Only an unreachable server falls back to the saved pass; a refused or
@@ -146,5 +147,15 @@ class StudentQrRepository {
       }
       rethrow;
     }
+  }
+
+  /// A subscription can start or end by date alone, which nothing on the
+  /// server notices. Opening this screen is a good moment to ask the server
+  /// to bring the student's Wallet card up to date; it does nothing when the
+  /// card is already right or the student has none. Never blocks the screen.
+  void _refreshWalletCard() {
+    _client
+        .rpc(SupabaseRpcs.walletRefreshMyCard)
+        .then((_) {}, onError: (_) {});
   }
 }

@@ -392,10 +392,16 @@ DO $$ BEGIN
     t.err($q$UPDATE public.academic_terms SET start_month = 1, start_day = 15 WHERE code = 'second'$q$) LIKE '%يتداخل%');
   PERFORM t.ok('E17b invalid day (31 Feb) is rejected',
     t.err($q$UPDATE public.academic_terms SET end_month = 2, end_day = 31 WHERE code = 'second'$q$) IS NOT NULL);
+  -- The defaults are a template for new companies: editing them moves nobody's subscription.
   UPDATE public.academic_terms SET end_day = 31 WHERE code = 'first';
-  PERFORM t.ok('E18 super admin edit propagates to open first-semester subscriptions',
-    (SELECT to_char(end_date, 'DD-MM') FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001') = '31-01');
+  PERFORM t.ok('E18 editing the default terms leaves existing subscriptions alone',
+    (SELECT to_char(end_date, 'DD-MM') FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001') = '30-01');
   UPDATE public.academic_terms SET end_day = 30 WHERE code = 'first';
+  -- A company's own terms do move its open subscriptions.
+  PERFORM public.save_company_terms('11111111-1111-1111-1111-111111111111', '[{"code": "first", "end_day": 31}]');
+  PERFORM t.ok('E18b a company''s own term edit moves its open first-semester subscriptions',
+    (SELECT to_char(end_date, 'DD-MM') FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001') = '31-01');
+  PERFORM public.save_company_terms('11111111-1111-1111-1111-111111111111', '[{"code": "first", "end_day": 30}]');
 END $$;
 
 -- Expiry of an unpaid period that ended.

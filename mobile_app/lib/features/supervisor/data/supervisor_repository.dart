@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/supabase_tables.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
-import '../../auth/providers/auth_provider.dart';
+import '../../../core/sync/session.dart';
 import '../models/supervisor_models.dart';
 import '../qr_scanner/data/qr_scanner_repository.dart';
 
@@ -13,10 +13,14 @@ class SupervisorRepository {
   final SupabaseClient _client = SupabaseService.client;
   final QrScannerRepository _lookup = QrScannerRepository();
 
-  Future<SupervisorDashboard> getDashboard() async {
+  Future<SupervisorDashboard> getDashboard() async =>
+      SupervisorDashboard.fromJson(await getDashboardJson());
+
+  /// [getDashboard] as the server sent it, so it can be saved for the next start.
+  Future<Map<String, dynamic>> getDashboardJson() async {
     final response = await OfflineCache.readThrough('supervisor.dashboard',
         () => _client.rpc(SupabaseRpcs.getSupervisorDashboard));
-    return SupervisorDashboard.fromJson(Map<String, dynamic>.from(response as Map));
+    return Map<String, dynamic>.from(response as Map);
   }
 
   /// Verifies the QR and records a check-in for today's [direction] trip.
@@ -28,7 +32,10 @@ class SupervisorRepository {
           params: {'p_qr_code': qr, 'p_direction': direction, if (tripId != null) 'p_trip_id': tripId});
       final json = Map<String, dynamic>.from(response as Map);
       if (json['student'] is Map) {
-        await OfflineCache.saveStudentLookup(qr, Map<String, dynamic>.from(json['student'] as Map));
+        final me = _client.auth.currentUser?.id;
+        if (me != null) {
+          await OfflineCache.saveStudentLookup(me, qr, Map<String, dynamic>.from(json['student'] as Map));
+        }
       }
       return CheckInResult.fromJson(json);
     } on PostgrestException catch (error) {
@@ -73,15 +80,26 @@ class SupervisorRepository {
 
 final supervisorRepoProvider = Provider((ref) => SupervisorRepository());
 
-final supervisorDashboardProvider = FutureProvider.autoDispose<SupervisorDashboard>(
-    (ref) {
-  ref.watch(currentUserIdProvider);
-  return ref.watch(supervisorRepoProvider).getDashboard();
-});
+/// The supervisor's lines and today's numbers: from the saved copy at once, then
+/// from the server; kept between tabs and refreshed by live events.
+class SupervisorDashboardNotifier extends SnapshotNotifier<SupervisorDashboard> {
+  @override
+  String get snapshotName => 'supervisor_dashboard';
+  @override
+  SupervisorDashboard get signedOut => throw StateError('not signed in');
+  @override
+  Future<Object?> fetchJson() => ref.read(supervisorRepoProvider).getDashboardJson();
+  @override
+  SupervisorDashboard parse(Object? json) =>
+      SupervisorDashboard.fromJson(Map<String, dynamic>.from(json as Map));
+}
 
-final supervisorMonthlySummaryProvider = FutureProvider.autoDispose
-    .family<SupervisorMonthlySummary, DateTime>(
-        (ref, month) {
-  ref.watch(currentUserIdProvider);
+final supervisorDashboardProvider =
+    AsyncNotifierProvider<SupervisorDashboardNotifier, SupervisorDashboard>(SupervisorDashboardNotifier.new);
+
+// Kept per month for the session, so going back to a month does not reload it.
+final supervisorMonthlySummaryProvider =
+    FutureProvider.family<SupervisorMonthlySummary, DateTime>((ref, month) {
+  ref.watch(sessionUserIdProvider);
   return ref.watch(supervisorRepoProvider).getMonthlySummary(month);
 });

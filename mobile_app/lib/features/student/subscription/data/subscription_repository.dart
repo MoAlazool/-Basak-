@@ -43,6 +43,12 @@ class SubscriptionRepository {
   /// The subscription that matters now: the one running today, otherwise the
   /// next upcoming one. Expired subscriptions are history only.
   Future<SubscriptionModel?> getCurrentSubscription() async {
+    final json = await getCurrentSubscriptionJson();
+    return json == null ? null : SubscriptionModel.fromJson(json);
+  }
+
+  /// [getCurrentSubscription] as the server sent it, so it can be saved for the next start.
+  Future<Map<String, dynamic>?> getCurrentSubscriptionJson() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
@@ -59,9 +65,7 @@ class SubscriptionRepository {
             .order('created_at', ascending: false)
             .limit(1)
             .maybeSingle());
-
-    if (response == null) return null;
-    return SubscriptionModel.fromJson(Map<String, dynamic>.from(response as Map));
+    return response == null ? null : Map<String, dynamic>.from(response as Map);
   }
 
   /// Periods payable now for [lineId]: the current semester, the next one

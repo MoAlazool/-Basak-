@@ -29,3 +29,47 @@ super admin, company admins, supervisors, students, anon and the service role.
 7. `FN_PORTS='{"admin-create-supervisor":8201,...}' node gateway.mjs` (:8100 = the project URL).
 8. `SUPABASE_URL=http://127.0.0.1:8100 ANON_KEY=... SERVICE_KEY=... node http_e2e.mjs`
    (uses `admin_web/node_modules/@supabase/supabase-js`; run `npm ci` in `admin_web` first).
+
+## 3. Wallet cards (local Supabase stack + test doubles)
+
+`wallet/http_e2e.mjs` runs the whole wallet feature against a local `supabase start`
+stack (real Auth, PostgREST, Storage, `pg_net` and the Edge runtime). `wallet/fakes.mjs`
+stands in for Apple's push service (HTTP/2 with a client certificate) and Google's
+Wallet API, so nothing leaves the machine.
+
+1. Copy `supabase/` to a scratch folder, add `seed_before_20261006000001_…sql` as a
+   migration named `20261006000000_local_shim.sql`, and run `supabase start` there.
+2. Make a throw-away CA, a server certificate for `host.docker.internal`, a "pass"
+   certificate whose subject contains the pass type id, and an RSA key for Google.
+3. `node wallet/fakes.mjs <cert dir>` (ports 8443 and 8444).
+4. `supabase functions serve --env-file <env>` with `APPLE_*` pointing at the test
+   certificates, `APPLE_APNS_HOST=host.docker.internal:8443`, `APPLE_APNS_CA_PEM`,
+   `GOOGLE_WALLET_API_BASE=http://host.docker.internal:8444/walletobjects/v1`,
+   `GOOGLE_OAUTH_TOKEN_URL=http://host.docker.internal:8444/token` and
+   `WALLET_PUBLIC_URL=<the stack's API url>`.
+5. `SUPABASE_URL=… ANON_KEY=… SERVICE_KEY=… DB_URL=… CA_PEM=… PHOTO=<any jpeg> node wallet/http_e2e.mjs`
+
+## 4. Company workspaces (tenant isolation)
+
+Everything under `tenancy/` runs against a local `supabase start` stack. Keep the
+stack's folder somewhere Docker can read (under your home folder): the Edge
+runtime mounts `supabase/functions` from it.
+
+- `tenancy/isolation.sql`: builds two complete companies in one rolled-back
+  transaction and checks, as each kind of user, that nothing crosses between them:
+  every table that carries `company_id` (read, update, delete), membership,
+  password resets, supervisors, per-company terms and report resets, the overview
+  functions and a suspended company.
+  `psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/local/tenancy/isolation.sql`
+- `tenancy/http_e2e.mjs`: the same model through the real API: creating a company
+  (and its rollback), the admin Edge Functions, a receipt arriving live for one
+  company and not the other, removing a member, suspending a company, and the
+  queries the mobile app makes.
+  `SUPABASE_URL=… ANON_KEY=… SERVICE_KEY=… node supabase/tests/local/tenancy/http_e2e.mjs`
+- `tenancy/rehearse.sh`: before a live rollout. Loads a data-only dump of the live
+  `public` schema into the local stack, applies the pending migrations and fails
+  if any count, subscription date or label, revenue figure or wallet card changed
+  (`snapshot.sql`), then checks the new invariants (`verify.sql`). Take the dump
+  without `wallet_runtime`, `wallet_passes` and `wallet_apple_*`, and keep it out
+  of the repository: it holds personal data.
+

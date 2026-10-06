@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DollarSign, RotateCcw, Search, ShieldAlert, Undo2, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAdminScope } from '../lib/adminScope';
+import { useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 // ── Types ───────────────────────────────────────────────────────────
 interface ReportRow {
@@ -26,49 +28,44 @@ const money = (n: number | null | undefined) => `${Number(n || 0).toLocaleString
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('ar-EG') : '—');
 
 export const ReportsPage: React.FC = () => {
-  const admin = useAdminScope();
-  const isSuper = admin.role === 'super_admin';
-  const [report, setReport] = useState<Report | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const company = useCompany();
   const [filters, setFilters] = useState({
-    period: '', academic_year: '', company_id: '', university_id: '', line_id: '', payment: '', phase: '', search: '',
+    period: '', academic_year: '', university_id: '', line_id: '', payment: '', phase: '', search: '',
     include_before_reset: false,
   });
-  const [companies, setCompanies] = useState<Option[]>([]);
-  const [universities, setUniversities] = useState<Option[]>([]);
-  const [lines, setLines] = useState<(Option & { company_id: string })[]>([]);
-  const [resets, setResets] = useState<ResetRow[]>([]);
   const [resetScope, setResetScope] = useState<'financial' | 'all' | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError('');
-    const { data, error: rpcError } = await supabase.rpc('admin_subscription_report', { p_filters: filters });
-    if (rpcError) setError(rpcError.message);
-    else setReport(data as Report);
-    setLoading(false);
-  };
-
-  const loadOptions = async () => {
-    const [{ data: c }, { data: u }, { data: l }, { data: r }] = await Promise.all([
-      supabase.from('companies').select('id, name').order('name'),
-      supabase.from('universities').select('id, name').order('name'),
-      supabase.from('lines').select('id, name, company_id').order('name'),
-      supabase.from('report_resets').select('id, scope, reset_at, note, undone_at').order('reset_at', { ascending: false }).limit(10),
-    ]);
-    setCompanies(c || []);
-    setUniversities(u || []);
-    setLines(l || []);
-    setResets((r || []) as ResetRow[]);
-  };
-
-  useEffect(() => { void loadOptions(); }, []);
-  // Debounce the search box; other filters apply immediately.
+  // The search box is debounced; the other filters apply at once. Changing a filter
+  // keeps the previous figures on screen until the new ones arrive.
+  const [applied, setApplied] = useState(filters);
   useEffect(() => {
-    const t = setTimeout(() => { void load(); }, filters.search ? 350 : 0);
+    const t = setTimeout(() => setApplied(filters), filters.search !== applied.search ? 350 : 0);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
+
+  const reportPage = usePageData(keys.company(company.id, 'reports', applied), () =>
+    unwrap<Report>(supabase.rpc('admin_subscription_report', { p_filters: { ...applied, company_id: company.id } })),
+  { keepPrevious: true });
+  const report = reportPage.data ?? null;
+  const loading = reportPage.loading;
+  const error = reportPage.error;
+
+  const optionsPage = usePageData(keys.company(company.id, 'reports', 'options'), async () => {
+    const [{ data: u }, { data: l }, { data: r }] = await Promise.all([
+      supabase.from('universities').select('id, name').order('name'),
+      supabase.from('lines').select('id, name').eq('company_id', company.id).order('name'),
+      // This company's resets, plus any older platform-wide one that still applies to it.
+      supabase.from('report_resets').select('id, scope, reset_at, note, undone_at')
+        .or(`company_id.eq.${company.id},company_id.is.null`).order('reset_at', { ascending: false }).limit(10),
+    ]);
+    return { universities: (u || []) as Option[], lines: (l || []) as Option[], resets: (r || []) as ResetRow[] };
+  });
+  const universities = optionsPage.data?.universities ?? [];
+  const lines = optionsPage.data?.lines ?? [];
+  const resets = optionsPage.data?.resets ?? [];
+  const load = reportPage.reload;
+  const loadOptions = optionsPage.reload;
 
   const set = (patch: Partial<typeof filters>) => setFilters((f) => ({ ...f, ...patch }));
   const t = report?.totals;
@@ -93,7 +90,6 @@ export const ReportsPage: React.FC = () => {
             {report?.baseline && !filters.include_before_reset && <> · بداية الاحتساب: <b>{new Date(report.baseline).toLocaleString('ar-EG')}</b></>}
           </p>
         </div>
-        {isSuper && (
           <div className="flex gap-2">
             <button onClick={() => setResetScope('financial')} className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-100">
               <RotateCcw className="h-4 w-4" /> تصفير البيانات المالية
@@ -102,7 +98,6 @@ export const ReportsPage: React.FC = () => {
               <ShieldAlert className="h-4 w-4" /> تصفير كل البيانات
             </button>
           </div>
-        )}
       </div>
 
       {/* Totals */}
@@ -139,17 +134,12 @@ export const ReportsPage: React.FC = () => {
           <select value={filters.phase} onChange={(e) => set({ phase: e.target.value })} className={select} aria-label="الحالة">
             <option value="">كل الحالات</option>{Object.entries(PHASES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
-          {isSuper && (
-            <select value={filters.company_id} onChange={(e) => set({ company_id: e.target.value, line_id: '' })} className={select} aria-label="الشركة">
-              <option value="">كل الشركات</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
           <select value={filters.university_id} onChange={(e) => set({ university_id: e.target.value })} className={select} aria-label="الجامعة">
             <option value="">كل الجامعات</option>{universities.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
           <select value={filters.line_id} onChange={(e) => set({ line_id: e.target.value })} className={select} aria-label="الخط">
             <option value="">كل الخطوط</option>
-            {lines.filter((l) => !filters.company_id || l.company_id === filters.company_id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            {lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
@@ -157,7 +147,7 @@ export const ReportsPage: React.FC = () => {
             <input type="checkbox" checked={filters.include_before_reset} onChange={(e) => set({ include_before_reset: e.target.checked })} />
             عرض السجل الكامل (بما فيه ما قبل آخر تصفير)
           </label>
-          <button onClick={() => setFilters({ period: '', academic_year: '', company_id: '', university_id: '', line_id: '', payment: '', phase: '', search: '', include_before_reset: false })} className="underline">مسح الفلاتر</button>
+          <button onClick={() => setFilters({ period: '', academic_year: '', university_id: '', line_id: '', payment: '', phase: '', search: '', include_before_reset: false })} className="underline">مسح الفلاتر</button>
         </div>
       </div>
 
@@ -169,7 +159,7 @@ export const ReportsPage: React.FC = () => {
           <h2 className="font-bold text-slate-700">الطلاب والاشتراكات</h2>
           <span className="text-xs text-slate-400">{t ? `${t.count} اشتراك` : ''}{t && t.count > 2000 ? ' (يُعرض أول 2000)' : ''}</span>
         </div>
-        {loading ? <div className="flex h-40 items-center justify-center text-slate-500">جاري التحميل...</div> : !report || report.rows.length === 0 ? (
+        {loading ? <SkeletonRows rows={6} /> : !report || report.rows.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد اشتراكات مطابقة.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -199,7 +189,7 @@ export const ReportsPage: React.FC = () => {
         )}
       </div>
 
-      {isSuper && resets.length > 0 && (
+      {resets.length > 0 && (
         <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
           <h3 className="mb-2 text-sm font-bold text-slate-700">سجل التصفير</h3>
           <ul className="space-y-1 text-xs text-slate-600">
@@ -214,7 +204,7 @@ export const ReportsPage: React.FC = () => {
       )}
 
       {resetScope && (
-        <ResetDialog scope={resetScope} active={activeResets.length > 0}
+        <ResetDialog scope={resetScope} companyId={company.id} companyName={company.name}
           onClose={() => setResetScope(null)}
           onDone={async () => { setResetScope(null); await loadOptions(); await load(); }} />
       )}
@@ -244,7 +234,7 @@ const Revenue: React.FC<{ title: string; value?: number; onClick: () => void }> 
 );
 
 // ── Reset confirmation (dashboard only — nothing is deleted) ─────────
-const ResetDialog: React.FC<{ scope: 'financial' | 'all'; active: boolean; onClose: () => void; onDone: () => void }> = ({ scope, onClose, onDone }) => {
+const ResetDialog: React.FC<{ scope: 'financial' | 'all'; companyId: string; companyName: string; onClose: () => void; onDone: () => void }> = ({ scope, companyId, companyName, onClose, onDone }) => {
   const phrase = scope === 'all' ? 'RESET ALL DATA' : 'RESET FINANCIAL DATA';
   const [typed, setTyped] = useState('');
   const [ack, setAck] = useState(false);
@@ -255,7 +245,7 @@ const ResetDialog: React.FC<{ scope: 'financial' | 'all'; active: boolean; onClo
   const run = async () => {
     setBusy(true);
     setError('');
-    const { error: rpcError } = await supabase.rpc('admin_reset_reports', { p_scope: scope, p_confirm: typed, p_note: note || null });
+    const { error: rpcError } = await supabase.rpc('admin_reset_reports', { p_scope: scope, p_confirm: typed, p_note: note || null, p_company_id: companyId });
     setBusy(false);
     if (rpcError) setError(rpcError.message);
     else onDone();
@@ -264,9 +254,9 @@ const ResetDialog: React.FC<{ scope: 'financial' | 'all'; active: boolean; onClo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" dir="rtl">
       <div className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center gap-2 text-lg font-bold text-rose-700"><AlertTriangle className="h-5 w-5" />{scope === 'all' ? 'تصفير كل البيانات في لوحة التحكم' : 'تصفير البيانات المالية'}</div>
+        <div className="flex items-center gap-2 text-lg font-bold text-rose-700"><AlertTriangle className="h-5 w-5" />{scope === 'all' ? `تصفير كل أرقام ${companyName}` : `تصفير البيانات المالية لـ ${companyName}`}</div>
         <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
-          <p><b>لن يُحذف أي شيء من قاعدة البيانات.</b> التصفير يحدد لحظة بداية جديدة لحساب الأرقام في لوحة التحكم فقط.</p>
+          <p><b>لن يُحذف أي شيء من قاعدة البيانات.</b> التصفير يحدد لحظة بداية جديدة لحساب أرقام هذه الشركة فقط، ولا يمس أي شركة أخرى.</p>
           <p>بعد التصفير تبدأ التقارير المالية من الصفر: الإيرادات وأعداد الاشتراكات المدفوعة وغير المدفوعة تحسب ما يحدث بعد هذه اللحظة فقط{scope === 'all' ? '، وكذلك أرقام النظرة العامة' : ''}.</p>
           <p>تبقى كل الاشتراكات والإيصالات وصورها وحسابات الطلاب والخطوط ووسائل الدفع كما هي، ويمكن رؤية السجل الكامل من خيار «عرض السجل الكامل»، ويمكن إلغاء التصفير لاحقاً من سجل التصفير.</p>
         </div>

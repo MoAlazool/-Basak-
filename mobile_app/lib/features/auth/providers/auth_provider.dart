@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/network/network_errors.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
+import '../../../core/storage/snapshot_store.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
 import '../../student/qr/data/student_qr_repository.dart';
@@ -85,8 +86,34 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repo;
 
+  StreamSubscription<dynamic>? _sessionSubscription;
+
   AuthNotifier(this._repo) : super(const AuthState(isInitialLoading: true)) {
     _init();
+    _watchSession();
+  }
+
+  /// A session that ends elsewhere (expired, revoked, account deleted by an
+  /// admin) signs this device out too, instead of leaving stale screens up.
+  void _watchSession() {
+    try {
+      _sessionSubscription = SupabaseService.client.auth.onAuthStateChange.listen((change) async {
+        if (change.event == AuthChangeEvent.signedOut && state.isAuthenticated) {
+          await OfflineCache.clearStudentPass();
+          await OfflineCache.clearStudentLookups();
+          await SnapshotStore.clear();
+          if (mounted) state = const AuthState();
+        }
+      });
+    } catch (_) {
+      // Supabase not initialised (widget previews and tests).
+    }
+  }
+
+  @override
+  void dispose() {
+    _sessionSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -176,6 +203,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await requireOnline(_repo.deleteStudentAccount);
       await OfflineCache.clearAll();
+      await SnapshotStore.clear();
       state = const AuthState();
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
@@ -194,6 +222,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (!isNetworkFailure(error)) rethrow;
     }
     await OfflineCache.clearAll();
+    await SnapshotStore.clear();
     state = const AuthState();
   }
 

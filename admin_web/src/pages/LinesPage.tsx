@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAdminScope } from '../lib/adminScope';
+import { useCompany } from '../lib/adminScope';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 import {
   ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
   Plus, Power, Save, Trash2, UserCheck, Wand2, X,
@@ -18,7 +20,6 @@ interface TripRow {
 interface LineRow {
   id: string; name: string; company_id: string; origin_name: string | null; destination_university_id: string | null;
   price_termly: number; price_yearly: number; price_daily: number; is_active: boolean;
-  companies?: { name: string } | null;
   stations: StationRow[];
   line_trips: TripRow[];
   line_universities: { university_id: string }[];
@@ -91,58 +92,41 @@ const emptyDraft = (companyId: string): LineDraft => ({
 
 // ── Page ────────────────────────────────────────────────────────────
 export const LinesPage: React.FC = () => {
-  const admin = useAdminScope();
-  const [lines, setLines] = useState<LineRow[]>([]);
-  const [companies, setCompanies] = useState<Option[]>([]);
-  const [universities, setUniversities] = useState<Option[]>([]);
-  const [supervisors, setSupervisors] = useState<{ id: string; full_name: string }[]>([]);
-  const [lineSupervisors, setLineSupervisors] = useState<Record<string, string[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState('');
+  const company = useCompany();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [draft, setDraft] = useState<LineDraft | null>(null);
   const [busyLine, setBusyLine] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    try {
-      setPageError('');
-      setLoading(true);
-      const { data: lineRows, error } = await supabase.from('lines')
+  const page = usePageData(keys.company(company.id, 'lines'), async () => {
+    const [lineRes, uniRes, supRes, assignRes] = await Promise.all([
+      supabase.from('lines')
         .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
-          is_active, companies(name), stations(id, name, order_index, is_active),
+          is_active, stations(id, name, order_index, is_active),
           line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
             line_trip_stops(station_id, stop_time)), line_universities(university_id)`)
-        .order('name');
-      if (error) throw error;
-      setLines((lineRows || []) as unknown as LineRow[]);
-
-      const [{ data: uniRows, error: uError }, { data: supRows }, { data: assignRows }] = await Promise.all([
-        supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
-        supabase.from('supervisors').select('id, full_name').order('full_name'),
-        supabase.from('supervisor_lines').select('supervisor_id, line_id'),
-      ]);
-      if (uError) throw uError;
-      setUniversities(uniRows || []);
-      setSupervisors(supRows || []);
-      const byLine: Record<string, string[]> = {};
-      (assignRows || []).forEach((row) => { (byLine[row.line_id] ||= []).push(row.supervisor_id); });
-      setLineSupervisors(byLine);
-
-      if (admin.role === 'company_admin' && admin.company_id) {
-        setCompanies([{ id: admin.company_id, name: admin.companyName || '' }]);
-      } else {
-        const { data: compRows, error: cError } = await supabase.from('companies').select('id, name').eq('is_active', true).order('name');
-        if (cError) throw cError;
-        setCompanies(compRows || []);
-      }
-    } catch (err) {
-      setPageError(err instanceof Error ? err.message : 'تعذر تحميل الخطوط.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void fetchData(); }, []);
+        .eq('company_id', company.id).order('name'),
+      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('supervisors').select('id, full_name').eq('company_id', company.id).order('full_name'),
+      supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', company.id),
+    ]);
+    if (lineRes.error) throw new Error(lineRes.error.message);
+    if (uniRes.error) throw new Error(uniRes.error.message);
+    const lineSupervisors: Record<string, string[]> = {};
+    (assignRes.data || []).forEach((row) => { (lineSupervisors[row.line_id] ||= []).push(row.supervisor_id); });
+    return {
+      lines: (lineRes.data || []) as unknown as LineRow[],
+      universities: (uniRes.data || []) as Option[],
+      supervisors: (supRes.data || []) as { id: string; full_name: string }[],
+      lineSupervisors,
+    };
+  });
+  const lines = page.data?.lines ?? [];
+  const universities = page.data?.universities ?? [];
+  const supervisors = page.data?.supervisors ?? [];
+  const lineSupervisors = page.data?.lineSupervisors ?? {};
+  const loading = page.loading;
+  const pageError = page.error;
+  const fetchData = page.reload;
 
   const uniName = (id?: string | null) => universities.find((u) => u.id === id)?.name;
 
@@ -165,7 +149,7 @@ export const LinesPage: React.FC = () => {
     else void fetchData();
   };
 
-  const defaultCompany = admin.role === 'company_admin' ? admin.company_id || '' : companies[0]?.id || '';
+  const defaultCompany = company.id;
 
   return (
     <div className="space-y-6">
@@ -176,7 +160,6 @@ export const LinesPage: React.FC = () => {
         </div>
         <button
           onClick={() => setDraft(emptyDraft(defaultCompany))}
-          disabled={!defaultCompany}
           className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
         >
           <Plus className="h-4 w-4" /> إنشاء خط جديد
@@ -191,9 +174,7 @@ export const LinesPage: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-        </div>
+        <div className="rounded-2xl border border-slate-100 bg-white"><SkeletonRows /></div>
       ) : lines.length === 0 ? (
         <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-slate-500">
           لا توجد خطوط بعد. اضغط «إنشاء خط جديد» لإضافة الخط بمحطاته ورحلاته في خطوة واحدة.
@@ -215,7 +196,6 @@ export const LinesPage: React.FC = () => {
                       <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${line.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                         {line.is_active ? 'نشط' : 'معطّل'}
                       </span>
-                      <span className="text-xs text-slate-400">{line.companies?.name}</span>
                     </div>
                     {/* Route: origin → stations → destination */}
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -270,9 +250,7 @@ export const LinesPage: React.FC = () => {
       {draft && (
         <LineEditor
           initial={draft}
-          companies={companies}
           universities={universities}
-          canPickCompany={admin.role === 'super_admin' && !draft.id}
           onClose={() => setDraft(null)}
           onSaved={() => { setDraft(null); void fetchData(); }}
         />
@@ -338,14 +316,12 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
 // ── Create / edit a complete line in one save ───────────────────────
 interface LineEditorProps {
   initial: LineDraft;
-  companies: Option[];
   universities: Option[];
-  canPickCompany: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universities, canPickCompany, onClose, onSaved }) => {
+const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose, onSaved }) => {
   const [d, setD] = useState<LineDraft>(initial);
   const [tab, setTab] = useState<Direction>('departure');
   const [gap, setGap] = useState('10');
@@ -431,13 +407,6 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, companies, universitie
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-slate-700">١. بيانات الخط</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {canPickCompany && (
-                <label className="text-xs font-semibold text-slate-500">الشركة المشغلة
-                  <select value={d.company_id} onChange={(e) => patch({ company_id: e.target.value })} className={`mt-1 ${input}`}>
-                    {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </label>
-              )}
               <label className="text-xs font-semibold text-slate-500">اسم الخط
                 <input value={d.name} onChange={(e) => patch({ name: e.target.value })} placeholder="مثال: منية النصر - جامعة الدلتا" className={`mt-1 ${input}`} />
               </label>

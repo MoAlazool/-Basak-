@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import 'app_text_styles.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
@@ -14,7 +15,8 @@ class AppTheme {
         error: AppColors.error,
       ),
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'Cairo', // Arabic friendly typography
+      // One typeface for the whole app, including text that sets no style.
+      fontFamily: AppTextStyles.fontFamily,
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,

@@ -143,13 +143,15 @@ async function main() {
   ok('subscription active for its period, paid_at set',
     after.data.status === 'active' && after.data.start_date === s1.data.start_date && !!after.data.paid_at);
 
-  // ---- QR: once per day
+  // ---- QR: once per direction per day
   const { data: qr } = await student.from('students').select('qr_code_value').eq('id', me.user.id).single();
   const c1 = await supervisor.rpc('supervisor_check_in_student', { p_qr_code: qr.qr_code_value, p_direction: 'departure' });
   const c2 = await supervisor.rpc('supervisor_check_in_student', { p_qr_code: qr.qr_code_value, p_direction: 'return' });
+  const c3 = await supervisor.rpc('supervisor_check_in_student', { p_qr_code: qr.qr_code_value, p_direction: 'departure' });
   ok('first scan checks in', c1.data?.result === 'checked_in', c1.error?.message ?? c1.data?.result);
-  ok('second scan same day rejected: "already been checked in today"',
-    c2.data?.result === 'already_checked_in' && /already been checked in today/.test(c2.data?.message), c2.data?.message);
+  ok('the return trip the same day is its own check-in', c2.data?.result === 'checked_in', c2.data?.message);
+  ok('a second scan in the same direction is reported as already checked in',
+    c3.data?.result === 'already_checked_in' && c3.data?.checked_in_at === c1.data?.checked_in_at, c3.data?.message);
 
   // ---- Annual switch
   must(await admin1.rpc('set_annual_subscription', { p_enabled: false, p_company_id: COMPANY_1 }), 'annual off');

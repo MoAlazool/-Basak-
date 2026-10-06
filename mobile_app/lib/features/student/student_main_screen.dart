@@ -30,26 +30,9 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
 
     return Scaffold(
       extendBody: true,
+      // Every tab stays alive: switching tabs never reloads or shows a spinner.
       body: OfflineBanner(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) => FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.025, 0),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
-            ),
-          ),
-          child: KeyedSubtree(
-            key: ValueKey(_currentIndex),
-            child: screens[_currentIndex],
-          ),
-        ),
+        child: IndexedStack(index: _currentIndex, children: screens),
       ),
       bottomNavigationBar: FloatingGlassNavBar(
         currentIndex: _currentIndex,

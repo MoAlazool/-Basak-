@@ -1,25 +1,24 @@
-import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireAdmin, resolveCompany } from '../_shared/admin-auth.ts';
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
 
   try {
-    const { user, admin, serviceClient } = await requireAdmin(request);
+    const context = await requireAdmin(request);
+    const { user, serviceClient } = context;
     const body = await request.json();
     const fullName = String(body.fullName ?? '').trim();
     let phone = String(body.phone ?? '').replace(/\D/g, '');
     if (phone.startsWith('20') && phone.length >= 12) phone = phone.substring(2);
     if (phone.length === 10 && phone.startsWith('1')) phone = `0${phone}`;
     const password = String(body.password ?? '');
-    // Company admins are always pinned to their own company, whatever the client sends.
-    const companyId = admin.role === 'company_admin' ? admin.company_id : String(body.companyId ?? '').trim();
     const lineIds: string[] = Array.isArray(body.lineIds)
       ? [...new Set(body.lineIds.map((id: unknown) => String(id ?? '').trim()).filter(Boolean))] as string[]
       : [];
 
-    if (!fullName || !/^01[0125][0-9]{8}$/.test(phone) || !companyId) {
-      return jsonResponse({ error: 'أدخل اسم المشرف ورقم هاتف مصري صحيح والشركة.' }, 400);
+    if (!fullName || !/^01[0125][0-9]{8}$/.test(phone)) {
+      return jsonResponse({ error: 'أدخل اسم المشرف ورقم هاتف مصري صحيح.' }, 400);
     }
     if (password.length < 8) {
       return jsonResponse({ error: 'كلمة المرور يجب ألا تقل عن 8 أحرف.' }, 400);
@@ -28,10 +27,7 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: 'اختر خطاً واحداً على الأقل يكون المشرف مسؤولاً عنه.' }, 400);
     }
 
-    const { data: company, error: companyError } = await serviceClient
-      .from('companies').select('id').eq('id', companyId).eq('is_active', true).maybeSingle();
-    if (companyError) throw companyError;
-    if (!company) return jsonResponse({ error: 'الشركة غير موجودة أو غير مفعّلة.' }, 404);
+    const companyId = await resolveCompany(context, body.companyId);
 
     const { data: lines, error: linesError } = await serviceClient
       .from('lines').select('id').eq('company_id', companyId).in('id', lineIds);

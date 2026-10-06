@@ -1,25 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { Sidebar } from './components/Sidebar';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { Shell } from './components/Shell';
+import { WorkspaceBar } from './components/WorkspaceBar';
+import { PendingReceiptsTable } from './components/PendingReceiptsTable';
+import { Topbar } from './components/Topbar';
 import { OverviewPage } from './pages/OverviewPage';
-import { CompaniesPage } from './pages/CompaniesPage';
+import { PlatformOverviewPage } from './pages/PlatformOverviewPage';
+import { AllCompaniesPage } from './pages/AllCompaniesPage';
+import { AllStudentsPage } from './pages/AllStudentsPage';
 import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 import { LinesPage } from './pages/LinesPage';
 import { SupervisorsPage } from './pages/SupervisorsPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ReportsPage } from './pages/ReportsPage';
-import { SubscriptionSettingsPage } from './pages/SubscriptionSettingsPage';
+import { CompanySettingsPage, PlatformDefaultsPage } from './pages/SubscriptionSettingsPage';
 import { PaymentMethodsPage } from './pages/PaymentMethodsPage';
+import { WalletCardDesignPage } from './pages/WalletCardDesignPage';
+import { TeamPage } from './pages/TeamPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { PendingReceiptsTable } from './components/PendingReceiptsTable';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { supabase } from './lib/supabase';
+import { useQuery } from '@tanstack/react-query';
+import { clearCache, keys, persistOptions, queryClient } from './lib/query';
+import { usePlatformSync, useWorkspaceSync } from './lib/sync';
 import { usePendingReceipts } from './lib/pendingReceipts';
-import { AdminProfile, AdminScopeProvider } from './lib/adminScope';
+import { platformNav, workspaceNav } from './lib/nav';
+import {
+  AdminProfile, AdminScopeProvider, CompanyScope, CompanyScopeProvider, companyStatusLabel, useCompany,
+} from './lib/adminScope';
 
 export function App() {
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('overview');
   const [authLoading, setAuthLoading] = useState(true);
   const [recoveryMode, setRecoveryMode] = useState(() => /type=(recovery|invite)/.test(window.location.hash));
 
@@ -34,6 +47,7 @@ export function App() {
     const applySession = async (userId: string | null) => {
       const current = ++generation;
       if (!userId) {
+        clearCache();
         if (mounted) setAdmin(null);
         return;
       }
@@ -44,6 +58,7 @@ export function App() {
       if (profile && session?.user.id === userId) {
         setAdmin(profile);
       } else {
+        clearCache();
         setAdmin(null);
         if (session) await supabase.auth.signOut();
       }
@@ -73,14 +88,9 @@ export function App() {
     return () => { mounted = false; subscription.unsubscribe(); window.removeEventListener('storage', onStorage); };
   }, []);
 
-  useEffect(() => {
-    if (admin?.role === 'company_admin' && ['companies', 'company-admins', 'universities'].includes(activeTab)) {
-      setActiveTab('overview');
-    }
-  }, [admin, activeTab]);
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    clearCache();
     setAdmin(null);
   };
 
@@ -90,46 +100,23 @@ export function App() {
     return <LoginPage onLogin={setAdmin} />;
   }
 
+  // A platform admin starts in the platform area; a company admin lives in their
+  // own workspace and has no other address to go to.
+  const home = admin.role === 'super_admin' ? '/platform' : `/c/${admin.company_id}`;
   return (
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions(admin.id)}>
     <AdminScopeProvider admin={admin}>
-    <div className="flex min-h-screen" dir="rtl">
-      {/* ── Desktop Sidebar (hidden on mobile) ─────── */}
-      <div className="hidden md:flex">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} role={admin.role} />
-      </div>
-
-      {/* ── Main Content ────────────────────────────── */}
-      <main
-        className="flex-1 min-w-0 overflow-x-hidden pb-24 md:pb-8"
-        style={{
-          background: 'radial-gradient(ellipse 80% 60% at 20% 10%, #EAF7FD 0%, #F3FAFD 50%, #ffffff 100%)',
-          minHeight: '100vh',
-        }}
-      >
-        <div className="mx-auto max-w-[1400px] p-4 sm:p-6 space-y-0">
-          {activeTab === 'overview' && <OverviewPage />}
-          {activeTab === 'companies' && admin.role === 'super_admin' && <CompaniesPage />}
-          {activeTab === 'company-admins' && admin.role === 'super_admin' && <CompanyAdminsPage />}
-          {activeTab === 'universities' && admin.role === 'super_admin' && <UniversitiesPage />}
-          {activeTab === 'lines' && <LinesPage />}
-          {activeTab === 'supervisors' && <SupervisorsPage />}
-          {activeTab === 'students' && <StudentsPage />}
-          {activeTab === 'receipts' && (
-            <div className="space-y-6">
-              <h1 className="text-2xl font-bold text-slate-800">فحص واعتماد الإيصالات</h1>
-              <AdminReceiptsQueue />
-            </div>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          {admin.role === 'super_admin' && (
+            <Route path="/platform/*" element={<PlatformArea onLogout={handleLogout} />} />
           )}
-          {activeTab === 'reports' && <ReportsPage />}
-          {activeTab === 'settings' && <SubscriptionSettingsPage />}
-          {activeTab === 'payment-methods' && <PaymentMethodsPage />}
-        </div>
-      </main>
-
-      {/* ── Mobile Bottom Navigation Bar ───────────── */}
-      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} role={admin.role} />
-    </div>
+          <Route path="/c/:companyId/*" element={<Workspace admin={admin} onLogout={handleLogout} />} />
+          <Route path="*" element={<Navigate to={home} replace />} />
+        </Routes>
+      </BrowserRouter>
     </AdminScopeProvider>
+    </PersistQueryClientProvider>
   );
 }
 
@@ -145,86 +132,106 @@ async function loadAdminProfile(userId: string): Promise<AdminProfile | null> {
   return { ...data, role: data.role, companyName } as AdminProfile;
 }
 
-const AdminReceiptsQueue: React.FC = () => {
-  const { receipts, loading, error, refresh } = usePendingReceipts();
-
-  if (error) return <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الإيصالات: {error} <button className="mr-3 font-bold underline" onClick={() => void refresh()}>إعادة المحاولة</button></div>;
-  return <PendingReceiptsTable receipts={receipts} loading={loading} onReceiptReviewed={() => void refresh()} />;
+const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+  usePlatformSync();
+  return (
+  <Shell items={platformNav} areaLabel="إدارة المنصة" onLogout={onLogout}>
+    <Routes>
+      <Route index element={<PlatformOverviewPage />} />
+      <Route path="companies" element={<AllCompaniesPage />} />
+      <Route path="students" element={<AllStudentsPage />} />
+      <Route path="admins" element={<CompanyAdminsPage />} />
+      <Route path="universities" element={<UniversitiesPage />} />
+      <Route path="defaults" element={<PlatformDefaultsPage />} />
+      <Route path="*" element={<Navigate to="/platform" replace />} />
+    </Routes>
+  </Shell>
+  );
 };
 
-// ── Mobile Bottom Nav ──────────────────────────────────────────────
-import {
-  LayoutDashboard, Building2, Bus, UserCheck,
-  FileCheck2, BarChart3, LogOut, GraduationCap, Users, CalendarRange, Wallet,
-} from 'lucide-react';
+type Loaded = { state: 'loading' } | { state: 'missing' } | { state: 'ready'; company: CompanyScope };
 
-interface MobileNavProps {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
-  onLogout: () => void;
-  role: 'super_admin' | 'company_admin';
-}
+/** Opens one company. Everything rendered inside reads and writes that company only. */
+const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ admin, onLogout }) => {
+  const { companyId = '' } = useParams();
+  const allowed = admin.role === 'super_admin' || companyId === admin.company_id;
+  // The company row itself is cached too, so reopening a workspace does not wait for it.
+  const companyQuery = useQuery({
+    queryKey: keys.company(companyId, 'company'),
+    enabled: allowed,
+    queryFn: async () => (await supabase.from('companies').select('id, name, status').eq('id', companyId).maybeSingle()).data as CompanyScope | null,
+  });
+  const loaded: Loaded = companyQuery.isPending ? { state: 'loading' }
+    : companyQuery.data ? { state: 'ready', company: companyQuery.data } : { state: 'missing' };
 
-const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, onLogout, role }) => {
-  const items = [
-    { id: 'overview',     icon: LayoutDashboard, label: 'الرئيسية' },
-    ...(role === 'super_admin' ? [
-      { id: 'companies', icon: Building2, label: 'الشركات' },
-      { id: 'company-admins', icon: GraduationCap, label: 'مديرو الشركات' },
-      { id: 'universities', icon: GraduationCap, label: 'الجامعات' },
-    ] : []),
-    { id: 'lines',        icon: Bus,             label: 'الخطوط'   },
-    { id: 'supervisors',  icon: UserCheck,       label: 'المشرفون' },
-    { id: 'students',     icon: Users,           label: 'الطلاب'   },
-    { id: 'receipts',     icon: FileCheck2,       label: 'الإيصالات'},
-    { id: 'reports',      icon: BarChart3,       label: 'التقارير' },
-    { id: 'settings',     icon: CalendarRange,   label: 'الإعدادات' },
-    { id: 'payment-methods', icon: Wallet,       label: 'الدفع' },
-  ];
+  if (!allowed) return <Navigate to={`/c/${admin.company_id}`} replace />;
+  if (loaded.state === 'loading') return <div className="min-h-screen grid place-items-center" dir="rtl">جاري فتح مساحة الشركة...</div>;
+  if (loaded.state === 'missing') {
+    return (
+      <Notice title="الشركة غير موجودة" onLogout={onLogout}>
+        {admin.role === 'super_admin' && <Link to="/platform/companies" className="font-bold text-[#3E8FBF] underline">العودة إلى كل الشركات</Link>}
+      </Notice>
+    );
+  }
+  const { company } = loaded;
+  if (admin.role === 'company_admin' && company.status !== 'active') {
+    return (
+      <Notice title={`حساب شركة «${company.name}» ${companyStatusLabel[company.status]} حالياً`} onLogout={onLogout}>
+        لا يمكن استخدام لوحة التحكم حتى تعيد إدارة المنصة تفعيل الشركة. بياناتكم محفوظة كما هي.
+      </Notice>
+    );
+  }
 
+  // Keyed by company: moving to another company unmounts every page, so no list,
+  // form, timer or live feed of the previous company survives the switch.
   return (
-    <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between overflow-x-auto px-2 py-2"
-      style={{
-        background: 'rgba(255,255,255,0.92)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(255,255,255,0.7)',
-        boxShadow: '0 -4px 24px rgba(126,200,227,0.15)',
-      }}
-    >
-      {items.map(({ id, icon: Icon, label }) => {
-        const active = activeTab === id;
-        return (
-          <button
-            key={id}
-            onClick={() => onTabChange(id)}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all flex-shrink-0"
-          >
-            <Icon
-              className={`h-5 w-5 transition-colors ${active ? 'text-[#3E8FBF]' : 'text-slate-400'}`}
-            />
-            <span
-              className={`text-[9.5px] font-bold transition-colors ${active ? 'text-[#3E8FBF]' : 'text-slate-400'}`}
-            >
-              {label}
-            </span>
-            {active && (
-              <div className="h-1 w-4 rounded-full bg-[#7EC8E3] mt-0.5" />
-            )}
-          </button>
-        );
-      })}
+    <CompanyScopeProvider company={company} key={company.id}>
+      <WorkspaceSync companyId={company.id} />
+      <Shell items={workspaceNav(company.id)} areaLabel={company.name} onLogout={onLogout} banner={<WorkspaceBar />}>
+        <Routes>
+          <Route index element={<OverviewPage />} />
+          <Route path="students" element={<StudentsPage />} />
+          <Route path="receipts" element={<ReceiptsPage />} />
+          <Route path="lines" element={<LinesPage />} />
+          <Route path="supervisors" element={<SupervisorsPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="payment-methods" element={<PaymentMethodsPage />} />
+          <Route path="wallet-card" element={<WalletCardDesignPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="settings" element={<CompanySettingsPage />} />
+          <Route path="*" element={<Navigate to={`/c/${company.id}`} replace />} />
+        </Routes>
+      </Shell>
+    </CompanyScopeProvider>
+  );
+};
 
-      {/* Logout button */}
-      <button
-        onClick={onLogout}
-        className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl flex-shrink-0"
-      >
-        <LogOut className="h-5 w-5 text-rose-400" />
-        <span className="text-[9.5px] font-bold text-rose-400">خروج</span>
-      </button>
-    </nav>
+/** Listens to the open company's topic for as long as its workspace is mounted. */
+const WorkspaceSync: React.FC<{ companyId: string }> = ({ companyId }) => {
+  useWorkspaceSync(companyId);
+  return null;
+};
+
+const Notice: React.FC<{ title: string; onLogout: () => void; children?: React.ReactNode }> = ({ title, onLogout, children }) => (
+  <div className="min-h-screen grid place-items-center p-6" dir="rtl">
+    <div className="glass-panel max-w-md p-8 text-center space-y-4">
+      <h1 className="text-xl font-extrabold text-[#1F2937]">{title}</h1>
+      <div className="text-sm leading-7 text-[#5B6B7A]">{children}</div>
+      <button onClick={onLogout} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200">تسجيل الخروج</button>
+    </div>
+  </div>
+);
+
+const ReceiptsPage: React.FC = () => {
+  const company = useCompany();
+  const { receipts, loading, error, refresh, review } = usePendingReceipts(company.id);
+  return (
+    <div className="space-y-6">
+      <Topbar title="فحص واعتماد الإيصالات" subtitle="تصل الإيصالات الجديدة هنا فور رفعها" />
+      {error
+        ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الإيصالات: {error} <button className="mr-3 font-bold underline" onClick={() => void refresh()}>إعادة المحاولة</button></div>
+        : <PendingReceiptsTable receipts={receipts} loading={loading} onReview={review} />}
+    </div>
   );
 };
 

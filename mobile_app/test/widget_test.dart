@@ -90,7 +90,9 @@ void main() {
         child: const BasakApp(),
       ),
     );
-    // Let the ~3.2 s launch splash play out; it covers the screen until then.
+    // The splash waits up to 0.5 s for its logo (test assets never decode in
+    // fake time), then plays for ~3.2 s; it covers the screen until then.
+    await tester.pump(const Duration(milliseconds: 600));
     await tester.pump(const Duration(milliseconds: 250));
     await tester.pump(const Duration(milliseconds: 3200));
 
@@ -121,7 +123,8 @@ void main() {
     await tester.ensureVisible(find.text('إنشاء حساب جديد'));
     await tester.tap(find.text('إنشاء حساب جديد'));
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('الاسم بالكامل (ثلاثي أو رباعي)'), findsOneWidget);
+    expect(find.text('الاسم بالكامل'), findsOneWidget);
+    expect(find.text('ثلاثي أو رباعي كما في بطاقتك الجامعية.'), findsOneWidget);
     expect(find.text('الصورة الشخصية'), findsOneWidget);
     expect(find.text('الكلية'), findsNothing);
   });
@@ -180,7 +183,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          currentSubscriptionProvider.overrideWith((ref) => Future.value(null)),
+          currentSubscriptionProvider.overrideWith(_NoSubscription.new),
           dailyRideRepoProvider.overrideWithValue(_FakeDailyRideRepo()),
         ],
         child: MaterialApp(
@@ -194,4 +197,10 @@ void main() {
     await tester.pump();
     expect(find.byType(RefreshIndicator), findsOneWidget);
   });
+}
+
+/// No current subscription, without touching the server or the saved copy.
+class _NoSubscription extends CurrentSubscriptionNotifier {
+  @override
+  Future<SubscriptionModel?> build() async => null;
 }

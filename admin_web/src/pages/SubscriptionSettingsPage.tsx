@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CalendarRange, Save, ToggleLeft, ToggleRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAdminScope } from '../lib/adminScope';
+import { Topbar } from '../components/Topbar';
+import { useAdminScope, useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 interface Term {
   code: 'first' | 'second' | 'summer';
@@ -12,14 +15,15 @@ interface Term {
   included_in_annual: boolean;
 }
 interface Period { period_code: string; academic_year: number; label: string; start_date: string; end_date: string; }
-interface CompanySetting { id: string; name: string; annual_enabled: boolean; effective: boolean; }
 interface Settings {
+  company_id: string | null;
+  annual_company: boolean | null;
+  annual_effective: boolean;
   annual_global: boolean;
   can_edit_global: boolean;
   terms: Term[];
   periods: Period[] | null;
   purchasable: (Period & { phase: string; subscription_type: string })[] | null;
-  companies: CompanySetting[];
 }
 
 const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -33,28 +37,33 @@ const Toggle: React.FC<{ on: boolean; disabled?: boolean; onClick: () => void }>
   </button>
 );
 
-/** Semester dates (one source: academic_terms) and the annual subscription switch. */
-export const SubscriptionSettingsPage: React.FC = () => {
+/** A company's own semester dates and annual plan, edited by that company. */
+export const CompanySettingsPage: React.FC = () => {
+  const company = useCompany();
+  return <SettingsView companyId={company.id} companyName={company.name} />;
+};
+
+/** What a newly created company starts with, and the platform-wide annual switch. */
+export const PlatformDefaultsPage: React.FC = () => <SettingsView companyId={null} companyName="" />;
+
+const SettingsView: React.FC<{ companyId: string | null; companyName: string }> = ({ companyId, companyName }) => {
   const admin = useAdminScope();
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Term>>({});
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    const { data, error: loadError } = await supabase.rpc('get_subscription_settings');
-    if (loadError) { setError(loadError.message); return; }
-    setError('');
-    const loaded = data as Settings;
-    setSettings(loaded);
-    setDrafts(Object.fromEntries((loaded.terms || []).map((t) => [t.code, { ...t }])));
-  }, []);
+  const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
+    unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })));
+  const settings = page.data ?? null;
+  const error = page.error;
+  const load = page.reload;
+  // The editable copy follows what is saved, whenever that changes.
+  useEffect(() => {
+    if (settings) setDrafts(Object.fromEntries((settings.terms || []).map((t) => [t.code, { ...t }])));
+  }, [settings]);
 
-  useEffect(() => { void load(); }, [load]);
-
-  const setAnnual = async (enabled: boolean, companyId: string | null) => {
+  const setAnnual = async (enabled: boolean, target: string | null) => {
     const { error: setError_ } = await supabase.rpc('set_annual_subscription', {
-      p_enabled: enabled, p_company_id: companyId,
+      p_enabled: enabled, p_company_id: target,
     });
     if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
     await load();
@@ -62,21 +71,37 @@ export const SubscriptionSettingsPage: React.FC = () => {
 
   const saveTerms = async () => {
     if (!settings) return;
+    const changed = settings.terms.filter((term) => {
+      const d = drafts[term.code];
+      return (['name', 'start_month', 'start_day', 'end_month', 'end_day'] as const).some((k) => d[k] !== term[k]);
+    }).map((term) => drafts[term.code]);
+    if (changed.length === 0) return;
     try {
       setSaving(true);
-      // One term at a time; the database validates (no overlap, valid dates) after each.
-      for (const term of settings.terms) {
-        const d = drafts[term.code];
-        const changed = (['name', 'start_month', 'start_day', 'end_month', 'end_day'] as const).some((k) => d[k] !== term[k]);
-        if (!changed) continue;
-        const { error: saveError } = await supabase.from('academic_terms').update({
-          name: d.name.trim(), start_month: d.start_month, start_day: d.start_day,
-          end_month: d.end_month, end_day: d.end_day,
-        }).eq('code', term.code).select('code').single();
+      if (companyId) {
+        // The company's terms are checked and saved together, then its open subscriptions follow.
+        const { data, error: saveError } = await supabase.rpc('save_company_terms', {
+          p_company_id: companyId,
+          p_terms: changed.map((d) => ({
+            code: d.code, name: d.name.trim(), start_month: d.start_month, start_day: d.start_day,
+            end_month: d.end_month, end_day: d.end_day,
+          })),
+        });
         if (saveError) throw saveError;
+        const moved = Number((data as { moved_subscriptions?: number } | null)?.moved_subscriptions ?? 0);
+        alert(moved > 0 ? `تم حفظ المواعيد وتحديث ${moved.toLocaleString('ar-EG')} اشتراك مفتوح.` : 'تم حفظ مواعيد الفصول الدراسية.');
+      } else {
+        // The defaults: one term at a time; the database validates after each.
+        for (const d of changed) {
+          const { error: saveError } = await supabase.from('academic_terms').update({
+            name: d.name.trim(), start_month: d.start_month, start_day: d.start_day,
+            end_month: d.end_month, end_day: d.end_day,
+          }).eq('code', d.code).select('code').single();
+          if (saveError) throw saveError;
+        }
+        alert('تم حفظ المواعيد الافتراضية. تُطبّق على الشركات التي تُنشأ بعد الآن.');
       }
       await load();
-      alert('تم حفظ مواعيد الفصول الدراسية وتحديث الاشتراكات المفتوحة.');
     } catch (err: any) {
       alert('تعذر حفظ المواعيد: ' + err.message);
       await load();
@@ -85,26 +110,30 @@ export const SubscriptionSettingsPage: React.FC = () => {
     }
   };
 
-  const editable = admin.role === 'super_admin';
+  const editable = companyId ? true : admin.role === 'super_admin';
   const update = (code: string, patch: Partial<Term>) => setDrafts((all) => ({ ...all, [code]: { ...all[code], ...patch } }));
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">إعدادات الاشتراكات</h1>
-        <p className="text-sm text-slate-500">
-          مواعيد الفصول الدراسية مصدرها الوحيد هذا الإعداد: يستخدمه التطبيق والإيصالات وانتهاء الاشتراكات وكل اللوحات.
-        </p>
-      </div>
+      {companyId ? (
+        <Topbar title="إعدادات الشركة" subtitle={`مواعيد الفصول والاشتراك السنوي الخاصة بـ ${companyName}`} />
+      ) : (
+        <Topbar title="الإعدادات الافتراضية" subtitle="ما تبدأ به كل شركة جديدة. تغييرها لا يمس الشركات القائمة." />
+      )}
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر التحميل: {error}</div>}
 
+      {page.loading && <div className="rounded-2xl border border-slate-100 bg-white"><SkeletonRows /></div>}
       {settings && (
         <>
           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-bold text-slate-700">
               <CalendarRange className="h-5 w-5 text-blue-600" /> الفصول الدراسية
             </h2>
-            {!editable && <p className="mt-1 text-xs text-slate-500">تعديل المواعيد متاح لمدير النظام فقط.</p>}
+            <p className="mt-1 text-xs text-slate-500">
+              {companyId
+                ? 'هذه المواعيد خاصة بهذه الشركة: يستخدمها تطبيق طلابها وإيصالاتها وانتهاء اشتراكاتها. تغييرها لا يمس أي شركة أخرى.'
+                : 'تُنسخ هذه المواعيد إلى كل شركة عند إنشائها، ثم تعدّلها الشركة من إعداداتها.'}
+            </p>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[620px] text-right text-sm">
                 <thead className="text-xs text-slate-500">
@@ -165,26 +194,28 @@ export const SubscriptionSettingsPage: React.FC = () => {
           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <h2 className="text-base font-bold text-slate-700">الاشتراك السنوي (الفصلان الأول والثاني)</h2>
             <p className="mt-1 text-xs text-slate-500">
-              عند التعطيل لا يظهر خيار الاشتراك السنوي للطلاب ولا يمكن إنشاؤه. الإعداد العام يتحكم فيه مدير النظام، وكل شركة تتحكم في خيارها.
+              عند التعطيل لا يظهر خيار الاشتراك السنوي للطلاب ولا يمكن إنشاؤه.
             </p>
-            <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3">
-              <span className="text-sm font-semibold text-slate-700">الإعداد العام لكل الشركات</span>
-              <Toggle on={settings.annual_global} disabled={!settings.can_edit_global}
-                onClick={() => void setAnnual(!settings.annual_global, null)} />
-            </div>
-            <div className="mt-3 space-y-2">
-              {settings.companies.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">{c.name}</p>
-                    <p className="text-[11px] text-slate-500">
-                      {c.effective ? 'يظهر للطلاب' : !settings.annual_global ? 'معطّل عاماً من مدير النظام' : 'لا يظهر للطلاب'}
-                    </p>
-                  </div>
-                  <Toggle on={c.annual_enabled} onClick={() => void setAnnual(!c.annual_enabled, c.id)} />
+            {companyId ? (
+              <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-100 p-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">الاشتراك السنوي لدى {companyName}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {settings.annual_effective ? 'يظهر للطلاب' : !settings.annual_global ? 'معطّل على مستوى المنصة حالياً' : 'لا يظهر للطلاب'}
+                  </p>
                 </div>
-              ))}
-            </div>
+                <Toggle on={!!settings.annual_company} onClick={() => void setAnnual(!settings.annual_company, companyId)} />
+              </div>
+            ) : (
+              <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">السماح بالاشتراك السنوي على المنصة</p>
+                  <p className="text-[11px] text-slate-500">عند التعطيل يتوقف لدى كل الشركات. عند التفعيل تقرر كل شركة من إعداداتها.</p>
+                </div>
+                <Toggle on={settings.annual_global} disabled={!settings.can_edit_global}
+                  onClick={() => void setAnnual(!settings.annual_global, null)} />
+              </div>
+            )}
           </div>
         </>
       )}

@@ -17,13 +17,14 @@ const formatUpload = (iso: string) => {
 interface PendingReceiptsProps {
   receipts: PendingReceiptRow[];
   loading: boolean;
-  onReceiptReviewed: (receiptId: string) => void;
+  /** Saves the decision. The row disappears at once and returns if the save fails. */
+  onReview: (receiptId: string, decision: 'approved' | 'rejected', reason?: string) => Promise<void>;
 }
 
 export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   receipts,
   loading,
-  onReceiptReviewed,
+  onReview,
 }) => {
   const [rejectModalReceiptId, setRejectModalReceiptId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -33,22 +34,14 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   const [previewReceipt, setPreviewReceipt] = useState<PendingReceiptRow | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
-  const [companyFilter, setCompanyFilter] = useState('all');
   const [query, setQuery] = useState('');
-
-  const companyOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    receipts.forEach((row) => { if (row.companyId) map.set(row.companyId, row.companyName); });
-    return [...map.entries()].map(([id, name]) => ({ id, name }));
-  }, [receipts]);
 
   const visibleReceipts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return receipts.filter((row) =>
-      (companyFilter === 'all' || row.companyId === companyFilter) &&
-      (!q || [row.studentName, row.studentPhone, row.lineName, row.companyName, row.university]
-        .some((value) => value.toLowerCase().includes(q))));
-  }, [receipts, companyFilter, query]);
+      !q || [row.studentName, row.studentPhone, row.lineName, row.university]
+        .some((value) => value.toLowerCase().includes(q)));
+  }, [receipts, query]);
 
   const openReceiptPreview = async (row: PendingReceiptRow) => {
     setPreviewReceipt(row);
@@ -67,21 +60,10 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
     }
   };
 
-  // Approve Receipt Mutation
   const handleApprove = async (receiptId: string) => {
     try {
       setProcessingId(receiptId);
-      const { data, error } = await supabase
-        .from('receipts')
-        .update({ status: 'approved' })
-        .eq('id', receiptId)
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('لم يتم اعتماد الإيصال؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
-      // Optimistic update: notify parent to remove or fade out row
-      onReceiptReviewed(receiptId);
+      await onReview(receiptId, 'approved');
     } catch (err: any) {
       alert('خطأ أثناء اعتماد الإيصال: ' + err.message);
     } finally {
@@ -89,7 +71,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
     }
   };
 
-  // Reject Receipt Mutation (Mandatory reason strictly enforced)
+  // A written reason is mandatory for a rejection.
   const handleConfirmReject = async () => {
     if (!rejectModalReceiptId) return;
     const cleanReason = rejectionReason.trim();
@@ -97,24 +79,12 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       alert('سبب الرفض إلزامي ولا يمكن إتمام الرفض بدونه.');
       return;
     }
-
+    const receiptId = rejectModalReceiptId;
     try {
-      setProcessingId(rejectModalReceiptId);
-      const { data, error } = await supabase
-        .from('receipts')
-        .update({
-          status: 'rejected',
-          rejection_reason: cleanReason,
-        })
-        .eq('id', rejectModalReceiptId)
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('لم يتم رفض الإيصال؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
-      onReceiptReviewed(rejectModalReceiptId);
+      setProcessingId(receiptId);
       setRejectModalReceiptId(null);
       setRejectionReason('');
+      await onReview(receiptId, 'rejected', cleanReason);
     } catch (err: any) {
       alert('خطأ أثناء رفض الإيصال: ' + err.message);
     } finally {
@@ -146,14 +116,8 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث باسم الطالب، الهاتف، الخط أو الشركة..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-xs focus:border-[#7EC8E3] focus:outline-none" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث باسم الطالب، الهاتف أو الخط..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-xs focus:border-[#7EC8E3] focus:outline-none" />
           </div>
-          {companyOptions.length > 1 && (
-            <select aria-label="تصفية حسب الشركة" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
-              <option value="all">كل الشركات</option>
-              {companyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-            </select>
-          )}
         </div>
       )}
 
