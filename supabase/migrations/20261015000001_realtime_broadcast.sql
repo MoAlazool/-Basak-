@@ -26,7 +26,8 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     RETURN false;
   END;
-  RETURN CASE v_kind
+  -- Unknown is refused: always true or false, never NULL.
+  RETURN COALESCE(CASE v_kind
     WHEN 'company' THEN public.has_company_access(v_id)
     WHEN 'student' THEN v_id = auth.uid()
     WHEN 'line' THEN
@@ -35,7 +36,7 @@ BEGIN
                  WHERE s.line_id = v_id AND s.student_id = auth.uid()
                    AND s.status IN ('pending_payment', 'pending_review', 'active'))
     ELSE false
-  END;
+  END, false);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.can_join_topic(text) FROM PUBLIC, anon;
