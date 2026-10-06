@@ -55,6 +55,13 @@ final purchasablePeriodsProvider =
   return ref.watch(subscriptionRepoProvider).getPurchasablePeriods(lineId);
 });
 
+/// Daily (cash) subscription offered by a company (platform and company switches).
+final dailySubscriptionEnabledProvider =
+    FutureProvider.family<bool, String>((ref, companyId) async {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(subscriptionRepoProvider).isDailySubscriptionEnabled(companyId);
+});
+
 /// A period overlaps an open subscription (the database refuses those).
 bool _overlaps(PurchasablePeriod p, SubscriptionModel s) {
   final start = s.startDate, end = s.endDate;
@@ -1221,7 +1228,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         final periods =
             all.where((p) => !open.any((s) => _overlaps(p, s))).toList();
         final annualOffered = periods.any((p) => p.subscriptionType == 'yearly');
-        if (_selectedType == 'yearly' && !annualOffered) {
+        final dailyOffered = ref.watch(dailySubscriptionEnabledProvider(line.companyId)).valueOrNull ?? false;
+        if ((_selectedType == 'yearly' && !annualOffered) ||
+            (_selectedType == 'daily' && !dailyOffered)) {
           WidgetsBinding.instance.addPostFrameCallback(
               (_) => mounted ? setState(() => _selectedType = 'termly') : null);
         }
@@ -1244,7 +1253,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               const SizedBox(width: 10),
               _buildTypeCard('yearly', 'سنوي (فصلان)', line.priceYearly),
             ],
-            if (!_buying) ...[
+            if (!_buying && dailyOffered) ...[
               const SizedBox(width: 10),
               _buildTypeCard('daily', 'يومي (كاش)', line.priceDaily),
             ],

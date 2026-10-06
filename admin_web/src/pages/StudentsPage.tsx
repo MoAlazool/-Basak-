@@ -258,13 +258,25 @@ export const StudentsPage: React.FC = () => {
     return () => { active = false; };
   }, [selectedLineId]);
 
+  // The daily switch of the line's company (platform AND company).
+  const [dailyAvailable, setDailyAvailable] = useState(true);
+  useEffect(() => {
+    let active = true;
+    if (!selectedLine?.company_id) return;
+    void supabase.rpc('get_subscription_switches', { p_company_id: selectedLine.company_id }).then(({ data }) => {
+      if (active && data) setDailyAvailable(!!(data as { daily_effective?: boolean }).daily_effective);
+    });
+    return () => { active = false; };
+  }, [selectedLine?.company_id]);
+
   const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
   const annualAvailable = periods.some((p) => p.subscription_type === 'yearly');
   useEffect(() => {
     if (subscriptionType === 'yearly' && periods.length > 0 && !annualAvailable) setSubscriptionType('termly');
+    if (subscriptionType === 'daily' && !dailyAvailable) setSubscriptionType('termly');
     const keys = periodsForType.map((p) => `${p.period_code}:${p.academic_year}`);
     if (!keys.includes(periodKey)) setPeriodKey(keys[0] || '');
-  }, [periods, subscriptionType]);
+  }, [periods, subscriptionType, dailyAvailable]);
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -485,7 +497,7 @@ export const StudentsPage: React.FC = () => {
             <select value={subscriptionType} onChange={(e) => setSubscriptionType(e.target.value as 'termly' | 'yearly' | 'daily')} className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm">
               <option value="termly">ترم — {selectedLine?.price_termly ?? '—'} ج.م</option>
               <option value="yearly" disabled={!annualAvailable}>سنوي — {selectedLine?.price_yearly ?? '—'} ج.م{annualAvailable ? '' : ' (غير مفعّل)'}</option>
-              <option value="daily">يومي — {selectedLine?.price_daily ?? '—'} ج.م</option>
+              <option value="daily" disabled={!dailyAvailable}>يومي — {selectedLine?.price_daily ?? '—'} ج.م{dailyAvailable ? '' : ' (غير مفعّل)'}</option>
             </select>
           </div>
 

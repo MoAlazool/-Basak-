@@ -26,6 +26,12 @@ interface Settings {
   purchasable: (Period & { phase: string; subscription_type: string })[] | null;
 }
 
+interface Switches {
+  daily_global: boolean;
+  daily_company: boolean | null;
+  daily_effective: boolean;
+}
+
 const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
 const Toggle: React.FC<{ on: boolean; disabled?: boolean; onClick: () => void }> = ({ on, disabled, onClick }) => (
@@ -54,6 +60,9 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
     unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })));
   const settings = page.data ?? null;
+  const switchesPage = usePageData(companyId ? keys.company(companyId, 'switches') : keys.platform('switches'), () =>
+    unwrap<Switches>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })));
+  const switches = switchesPage.data ?? null;
   const error = page.error;
   const load = page.reload;
   // The editable copy follows what is saved, whenever that changes.
@@ -67,6 +76,14 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
     });
     if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
     await load();
+  };
+
+  const setDaily = async (enabled: boolean, target: string | null) => {
+    const { error: setError_ } = await supabase.rpc('set_daily_subscription', {
+      p_enabled: enabled, p_company_id: target,
+    });
+    if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
+    await switchesPage.reload();
   };
 
   const saveTerms = async () => {
@@ -116,7 +133,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   return (
     <div className="space-y-6">
       {companyId ? (
-        <Topbar title="إعدادات الشركة" subtitle={`مواعيد الفصول والاشتراك السنوي الخاصة بـ ${companyName}`} />
+        <Topbar title="إعدادات الشركة" subtitle={`مواعيد الفصول والاشتراك السنوي واليومي الخاصة بـ ${companyName}`} />
       ) : (
         <Topbar title="الإعدادات الافتراضية" subtitle="ما تبدأ به كل شركة جديدة. تغييرها لا يمس الشركات القائمة." />
       )}
@@ -217,6 +234,35 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
               </div>
             )}
           </div>
+
+          {switches && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-base font-bold text-slate-700">الاشتراك اليومي (كاش)</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                عند التعطيل لا يظهر خيار الاشتراك اليومي للطلاب ولا يمكن إنشاؤه، ويُقفل سعره في شاشة الخطوط.
+              </p>
+              {companyId ? (
+                <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-100 p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">الاشتراك اليومي لدى {companyName}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {switches.daily_effective ? 'يظهر للطلاب' : !switches.daily_global ? 'معطّل على مستوى المنصة حالياً' : 'لا يظهر للطلاب'}
+                    </p>
+                  </div>
+                  <Toggle on={!!switches.daily_company} onClick={() => void setDaily(!switches.daily_company, companyId)} />
+                </div>
+              ) : (
+                <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">السماح بالاشتراك اليومي على المنصة</p>
+                    <p className="text-[11px] text-slate-500">عند التعطيل يتوقف لدى كل الشركات. عند التفعيل تقرر كل شركة من إعداداتها.</p>
+                  </div>
+                  <Toggle on={switches.daily_global} disabled={!settings.can_edit_global}
+                    onClick={() => void setDaily(!switches.daily_global, null)} />
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

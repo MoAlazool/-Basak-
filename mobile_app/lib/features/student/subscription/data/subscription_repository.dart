@@ -71,6 +71,16 @@ class SubscriptionRepository {
 
   /// Periods payable now for [lineId]: the current semester, the next one
   /// (advance payment) and the annual subscription when the company enables it.
+  /// Whether the daily (cash) subscription is offered by [companyId]
+  /// (switched on for the platform and for the company).
+  Future<bool> isDailySubscriptionEnabled(String companyId) async {
+    final response = await OfflineCache.readThrough(
+        'daily_enabled.$companyId',
+        () => _client.rpc(SupabaseRpcs.dailySubscriptionEnabled,
+            params: {'p_company_id': companyId}));
+    return response == true;
+  }
+
   Future<List<PurchasablePeriod>> getPurchasablePeriods(String lineId) async {
     final response = await OfflineCache.readThrough(
         'purchasable_periods.$lineId',

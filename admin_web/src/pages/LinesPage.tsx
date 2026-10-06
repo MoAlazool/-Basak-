@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, usePageData } from '../lib/query';
@@ -364,6 +364,20 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const [error, setError] = useState('');
 
   const patch = (p: Partial<LineDraft>) => setD((cur) => ({ ...cur, ...p }));
+
+  // A subscription type the company (or the platform) has switched off: its
+  // price is locked here; the saved price stays as it was.
+  const [offered, setOffered] = useState({ annual: true, daily: true });
+  useEffect(() => {
+    if (!d.company_id) return;
+    let live = true;
+    void supabase.rpc('get_subscription_switches', { p_company_id: d.company_id }).then(({ data }) => {
+      const s = data as { annual_effective?: boolean; daily_effective?: boolean } | null;
+      if (live && s) setOffered({ annual: !!s.annual_effective, daily: !!s.daily_effective });
+    });
+    return () => { live = false; };
+  }, [d.company_id]);
+
   const patchTrip = (key: string, p: Partial<TripDraft>) =>
     setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
   const routeFor = (direction: Direction) => (direction === 'departure' ? d.stations : [...d.stations].reverse());
@@ -499,10 +513,14 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 <input type="number" min={0} value={d.price_termly} onChange={(e) => patch({ price_termly: e.target.value })} className={`mt-1 ${input}`} />
               </label>
               <label className="text-xs font-semibold text-slate-500">سعر السنوي (ج.م)
-                <input type="number" min={0} value={d.price_yearly} onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input}`} />
+                <input type="number" min={0} value={offered.annual ? d.price_yearly : 0} disabled={!offered.annual}
+                  onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
+                {!offered.annual && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك السنوي معطّل من الإعدادات.</span>}
               </label>
               <label className="text-xs font-semibold text-slate-500">سعر اليومي كاش (ج.م)
-                <input type="number" min={0} value={d.price_daily} onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input}`} />
+                <input type="number" min={0} value={offered.daily ? d.price_daily : 0} disabled={!offered.daily}
+                  onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
+                {!offered.daily && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك اليومي معطّل من الإعدادات.</span>}
               </label>
             </div>
           </section>
