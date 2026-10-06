@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { keys, usePageData } from '../lib/query';
 import { GraduationCap, Plus, CheckCircle, XCircle, MapPin, Search } from 'lucide-react';
 
 interface University {
@@ -13,9 +14,6 @@ interface University {
 interface College { id: string; university_id: string; name: string; is_active: boolean }
 
 export const UniversitiesPage: React.FC = () => {
-  const [universities, setUniversities] = useState<University[]>([]);
-  const [colleges, setColleges] = useState<College[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Add form
@@ -25,53 +23,30 @@ export const UniversitiesPage: React.FC = () => {
   const [collegeName, setCollegeName] = useState('');
   const [collegeUniversityId, setCollegeUniversityId] = useState('');
 
+  const page = usePageData(keys.shared('universitiesAdmin'), async () => {
+    const [uniRes, studentsRes, collegeRes] = await Promise.all([
+      supabase.from('universities').select('*').order('name', { ascending: true }),
+      supabase.from('students').select('university'),
+      supabase.from('colleges').select('id, university_id, name, is_active').order('name'),
+    ]);
+    if (uniRes.error) throw new Error(uniRes.error.message);
+    if (studentsRes.error) throw new Error(studentsRes.error.message);
+    if (collegeRes.error) throw new Error(collegeRes.error.message);
+    const countMap: Record<string, number> = {};
+    (studentsRes.data || []).forEach((s) => { if (s.university) countMap[s.university] = (countMap[s.university] || 0) + 1; });
+    return {
+      universities: (uniRes.data || []).map((u) => ({ ...u, students_count: countMap[u.name] || 0 })) as University[],
+      colleges: (collegeRes.data || []) as College[],
+    };
+  });
+  const universities = page.data?.universities ?? [];
+  const colleges = page.data?.colleges ?? [];
+  const loading = page.loading;
+  const fetchUniversities = page.reload;
   useEffect(() => {
-    fetchUniversities();
-  }, []);
-
-  const fetchUniversities = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('universities')
-        .select('*')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-      if (!data) throw new Error('لم تُرجع قاعدة البيانات قائمة الجامعات.');
-
-      // Also count students per university if students table exists
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('students')
-        .select('university');
-      if (studentsError) throw studentsError;
-      if (!studentsData) throw new Error('تعذر تحميل أعداد الطلاب.');
-
-      const countMap: Record<string, number> = {};
-      (studentsData || []).forEach((s) => {
-        if (s.university) {
-          countMap[s.university] = (countMap[s.university] || 0) + 1;
-        }
-      });
-
-      const enriched = (data || []).map((u) => ({
-        ...u,
-        students_count: countMap[u.name] || 0,
-      }));
-
-      setUniversities(enriched);
-      const { data: collegeData, error: collegeError } = await supabase
-        .from('colleges').select('id, university_id, name, is_active').order('name');
-      if (collegeError) throw collegeError;
-      if (!collegeData) throw new Error('تعذر تحميل الكليات.');
-      setColleges(collegeData);
-      if (!collegeUniversityId && data.length) setCollegeUniversityId(data[0].id);
-    } catch (err: any) {
-      console.error('Error fetching universities:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!collegeUniversityId && universities.length) setCollegeUniversityId(universities[0].id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.data]);
 
   const handleAddCollege = async (e: React.FormEvent) => {
     e.preventDefault();

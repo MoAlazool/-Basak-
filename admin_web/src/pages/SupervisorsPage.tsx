@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Bus, Pencil, Save, X } from 'lucide-react';
 
@@ -46,12 +48,6 @@ const LinePicker: React.FC<{
 
 export const SupervisorsPage: React.FC = () => {
   const companyId = useCompany().id;
-  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
-  const [lines, setLines] = useState<LineOption[]>([]);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState('');
-
   // New supervisor form
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -64,39 +60,31 @@ export const SupervisorsPage: React.FC = () => {
   const [editingLines, setEditingLines] = useState<string[]>([]);
   const [savingLines, setSavingLines] = useState(false);
 
-  useEffect(() => {
-    void fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setPageError('');
-      const [supRes, lineRes, assignRes] = await Promise.all([
-        supabase.from('supervisors')
-          .select('id, phone, full_name, company_id, is_active, created_at')
-          .eq('company_id', companyId).order('created_at', { ascending: false }),
-        supabase.from('lines').select('id, name, company_id, is_active').eq('company_id', companyId).order('name'),
-        supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', companyId),
-      ]);
-      if (supRes.error) throw supRes.error;
-      if (lineRes.error) throw lineRes.error;
-      if (assignRes.error) throw assignRes.error;
-      setSupervisors((supRes.data || []) as unknown as Supervisor[]);
-      setLines((lineRes.data || []) as LineOption[]);
-      const map: Record<string, string[]> = {};
-      (assignRes.data || []).forEach((row) => {
-        (map[row.supervisor_id] ||= []).push(row.line_id);
-      });
-      setAssignments(map);
-
-    } catch (err) {
-      console.error('Error fetching supervisors:', err);
-      setPageError(err instanceof Error ? err.message : 'تعذر تحميل المشرفين.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const page = usePageData(keys.company(companyId, 'supervisors'), async () => {
+    const [supRes, lineRes, assignRes] = await Promise.all([
+      supabase.from('supervisors')
+        .select('id, phone, full_name, company_id, is_active, created_at')
+        .eq('company_id', companyId).order('created_at', { ascending: false }),
+      supabase.from('lines').select('id, name, company_id, is_active').eq('company_id', companyId).order('name'),
+      supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', companyId),
+    ]);
+    if (supRes.error) throw supRes.error;
+    if (lineRes.error) throw lineRes.error;
+    if (assignRes.error) throw assignRes.error;
+    const assignments: Record<string, string[]> = {};
+    (assignRes.data || []).forEach((row) => { (assignments[row.supervisor_id] ||= []).push(row.line_id); });
+    return {
+      supervisors: (supRes.data || []) as unknown as Supervisor[],
+      lines: (lineRes.data || []) as LineOption[],
+      assignments,
+    };
+  });
+  const supervisors = page.data?.supervisors ?? [];
+  const lines = useMemo(() => page.data?.lines ?? [], [page.data]);
+  const assignments = page.data?.assignments ?? {};
+  const loading = page.loading;
+  const pageError = page.error;
+  const fetchData = page.reload;
 
   const linesById = useMemo(() => new Map(lines.map((line) => [line.id, line])), [lines]);
 
@@ -235,9 +223,7 @@ export const SupervisorsPage: React.FC = () => {
       {/* Supervisors Table */}
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-x-auto">
         {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-          </div>
+          <SkeletonRows />
         ) : supervisors.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا يوجد مشرفون مسجلون حالياً.</div>
         ) : (

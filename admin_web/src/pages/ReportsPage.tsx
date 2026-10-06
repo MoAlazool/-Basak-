@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DollarSign, RotateCcw, Search, ShieldAlert, Undo2, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 // ── Types ───────────────────────────────────────────────────────────
 interface ReportRow {
@@ -27,28 +29,29 @@ const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('ar-EG') 
 
 export const ReportsPage: React.FC = () => {
   const company = useCompany();
-  const [report, setReport] = useState<Report | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [filters, setFilters] = useState({
     period: '', academic_year: '', university_id: '', line_id: '', payment: '', phase: '', search: '',
     include_before_reset: false,
   });
-  const [universities, setUniversities] = useState<Option[]>([]);
-  const [lines, setLines] = useState<Option[]>([]);
-  const [resets, setResets] = useState<ResetRow[]>([]);
   const [resetScope, setResetScope] = useState<'financial' | 'all' | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError('');
-    const { data, error: rpcError } = await supabase.rpc('admin_subscription_report', { p_filters: { ...filters, company_id: company.id } });
-    if (rpcError) setError(rpcError.message);
-    else setReport(data as Report);
-    setLoading(false);
-  };
+  // The search box is debounced; the other filters apply at once. Changing a filter
+  // keeps the previous figures on screen until the new ones arrive.
+  const [applied, setApplied] = useState(filters);
+  useEffect(() => {
+    const t = setTimeout(() => setApplied(filters), filters.search !== applied.search ? 350 : 0);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
-  const loadOptions = async () => {
+  const reportPage = usePageData(keys.company(company.id, 'reports', applied), () =>
+    unwrap<Report>(supabase.rpc('admin_subscription_report', { p_filters: { ...applied, company_id: company.id } })),
+  { keepPrevious: true });
+  const report = reportPage.data ?? null;
+  const loading = reportPage.loading;
+  const error = reportPage.error;
+
+  const optionsPage = usePageData(keys.company(company.id, 'reports', 'options'), async () => {
     const [{ data: u }, { data: l }, { data: r }] = await Promise.all([
       supabase.from('universities').select('id, name').order('name'),
       supabase.from('lines').select('id, name').eq('company_id', company.id).order('name'),
@@ -56,17 +59,13 @@ export const ReportsPage: React.FC = () => {
       supabase.from('report_resets').select('id, scope, reset_at, note, undone_at')
         .or(`company_id.eq.${company.id},company_id.is.null`).order('reset_at', { ascending: false }).limit(10),
     ]);
-    setUniversities(u || []);
-    setLines(l || []);
-    setResets((r || []) as ResetRow[]);
-  };
-
-  useEffect(() => { void loadOptions(); }, []);
-  // Debounce the search box; other filters apply immediately.
-  useEffect(() => {
-    const t = setTimeout(() => { void load(); }, filters.search ? 350 : 0);
-    return () => clearTimeout(t);
-  }, [filters]);
+    return { universities: (u || []) as Option[], lines: (l || []) as Option[], resets: (r || []) as ResetRow[] };
+  });
+  const universities = optionsPage.data?.universities ?? [];
+  const lines = optionsPage.data?.lines ?? [];
+  const resets = optionsPage.data?.resets ?? [];
+  const load = reportPage.reload;
+  const loadOptions = optionsPage.reload;
 
   const set = (patch: Partial<typeof filters>) => setFilters((f) => ({ ...f, ...patch }));
   const t = report?.totals;
@@ -160,7 +159,7 @@ export const ReportsPage: React.FC = () => {
           <h2 className="font-bold text-slate-700">الطلاب والاشتراكات</h2>
           <span className="text-xs text-slate-400">{t ? `${t.count} اشتراك` : ''}{t && t.count > 2000 ? ' (يُعرض أول 2000)' : ''}</span>
         </div>
-        {loading ? <div className="flex h-40 items-center justify-center text-slate-500">جاري التحميل...</div> : !report || report.rows.length === 0 ? (
+        {loading ? <SkeletonRows rows={6} /> : !report || report.rows.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد اشتراكات مطابقة.</div>
         ) : (
           <div className="overflow-x-auto">

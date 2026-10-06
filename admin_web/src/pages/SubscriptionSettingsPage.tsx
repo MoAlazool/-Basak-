@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CalendarRange, Save, ToggleLeft, ToggleRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Topbar } from '../components/Topbar';
 import { useAdminScope, useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 interface Term {
   code: 'first' | 'second' | 'summer';
@@ -46,21 +48,18 @@ export const PlatformDefaultsPage: React.FC = () => <SettingsView companyId={nul
 
 const SettingsView: React.FC<{ companyId: string | null; companyName: string }> = ({ companyId, companyName }) => {
   const admin = useAdminScope();
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Term>>({});
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    const { data, error: loadError } = await supabase.rpc('get_subscription_settings', { p_company_id: companyId });
-    if (loadError) { setError(loadError.message); return; }
-    setError('');
-    const loaded = data as Settings;
-    setSettings(loaded);
-    setDrafts(Object.fromEntries((loaded.terms || []).map((t) => [t.code, { ...t }])));
-  }, [companyId]);
-
-  useEffect(() => { void load(); }, [load]);
+  const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
+    unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })));
+  const settings = page.data ?? null;
+  const error = page.error;
+  const load = page.reload;
+  // The editable copy follows what is saved, whenever that changes.
+  useEffect(() => {
+    if (settings) setDrafts(Object.fromEntries((settings.terms || []).map((t) => [t.code, { ...t }])));
+  }, [settings]);
 
   const setAnnual = async (enabled: boolean, target: string | null) => {
     const { error: setError_ } = await supabase.rpc('set_annual_subscription', {
@@ -123,6 +122,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
       )}
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر التحميل: {error}</div>}
 
+      {page.loading && <div className="rounded-2xl border border-slate-100 bg-white"><SkeletonRows /></div>}
       {settings && (
         <>
           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">

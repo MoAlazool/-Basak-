@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
-import { useCompanyRealtime } from '../lib/useCompanyRealtime';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
@@ -11,6 +12,8 @@ const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) 
   url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
 
 /** One request for all photos; a missing file yields no URL instead of a failed request per row. */
+const PAGE_SIZE = 25;
+
 async function signAvatarUrls(paths: string[]): Promise<Record<string, string>> {
   if (!paths.length) return {};
   const { data, error } = await supabase.storage.from('student-avatars').createSignedUrls(paths, 600);
@@ -107,11 +110,9 @@ export const StudentsPage: React.FC = () => {
   const selectedCompanyId = company.id;
   const [departureTripId, setDepartureTripId] = useState('');
   const [returnTripId, setReturnTripId] = useState('');
-  const [students, setStudents] = useState<Student[]>([]);
-  const [universities, setUniversities] = useState<University[]>([]);
-  const [lines, setLines] = useState<LineOption[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [search, setSearch] = useState('');   // what the list is actually filtered by (debounced)
+  const [pageIndex, setPageIndex] = useState(0);
 
   // Add Student Form
   const [fullName, setFullName] = useState('');
@@ -123,80 +124,78 @@ export const StudentsPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetTarget, setResetTarget] = useState<Student | null>(null);
-  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [periods, setPeriods] = useState<PurchasablePeriod[]>([]);
   const [periodKey, setPeriodKey] = useState('');
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
-  // A student subscribing from the app, or a receipt being approved, shows up without a reload.
-  useCompanyRealtime(company.id, ['company_students', 'subscriptions'], () => { void loadStudents().catch(() => {}); });
+    const timer = window.setTimeout(() => { setSearch(searchQuery.trim()); setPageIndex(0); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
-  // The company's active members, each with their subscriptions to this company only.
-  const loadStudents = async () => {
-    const { data: studentsData, error: sErr } = await supabase
+  // The company's active members, a page at a time, each with their subscriptions to
+  // this company only. Searching is done by the database, not over what happens to be loaded.
+  const studentsPage = usePageData(keys.company(company.id, 'students', { search, pageIndex }), async () => {
+    let query = supabase
       .from('students')
       .select(`
         id, phone, full_name, university, college, profile_image_url, created_at,
         company_students!inner(company_id, status),
         subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name),
           departure_trip:departure_trip_id(label, universities(name)))
-      `)
+      `, { count: 'exact' })
       .eq('company_students.company_id', company.id)
       .eq('company_students.status', 'active')
-      .eq('subscriptions.company_id', company.id)
-      .order('created_at', { ascending: false });
-
-    if (sErr) throw sErr;
-    const loadedStudents = (studentsData || []) as unknown as Student[];
-    setStudents(loadedStudents);
-    void signAvatarUrls(loadedStudents.map((st) => st.profile_image_url).filter((x): x is string => !!x))
-      .then(setAvatarUrls);
-  };
-
-  const fetchInitialData = async () => {
-    try {
-      setLoading(true);
-
-      await loadStudents();
-
-      // Fetch active universities
-      const { data: uniData, error: uniError } = await supabase
-        .from('universities')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-
-      if (uniError) throw uniError;
-      setUniversities(uniData || []);
-      if (uniData && uniData.length > 0) {
-        setSelectedUniversity((current) => current || uniData[0].name);
-      }
-
-      const { data: lineRows, error: lineError } = await supabase.from('lines')
-        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
-        .eq('company_id', company.id).eq('is_active', true).order('name');
-      if (lineError) throw lineError;
-      const availableLines = (lineRows || []) as unknown as LineOption[];
-      setLines(availableLines);
-
-      const companyId = company.id;
-      // State from this load is not visible to the apply* helpers yet, so resolve here.
-      const uniName = selectedUniversity || uniData?.[0]?.name || '';
-      const uniId = (uniData || []).find((university) => university.name === uniName)?.id;
-      const firstLine = availableLines.find((line) => line.company_id === companyId && lineServesUniversity(line, uniId));
-      const firstStation = activeStations(firstLine)[0];
-      setSelectedLineId(firstLine?.id || '');
-      setSelectedStationId(firstStation?.id || '');
-      setDepartureTripId(stopOptions(firstLine, 'departure', firstStation?.id || '', uniId)[0]?.trip.id || '');
-      setReturnTripId(stopOptions(firstLine, 'return', firstStation?.id || '', uniId)[0]?.trip.id || '');
-    } catch (err: any) {
-      console.error('Error fetching students data:', err);
-    } finally {
-      setLoading(false);
+      .eq('subscriptions.company_id', company.id);
+    if (search) {
+      const term = search.replace(/[%,()]/g, ' ');
+      query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%,university.ilike.%${term}%`);
     }
-  };
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    return { rows: (data || []) as unknown as Student[], total: count ?? 0 };
+  }, { keepPrevious: true });
+  const students = studentsPage.data?.rows ?? [];
+  const totalStudents = studentsPage.data?.total ?? 0;
+  const loading = studentsPage.loading;
+
+  // Signed photo links expire, so they are fetched for the rows on screen and never stored.
+  const photoPaths = students.map((st) => st.profile_image_url).filter((x): x is string => !!x);
+  const avatarUrls = usePageData(keys.company(company.id, 'avatars', photoPaths), () => signAvatarUrls(photoPaths),
+    { enabled: photoPaths.length > 0, keepPrevious: true }).data ?? {};
+
+  // What the add-student form chooses from.
+  const options = usePageData(keys.company(company.id, 'lineOptions'), async () => {
+    const [uniRes, lineRes] = await Promise.all([
+      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('lines')
+        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
+        .eq('company_id', company.id).eq('is_active', true).order('name'),
+    ]);
+    if (uniRes.error) throw new Error(uniRes.error.message);
+    if (lineRes.error) throw new Error(lineRes.error.message);
+    return { universities: (uniRes.data || []) as University[], lines: (lineRes.data || []) as unknown as LineOption[] };
+  });
+  const universities = options.data?.universities ?? [];
+  const lines = options.data?.lines ?? [];
+
+  // First arrival of the options picks sensible defaults; later refreshes keep what the admin chose.
+  useEffect(() => {
+    if (!options.data || selectedLineId) return;
+    const uniName = selectedUniversity || options.data.universities[0]?.name || '';
+    const uniId = options.data.universities.find((university) => university.name === uniName)?.id;
+    const firstLine = options.data.lines.find((line) => lineServesUniversity(line, uniId));
+    const firstStation = activeStations(firstLine)[0];
+    if (!selectedUniversity) setSelectedUniversity(uniName);
+    setSelectedLineId(firstLine?.id || '');
+    setSelectedStationId(firstStation?.id || '');
+    setDepartureTripId(stopOptions(firstLine, 'departure', firstStation?.id || '', uniId)[0]?.trip.id || '');
+    setReturnTripId(stopOptions(firstLine, 'return', firstStation?.id || '', uniId)[0]?.trip.id || '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.data]);
+
+  const fetchInitialData = studentsPage.reload;
 
   const universityIdOf = (name: string) => universities.find((university) => university.name === name)?.id;
 
@@ -361,14 +360,8 @@ export const StudentsPage: React.FC = () => {
     pending_payment: 'بانتظار الدفع', pending_review: 'قيد مراجعة الإيصال', active: 'نشط', rejected: 'مرفوض', expired: 'منتهي',
   };
 
-  const filteredStudents = students.filter((s) => {
-    const q = searchQuery.toLowerCase();
-    return (
-      s.full_name.toLowerCase().includes(q) ||
-      s.phone.includes(q) ||
-      (s.university && s.university.toLowerCase().includes(q))
-    );
-  });
+  const filteredStudents = students;
+  const pageCount = Math.max(1, Math.ceil(totalStudents / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -531,16 +524,16 @@ export const StudentsPage: React.FC = () => {
             />
           </div>
           <span className="text-xs font-semibold text-slate-400">
-            إجمالي الطلاب: {students.length}
+            إجمالي الطلاب: {totalStudents.toLocaleString('ar-EG')}{studentsPage.refreshing ? ' • جاري التحديث…' : ''}
           </span>
         </div>
 
         {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-          </div>
+          <SkeletonRows rows={5} />
+        ) : studentsPage.error ? (
+          <div role="alert" className="p-8 text-center text-rose-700">تعذر تحميل الطلاب: {studentsPage.error}</div>
         ) : filteredStudents.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">لا يوجد طلاب مطابقون للبحث.</div>
+          <div className="p-8 text-center text-slate-500">{search ? 'لا يوجد طلاب مطابقون للبحث.' : 'لا يوجد طلاب مسجلون في هذه الشركة بعد.'}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-right text-sm">
@@ -645,6 +638,13 @@ export const StudentsPage: React.FC = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 p-3 text-xs text-slate-500">
+            <button disabled={pageIndex === 0} onClick={() => setPageIndex(pageIndex - 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">السابق</button>
+            <span>صفحة {(pageIndex + 1).toLocaleString('ar-EG')} من {pageCount.toLocaleString('ar-EG')}</span>
+            <button disabled={pageIndex >= pageCount - 1} onClick={() => setPageIndex(pageIndex + 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">التالي</button>
           </div>
         )}
       </div>

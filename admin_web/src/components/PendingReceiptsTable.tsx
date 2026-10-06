@@ -17,13 +17,14 @@ const formatUpload = (iso: string) => {
 interface PendingReceiptsProps {
   receipts: PendingReceiptRow[];
   loading: boolean;
-  onReceiptReviewed: (receiptId: string) => void;
+  /** Saves the decision. The row disappears at once and returns if the save fails. */
+  onReview: (receiptId: string, decision: 'approved' | 'rejected', reason?: string) => Promise<void>;
 }
 
 export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   receipts,
   loading,
-  onReceiptReviewed,
+  onReview,
 }) => {
   const [rejectModalReceiptId, setRejectModalReceiptId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -59,21 +60,10 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
     }
   };
 
-  // Approve Receipt Mutation
   const handleApprove = async (receiptId: string) => {
     try {
       setProcessingId(receiptId);
-      const { data, error } = await supabase
-        .from('receipts')
-        .update({ status: 'approved' })
-        .eq('id', receiptId)
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('لم يتم اعتماد الإيصال؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
-      // Optimistic update: notify parent to remove or fade out row
-      onReceiptReviewed(receiptId);
+      await onReview(receiptId, 'approved');
     } catch (err: any) {
       alert('خطأ أثناء اعتماد الإيصال: ' + err.message);
     } finally {
@@ -81,7 +71,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
     }
   };
 
-  // Reject Receipt Mutation (Mandatory reason strictly enforced)
+  // A written reason is mandatory for a rejection.
   const handleConfirmReject = async () => {
     if (!rejectModalReceiptId) return;
     const cleanReason = rejectionReason.trim();
@@ -89,24 +79,12 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       alert('سبب الرفض إلزامي ولا يمكن إتمام الرفض بدونه.');
       return;
     }
-
+    const receiptId = rejectModalReceiptId;
     try {
-      setProcessingId(rejectModalReceiptId);
-      const { data, error } = await supabase
-        .from('receipts')
-        .update({
-          status: 'rejected',
-          rejection_reason: cleanReason,
-        })
-        .eq('id', rejectModalReceiptId)
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('لم يتم رفض الإيصال؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
-      onReceiptReviewed(rejectModalReceiptId);
+      setProcessingId(receiptId);
       setRejectModalReceiptId(null);
       setRejectionReason('');
+      await onReview(receiptId, 'rejected', cleanReason);
     } catch (err: any) {
       alert('خطأ أثناء رفض الإيصال: ' + err.message);
     } finally {

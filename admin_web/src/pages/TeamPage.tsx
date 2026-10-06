@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { KeyRound, Mail, Plus, ShieldCheck, UserRound } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 interface TeamAdmin { id: string; email: string; full_name: string; created_at: string; }
 
@@ -14,22 +16,16 @@ export const TeamPage: React.FC = () => {
   const me = useAdminScope();
   const company = useCompany();
   const canAdd = me.role === 'super_admin';
-  const [admins, setAdmins] = useState<TeamAdmin[]>([]);
-  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ fullName: '', email: '', password: '' });
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
-    const { data, error: loadError } = await supabase.from('admins')
-      .select('id, email, full_name, created_at').eq('company_id', company.id).order('created_at');
-    if (loadError) setError(loadError.message);
-    setAdmins(data ?? []);
-    setLoading(false);
-  }, [company.id]);
-
-  useEffect(() => { void load(); }, [load]);
+  const page = usePageData(keys.company(company.id, 'team'), () =>
+    unwrap<TeamAdmin[]>(supabase.from('admins').select('id, email, full_name, created_at').eq('company_id', company.id).order('created_at')));
+  const admins = page.data ?? [];
+  const loading = page.loading;
+  const load = page.reload;
 
   const createAdmin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -78,10 +74,10 @@ export const TeamPage: React.FC = () => {
       )}
 
       {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
-      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {(error || page.error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error || page.error}</p>}
 
       <div className="glass-panel overflow-hidden">
-        {loading ? <div className="p-8 text-center text-slate-500">جاري التحميل...</div> : admins.length === 0 ? (
+        {loading ? <SkeletonRows rows={2} /> : admins.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا يوجد مديرون لهذه الشركة بعد.</div>
         ) : (
           <div className="overflow-x-auto">
