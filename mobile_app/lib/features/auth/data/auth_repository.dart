@@ -13,8 +13,14 @@ class AuthRepository {
     return '$cleanPhone@busak.app';
   }
 
+  /// Arabic keyboards type ٠١٢… (and Persian ones ۰۱۲…): same digits, different characters.
+  static String toLatinDigits(String input) => input.replaceAllMapped(RegExp('[٠-٩۰-۹]'), (match) {
+        final code = match.group(0)!.codeUnitAt(0);
+        return String.fromCharCode(0x30 + (code >= 0x06F0 ? code - 0x06F0 : code - 0x0660));
+      });
+
   static String normalizeEgyptianPhone(String phone) {
-    var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    var digits = toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.startsWith('20') && digits.length >= 12) {
       digits = digits.substring(2);
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/network/supabase_service.dart';
+import 'core/sync/sync_hub.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/models/user_role.dart';
 import 'features/auth/presentation/login_register_screen.dart';
@@ -85,11 +86,11 @@ class AuthGate extends ConsumerWidget {
         // After an admin password reset the student must choose a new password first.
         return ref.watch(mustChangePasswordProvider).maybeWhen(
               data: (mustChange) =>
-                  mustChange ? const ForcePasswordChangeScreen() : const StudentMainScreen(),
-              orElse: () => const StudentMainScreen(),
+                  mustChange ? const ForcePasswordChangeScreen() : const SyncScope(child: StudentMainScreen()),
+              orElse: () => const SyncScope(child: StudentMainScreen()),
             );
       case UserRole.supervisor:
-        return const SupervisorMainScreen();
+        return const SyncScope(child: SupervisorMainScreen());
       case UserRole.admin:
       case UserRole.unknown:
         return Scaffold(

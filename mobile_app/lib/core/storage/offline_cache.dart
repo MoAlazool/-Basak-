@@ -39,10 +39,12 @@ class OfflineCache {
 
   static Future<void> clearStudentPass() => _storage.delete(key: _studentPassKey);
 
+  /// Lookups are kept per supervisor: on a shared phone, another supervisor
+  /// (possibly of another company) never reads what this one scanned.
   static Future<void> saveStudentLookup(
-      String qrValue, Map<String, dynamic> details) async {
+      String supervisorId, String qrValue, Map<String, dynamic> details) async {
     await _storage.write(
-      key: '$_studentLookupPrefix${_safeKey(qrValue)}',
+      key: _lookupKey(supervisorId, qrValue),
       value: jsonEncode({
         ...details,
         '_cached_at': DateTime.now().toIso8601String(),
@@ -50,9 +52,9 @@ class OfflineCache {
     );
   }
 
-  static Future<Map<String, dynamic>?> readStudentLookup(String qrValue) async {
-    final raw = await _storage.read(
-        key: '$_studentLookupPrefix${_safeKey(qrValue)}');
+  static Future<Map<String, dynamic>?> readStudentLookup(
+      String supervisorId, String qrValue) async {
+    final raw = await _storage.read(key: _lookupKey(supervisorId, qrValue));
     if (raw == null) return null;
     try {
       return Map<String, dynamic>.from(jsonDecode(raw) as Map);
@@ -60,6 +62,20 @@ class OfflineCache {
       return null;
     }
   }
+
+  /// Removes every cached lookup. Called on sign-out, so nothing a supervisor
+  /// saw offline stays on the device for the next account.
+  static Future<void> clearStudentLookups() async {
+    final all = await _storage.readAll();
+    for (final key in all.keys.toList()) {
+      if (key.startsWith(_studentLookupPrefix)) {
+        await _storage.delete(key: key);
+      }
+    }
+  }
+
+  static String _lookupKey(String supervisorId, String qrValue) =>
+      '$_studentLookupPrefix$supervisorId.${_safeKey(qrValue)}';
 
   static String _safeKey(String value) => base64Url.encode(utf8.encode(value));
 }

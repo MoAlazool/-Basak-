@@ -5,6 +5,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../../core/sync/session.dart';
+import '../../../../core/sync/sync_hub.dart';
+import '../../invites/invites.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../subscription/data/subscription_repository.dart';
@@ -13,10 +16,22 @@ import '../../subscription/models/subscription_model.dart';
 final subscriptionRepoProvider = Provider((ref) => SubscriptionRepository());
 final dailyRideRepoProvider = Provider((ref) => DailyRideRepository());
 
+/// The subscription shown on the home screen: from the saved copy at once,
+/// then from the server; refreshed by live events and on app resume.
+class CurrentSubscriptionNotifier extends SnapshotNotifier<SubscriptionModel?> {
+  @override
+  String get snapshotName => 'current_subscription';
+  @override
+  SubscriptionModel? get signedOut => null;
+  @override
+  Future<Object?> fetchJson() => ref.read(subscriptionRepoProvider).getCurrentSubscriptionJson();
+  @override
+  SubscriptionModel? parse(Object? json) =>
+      json == null ? null : SubscriptionModel.fromJson(Map<String, dynamic>.from(json as Map));
+}
+
 final currentSubscriptionProvider =
-    FutureProvider<SubscriptionModel?>((ref) async {
-  return ref.watch(subscriptionRepoProvider).getCurrentSubscription();
-});
+    AsyncNotifierProvider<CurrentSubscriptionNotifier, SubscriptionModel?>(CurrentSubscriptionNotifier.new);
 
 class StudentHomeScreen extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToSubscription;
@@ -80,9 +95,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       final saturday = DateTime(rideDate.year, rideDate.month, rideDate.day)
           .subtract(Duration(days: saturdayOffset));
       final repository = ref.read(dailyRideRepoProvider);
-      final statuses = await repository.getRideStatusesForRange(
+      final statusesFuture = repository.getRideStatusesForRange(
           saturday, saturday.add(const Duration(days: 6)));
-      final details = await repository.getRideDetailsForDate(rideDate);
+      final detailsFuture = repository.getRideDetailsForDate(rideDate);
+      final statuses = await statusesFuture;
+      final details = await detailsFuture;
       if (mounted) {
         setState(() {
           _loadedRideDate = rideDate;
@@ -124,9 +141,23 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           isError: true);
       return;
     }
-    setState(() => _isSavingRide = true);
+    // Show the choice at once; if the server refuses, put the previous one back.
+    final before = (
+      riding: _isRidingToday,
+      departure: _selectedDepartureTime,
+      returning: _selectedReturnTime,
+      week: _weeklyRideStatuses,
+    );
+    final rideDate = repository.rideDateForCurrentWindow();
+    final rideDay = DateTime(rideDate.year, rideDate.month, rideDate.day);
+    setState(() {
+      _isSavingRide = true;
+      _isRidingToday = isRiding;
+      _selectedDepartureTime = departureTime;
+      _selectedReturnTime = returnTime;
+      _weeklyRideStatuses = {..._weeklyRideStatuses, rideDay: isRiding};
+    });
     try {
-      final rideDate = repository.rideDateForCurrentWindow();
       final result = await repository.confirmRide(
         rideDate: rideDate,
         isRiding: isRiding,
@@ -142,14 +173,18 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _selectedReturnTime = result.returnTime;
         _isSavingRide = false;
       });
-      await _loadTodayRideStatus();
-      if (!mounted) return;
       _showRideMessage(isRiding
           ? 'تم تأكيد حضورك ومواعيد رحلتك ليوم ${_dateLabel(rideDate)}.'
           : 'تم إلغاء تأكيد الحضور.');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isSavingRide = false);
+      setState(() {
+        _isSavingRide = false;
+        _isRidingToday = before.riding;
+        _selectedDepartureTime = before.departure;
+        _selectedReturnTime = before.returning;
+        _weeklyRideStatuses = before.week;
+      });
       _showRideMessage(e.toString(), isError: true);
     }
   }
@@ -213,6 +248,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final subAsync = ref.watch(currentSubscriptionProvider);
+    // Back from the background, or reconnected: read the ride vote again.
+    ref.listen(rideStatusTickProvider, (_, __) => _loadTodayRideStatus());
     final user = ref.watch(authStateProvider).user;
     final profileAsync = user == null
         ? const AsyncValue<Map<String, dynamic>?>.data(null)
@@ -239,6 +276,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                       profileAsync.valueOrNull?['profile_image_signed_url']
                           as String?),
                   const SizedBox(height: 18),
+                  const InvitesCard(),
                   subAsync.when(
                     loading: () => const _LoadingCard(),
                     error: (_, __) => _ErrorCard(

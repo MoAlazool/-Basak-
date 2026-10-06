@@ -24,11 +24,13 @@ class QrScannerRepository {
         throw Exception('لم يتم العثور على بيانات الطالب لهذا الرمز.');
       }
       final details = Map<String, dynamic>.from(response);
-      await OfflineCache.saveStudentLookup(qr, details);
+      final me = _client.auth.currentUser?.id;
+      if (me != null) await OfflineCache.saveStudentLookup(me, qr, details);
       return ScannedStudentDetails.fromJson(details);
     } catch (error) {
       if (!_isNetworkFailure(error)) rethrow;
-      final cached = await OfflineCache.readStudentLookup(qr);
+      final me = _client.auth.currentUser?.id;
+      final cached = me == null ? null : await OfflineCache.readStudentLookup(me, qr);
       if (cached != null) {
         return ScannedStudentDetails.fromJson(cached, isOfflineCache: true);
       }

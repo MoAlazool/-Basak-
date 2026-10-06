@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../data/auth_repository.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../providers/auth_provider.dart';
+import 'auth_form_styles.dart';
 import 'forgot_password_screen.dart';
 import '../../splash/splash_gate.dart';
 
@@ -19,6 +22,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phone = TextEditingController();
   final _password = TextEditingController();
+  final _passwordFocus = FocusNode();
   bool _remember = false;
   bool _hidePassword = true;
   bool _supervisor = false;
@@ -59,7 +63,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             password: _password.text,
           );
     } catch (error) {
-      if (mounted) setState(() => _error = _message(error));
+      if (mounted) {
+        HapticFeedback.mediumImpact();
+        setState(() => _error = _message(error));
+      }
     }
   }
 
@@ -99,7 +106,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _phone.dispose();
     _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
+  }
+
+  void _selectRole(bool supervisor) {
+    if (_supervisor == supervisor) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _supervisor = supervisor;
+      _error = null;
+    });
   }
 
   @override
@@ -110,7 +127,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
               child: Column(
@@ -123,229 +141,199 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(
-                            color: Color(0x261F6F8B),
-                            blurRadius: 16,
-                            offset: Offset(0, 7)),
+                        BoxShadow(color: Color(0x261F6F8B), blurRadius: 16, offset: Offset(0, 7)),
                       ],
                     ),
-                    child: ClipOval(
-                        child: Image.asset('assets/images/basak_icon.png',
-                            fit: BoxFit.cover)),
+                    child: ClipOval(child: Image.asset('assets/images/basak_icon.png', fit: BoxFit.cover)),
                   ),
                   const SizedBox(height: 12),
                   const Text('باصك | Basak',
-                      style: TextStyle(
-                          fontSize: 23,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF17384A))),
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                        color: const Color(0xFFE8F0F5),
-                        borderRadius: BorderRadius.circular(16)),
-                    child: Row(children: [
-                      _roleTab('طالب', LucideIcons.graduationCap, !_supervisor,
-                          () => setState(() => _supervisor = false)),
-                      _roleTab(
-                          'مشرف',
-                          LucideIcons.briefcaseBusiness,
-                          _supervisor,
-                          () => setState(() => _supervisor = true)),
-                    ]),
-                  ),
-                  const SizedBox(height: 14),
-                  Card(
-                    elevation: 2,
-                    shadowColor: const Color(0x141F6F8B),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(22)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(22),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const Text('رقم الهاتف المحمول',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF334B5A))),
-                              const SizedBox(height: 7),
-                              TextFormField(
-                                controller: _phone,
-                                keyboardType: _supervisor
-                                    ? TextInputType.emailAddress
-                                    : TextInputType.phone,
-                                textDirection: TextDirection.ltr,
-                                decoration: InputDecoration(
-                                  hintText: _supervisor
-                                      ? 'رقم الهاتف أو البريد الإلكتروني'
-                                      : '010XXXXXXXX',
-                                  prefixIcon:
-                                      const Icon(LucideIcons.phone, size: 19),
-                                  prefixText: _supervisor ? null : '+20  ',
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14)),
-                                  filled: true,
-                                  fillColor: const Color(0xFFFAFCFE),
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return _supervisor
-                                        ? 'أدخل رقم الهاتف أو البريد الإلكتروني'
-                                        : 'رقم الهاتف مطلوب';
-                                  }
-                                  if (!_supervisor &&
-                                      value
-                                              .replaceAll(RegExp(r'\D'), '')
-                                              .length <
-                                          10) {
-                                    return 'أدخل رقم هاتف مصري صحيح';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-                              const Text('كلمة المرور',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF334B5A))),
-                              const SizedBox(height: 7),
-                              TextFormField(
-                                controller: _password,
-                                obscureText: _hidePassword,
-                                decoration: InputDecoration(
-                                  prefixIcon: const Icon(
-                                      LucideIcons.lockKeyhole,
-                                      size: 19),
-                                  suffixIcon: IconButton(
-                                      onPressed: () => setState(
-                                          () => _hidePassword = !_hidePassword),
-                                      icon: Icon(
-                                          _hidePassword
-                                              ? LucideIcons.eye
-                                              : LucideIcons.eyeOff,
-                                          size: 19)),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14)),
-                                  filled: true,
-                                  fillColor: const Color(0xFFFAFCFE),
-                                ),
-                                validator: (value) =>
-                                    value == null || value.isEmpty
-                                        ? 'كلمة المرور مطلوبة'
-                                        : null,
-                              ),
-                              if (!_supervisor)
-                                Align(
-                                  alignment: AlignmentDirectional.centerEnd,
-                                  child: TextButton(
-                                    onPressed: loading ? null : _openForgotPassword,
-                                    child: const Text('نسيت كلمة المرور؟'),
-                                  ),
-                                ),
-                              const SizedBox(height: 5),
-                              Material(
-                                color: Colors.transparent,
-                                child: CheckboxListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  value: _remember,
-                                  controlAffinity:
-                                      ListTileControlAffinity.leading,
-                                  title: const Text(
-                                      'تذكر بيانات الدخول على هذا الجهاز',
-                                      style: TextStyle(fontSize: 12)),
-                                  onChanged: (value) => setState(
-                                      () => _remember = value ?? false),
-                                ),
-                              ),
-                              if (_error != null) ...[
-                                Container(
-                                    padding: const EdgeInsets.all(11),
-                                    decoration: BoxDecoration(
-                                        color: const Color(0xFFFFF1F0),
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
-                                    child: Text(_error!,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Color(0xFFB42318),
-                                            fontSize: 13))),
-                                const SizedBox(height: 12),
-                              ],
-                              SizedBox(
-                                height: 50,
-                                child: ElevatedButton.icon(
-                                  onPressed: loading ? null : _submit,
-                                  icon: loading
-                                      ? const SizedBox.square(
-                                          dimension: 18,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white))
-                                      : const Icon(LucideIcons.arrowLeft,
-                                          size: 18),
-                                  label: const Text('تسجيل الدخول',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold)),
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF1F6F8B),
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(15))),
-                                ),
-                              ),
-                              if (!_supervisor) ...[
-                                const SizedBox(height: 18),
-                                const Text('ليس لديك حساب؟',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFF718695))),
-                                const SizedBox(height: 9),
-                                OutlinedButton.icon(
-                                  onPressed: widget.onSignup,
-                                  icon: const Icon(LucideIcons.userRoundPlus,
-                                      size: 18),
-                                  label: const Text('إنشاء حساب جديد'),
-                                  style: OutlinedButton.styleFrom(
-                                      foregroundColor: const Color(0xFF1F6F8B),
-                                      side: const BorderSide(
-                                          color: Color(0xFF8DBAC9)),
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(15)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 13)),
-                                ),
-                              ] else ...[
-                                const SizedBox(height: 18),
-                                const Text(
-                                  'حسابات المشرفين ينشئها مسؤول النظام فقط.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                      fontSize: 12, color: Color(0xFF718695)),
-                                ),
-                              ],
-                            ]),
-                      ),
+                      style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: AuthStyles.ink)),
+                  const SizedBox(height: 4),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: Text(
+                      _supervisor ? 'ادخل بحساب المشرف لمتابعة رحلات خطوطك.' : 'أهلاً بك. ادخل لمتابعة اشتراكك ورحلاتك.',
+                      key: ValueKey(_supervisor),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, height: 1.5, color: AuthStyles.muted),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _Dot(active: true),
-                        SizedBox(width: 6),
-                        _Dot(active: false),
-                        SizedBox(width: 6),
-                        _Dot(active: false),
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFE4EEF4), borderRadius: BorderRadius.circular(16)),
+                    child: Row(children: [
+                      _roleTab('طالب', LucideIcons.graduationCap, !_supervisor, () => _selectRole(false)),
+                      _roleTab('مشرف', LucideIcons.briefcaseBusiness, _supervisor, () => _selectRole(true)),
+                    ]),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x141F6F8B), blurRadius: 18, offset: Offset(0, 6)),
+                      ],
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      // Lets the phone's password manager offer and save the login.
+                      child: AutofillGroup(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          Text(_supervisor ? 'رقم الهاتف أو البريد الإلكتروني' : 'رقم الهاتف',
+                              style: AuthStyles.labelStyle),
+                          const SizedBox(height: 7),
+                          TextFormField(
+                            controller: _phone,
+                            keyboardType: _supervisor ? TextInputType.emailAddress : TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                            autocorrect: false,
+                            autofillHints: [
+                              AutofillHints.username,
+                              _supervisor ? AutofillHints.email : AutofillHints.telephoneNumber,
+                            ],
+                            inputFormatters: _supervisor
+                                ? null
+                                : [
+                                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+٠-٩]')),
+                                    LengthLimitingTextInputFormatter(14),
+                                  ],
+                            onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+                            textDirection: TextDirection.ltr,
+                            textAlign: TextAlign.left,
+                            style: AuthStyles.inputStyle,
+                            decoration: AuthStyles.field(
+                              icon: _supervisor ? LucideIcons.userRound : LucideIcons.phone,
+                              hint: _supervisor ? '01XXXXXXXXX أو name@example.com' : '01XXXXXXXXX',
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return _supervisor ? 'اكتب رقم الهاتف أو البريد الإلكتروني.' : 'اكتب رقم الهاتف.';
+                              }
+                              if (!_supervisor && AuthRepository.normalizeEgyptianPhone(value).length < 10) {
+                                return 'اكتب رقم هاتف مصري صحيح.';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          const Text('كلمة المرور', style: AuthStyles.labelStyle),
+                          const SizedBox(height: 7),
+                          TextFormField(
+                            controller: _password,
+                            focusNode: _passwordFocus,
+                            obscureText: _hidePassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.password],
+                            onFieldSubmitted: (_) => loading ? null : _submit(),
+                            textDirection: TextDirection.ltr,
+                            textAlign: TextAlign.left,
+                            style: AuthStyles.inputStyle,
+                            decoration: AuthStyles.field(
+                              icon: LucideIcons.lockKeyhole,
+                              suffix: IconButton(
+                                onPressed: () => setState(() => _hidePassword = !_hidePassword),
+                                tooltip: _hidePassword ? 'إظهار كلمة المرور' : 'إخفاء كلمة المرور',
+                                icon: Icon(_hidePassword ? LucideIcons.eye : LucideIcons.eyeOff,
+                                    size: 20, color: AuthStyles.muted),
+                              ),
+                            ),
+                            validator: (value) => value == null || value.isEmpty ? 'اكتب كلمة المرور.' : null,
+                          ),
+                          const SizedBox(height: 6),
+                          Row(children: [
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: loading ? null : () => setState(() => _remember = !_remember),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(children: [
+                                    SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: Checkbox.adaptive(
+                                        value: _remember,
+                                        activeColor: AuthStyles.teal,
+                                        onChanged: loading
+                                            ? null
+                                            : (value) => setState(() => _remember = value ?? false),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Only the identifier is kept; the password never is.
+                                    const Flexible(
+                                      child: Text('تذكّر رقمي',
+                                          style: TextStyle(fontSize: 13.5, color: AuthStyles.label)),
+                                    ),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                            if (!_supervisor)
+                              TextButton(
+                                onPressed: loading ? null : _openForgotPassword,
+                                style: TextButton.styleFrom(
+                                    foregroundColor: AuthStyles.teal, minimumSize: const Size(48, 44)),
+                                child: const Text('نسيت كلمة المرور؟',
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                              ),
+                          ]),
+                          if (_error != null) ...[
+                            const SizedBox(height: 4),
+                            AuthStyles.errorBanner(_error!),
+                          ],
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: loading ? null : _submit,
+                            style: AuthStyles.primaryButton(),
+                            child: loading
+                                ? const SizedBox.square(
+                                    dimension: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                                : const Text('تسجيل الدخول'),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (!_supervisor) ...[
+                    const Text('ليس لديك حساب؟', style: TextStyle(fontSize: 13.5, color: AuthStyles.muted)),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: loading ? null : widget.onSignup,
+                      icon: const Icon(LucideIcons.userRoundPlus, size: 18),
+                      label: const Text('إنشاء حساب جديد'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AuthStyles.teal,
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFF8DBAC9)),
+                        minimumSize: const Size.fromHeight(52),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ] else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFE9F3F8), borderRadius: BorderRadius.circular(14)),
+                      child: const Row(children: [
+                        Icon(LucideIcons.info, size: 18, color: AuthStyles.teal),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text('حسابات المشرفين ينشئها مسؤول النظام فقط.',
+                              style: TextStyle(fontSize: 13, height: 1.45, color: AuthStyles.label)),
+                        ),
                       ]),
+                    ),
                 ],
               ),
             ),
@@ -355,40 +343,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _roleTab(
-          String label, IconData icon, bool selected, VoidCallback onTap) =>
-      Expanded(
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-                color: selected ? const Color(0xFF1F6F8B) : Colors.transparent,
-                borderRadius: BorderRadius.circular(12)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon,
-                  size: 17,
-                  color: selected ? Colors.white : const Color(0xFF718695)),
-              const SizedBox(width: 7),
-              Text(label,
-                  style: TextStyle(
-                      color: selected ? Colors.white : const Color(0xFF718695),
-                      fontWeight: FontWeight.bold))
-            ]),
+  Widget _roleTab(String label, IconData icon, bool selected, VoidCallback onTap) => Expanded(
+        child: Semantics(
+          button: true,
+          selected: selected,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              height: 46,
+              decoration: BoxDecoration(
+                color: selected ? AuthStyles.teal : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: selected
+                    ? const [BoxShadow(color: Color(0x331F6F8B), blurRadius: 8, offset: Offset(0, 3))]
+                    : null,
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(icon, size: 18, color: selected ? Colors.white : AuthStyles.muted),
+                const SizedBox(width: 7),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 15,
+                        color: selected ? Colors.white : AuthStyles.muted,
+                        fontWeight: FontWeight.w700)),
+              ]),
+            ),
           ),
         ),
       );
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot({required this.active});
-  final bool active;
-  @override
-  Widget build(BuildContext context) => Container(
-      width: active ? 17 : 6,
-      height: 6,
-      decoration: BoxDecoration(
-          color: active ? const Color(0xFF1F6F8B) : const Color(0xFFBED1DA),
-          borderRadius: BorderRadius.circular(5)));
 }

@@ -91,7 +91,8 @@ void main() {
     await tester.ensureVisible(find.text('إنشاء حساب جديد'));
     await tester.tap(find.text('إنشاء حساب جديد'));
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('الاسم بالكامل (ثلاثي أو رباعي)'), findsOneWidget);
+    expect(find.text('الاسم بالكامل'), findsOneWidget);
+    expect(find.text('ثلاثي أو رباعي كما في بطاقتك الجامعية.'), findsOneWidget);
     expect(find.text('الصورة الشخصية'), findsOneWidget);
     expect(find.text('الكلية'), findsNothing);
   });

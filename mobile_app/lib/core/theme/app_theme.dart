@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppTheme {
@@ -14,7 +15,9 @@ class AppTheme {
         error: AppColors.error,
       ),
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'Cairo', // Arabic friendly typography
+      // One typeface for the whole app, including text that sets no style.
+      fontFamily: GoogleFonts.readexPro().fontFamily,
+      textTheme: GoogleFonts.readexProTextTheme(),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
