@@ -25,7 +25,7 @@
 
 4. **`migrations/20260926000004_daily_reset_logic.sql`**:
    - دالة `toggle_student_daily_ride` لتسجيل "نازل بكرة" مع التحقق من شرط الإغلاق الساعة 1:00 ظهراً ومنع التعديل بأثر رجعي.
-   - دالة `reset_daily_rides_at_1pm` لإعادة التعيين التلقائي.
+   - دالة `reset_daily_rides_at_1pm` لإعادة التعيين التلقائي (أُزيلت في `20261008000001_security_review_fixes.sql`؛ نافذة التصويت ٤ م - ٦ ص تُفرض داخل `toggle_student_daily_ride`).
    - دالة `get_line_rider_counts` لحساب أعداد الركاب في المحطات اليوم وغداً بناءً على التبديل المباشر.
    - دالة `lookup_student_by_qr` للبحث عن الطالب بالـ QR دون تسجيل أي حضور.
 

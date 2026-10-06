@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 

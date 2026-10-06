@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -25,15 +25,13 @@ class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
   const SupervisorQrScannerScreen({super.key, this.direction, this.tripId, this.tripLabel});
 
   @override
-  ConsumerState<SupervisorQrScannerScreen> createState() =>
-      _SupervisorQrScannerScreenState();
+  ConsumerState<SupervisorQrScannerScreen> createState() => _SupervisorQrScannerScreenState();
 }
 
 class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen> {
   final MobileScannerController _cameraController = MobileScannerController();
   bool _isProcessing = false;
-  late String _direction =
-      widget.direction ?? (DateTime.now().hour < 12 ? 'departure' : 'return');
+  late String _direction = widget.direction ?? (DateTime.now().hour < 12 ? 'departure' : 'return');
   bool get _pinned => widget.direction != null;
   int _sessionCheckIns = 0;
 
@@ -44,9 +42,9 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
 
     setState(() => _isProcessing = true);
     try {
-      final result =
-          await ref.read(supervisorRepoProvider)
-              .checkIn(rawValue, direction: _direction, tripId: widget.tripId);
+      final result = await ref
+          .read(supervisorRepoProvider)
+          .checkIn(rawValue, direction: _direction, tripId: widget.tripId);
       if (result.outcome == CheckInOutcome.checkedIn) {
         _sessionCheckIns++;
         HapticFeedback.mediumImpact();
@@ -85,22 +83,31 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
     return GlassScaffold(
       body: Stack(
         children: [
-          MobileScanner(controller: _cameraController, onDetect: _onDetect),
+          MobileScanner(
+            controller: _cameraController,
+            onDetect: _onDetect,
+            errorBuilder: _cameraError,
+          ),
 
-          // Viewfinder
-          Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                border: Border.all(
-                    color: _isProcessing ? AppColors.warning : AppColors.babyBlue, width: 2.5),
-                borderRadius: BorderRadius.circular(24),
+          // Viewfinder (hidden while the camera error message is shown)
+          ValueListenableBuilder<MobileScannerState>(
+            valueListenable: _cameraController,
+            builder: (context, state, child) =>
+                state.error == null ? child! : const SizedBox.shrink(),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                      color: _isProcessing ? AppColors.warning : AppColors.babyBlue, width: 2.5),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: _isProcessing
+                    ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                    : null,
               ),
-              child: _isProcessing
-                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
-                  : null,
             ),
           ),
 
@@ -180,6 +187,56 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
     );
   }
 
+  /// Shown in place of the camera preview when the scanner cannot start.
+  Widget _cameraError(BuildContext context, MobileScannerException error) {
+    final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    final unsupported = error.errorCode == MobileScannerErrorCode.unsupported;
+    final details = error.errorDetails?.message;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(denied ? LucideIcons.cameraOff : LucideIcons.triangleAlert,
+                  color: Colors.white, size: 40),
+              const SizedBox(height: 14),
+              Text(
+                denied
+                    ? 'لم يُسمح باستخدام الكاميرا. فعّل إذن الكاميرا لتطبيق باصك من إعدادات الهاتف ثم أعد المحاولة.'
+                    : unsupported
+                        ? 'لا توجد كاميرا متاحة على هذا الجهاز.'
+                        : 'تعذر تشغيل الكاميرا. أغلق أي تطبيق آخر يستخدمها ثم أعد المحاولة.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.titleMedium.copyWith(color: Colors.white),
+              ),
+              if (details != null && !denied) ...[
+                const SizedBox(height: 6),
+                Text(details,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.labelSmall.copyWith(color: Colors.white60)),
+              ],
+              if (!unsupported) ...[
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: BasakUi.teal,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _cameraController.start(),
+                  icon: const Icon(LucideIcons.refreshCw, size: 18),
+                  label: const Text('إعادة المحاولة'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _roundButton(IconData icon, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: GlassContainer(
@@ -214,8 +271,9 @@ class _CheckInResultSheet extends StatelessWidget {
           color: AppColors.error,
           background: AppColors.errorLight,
           title: 'تم تسجيل حضوره اليوم بالفعل',
-          message: 'تم تسجيل حضور هذا الطالب اليوم بالفعل$at (رحلة $trip). لا يمكن تسجيله مرة أخرى قبل الغد.\n'
-              'This student has already been checked in today.'
+          message:
+              'تم تسجيل حضور هذا الطالب اليوم بالفعل$at (رحلة $trip). لا يمكن تسجيله مرة أخرى قبل الغد.\n'
+                  'This student has already been checked in today.'
         ),
       CheckInOutcome.noActiveSubscription => (
           icon: LucideIcons.creditCard,
@@ -265,8 +323,8 @@ class _CheckInResultSheet extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                  color: status.background, borderRadius: BorderRadius.circular(18)),
+              decoration:
+                  BoxDecoration(color: status.background, borderRadius: BorderRadius.circular(18)),
               child: Row(children: [
                 Icon(status.icon, color: status.color, size: 30),
                 const SizedBox(width: 12),
@@ -324,8 +382,7 @@ class _CheckInResultSheet extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           BasakInfoRow(icon: LucideIcons.phone, label: 'رقم الهاتف', value: student.phone),
-          BasakInfoRow(
-              icon: LucideIcons.bus, label: 'الخط', value: student.lineName ?? 'غير محدد'),
+          BasakInfoRow(icon: LucideIcons.bus, label: 'الخط', value: student.lineName ?? 'غير محدد'),
           BasakInfoRow(
               icon: LucideIcons.mapPin, label: 'المحطة', value: student.stationName ?? 'غير محدد'),
           BasakInfoRow(
@@ -346,8 +403,7 @@ class _CheckInResultSheet extends StatelessWidget {
               icon: LucideIcons.calendarCheck2,
               label: 'تأكيد الركوب في التطبيق',
               value: result.confirmedRideToday! ? 'أكد ركوب اليوم' : 'لم يؤكد',
-              valueColor:
-                  result.confirmedRideToday! ? AppColors.success : const Color(0xFFB97812),
+              valueColor: result.confirmedRideToday! ? AppColors.success : const Color(0xFFB97812),
             ),
         ],
       );

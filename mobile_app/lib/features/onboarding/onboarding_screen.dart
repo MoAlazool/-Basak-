@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/widgets/basak_ui.dart';
 import 'onboarding_controller.dart';
@@ -129,7 +129,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                   padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
                   child: Row(children: [
                     ClipOval(
-                      child: Image.asset('assets/images/basak_icon.png', width: 32, height: 32),
+                      child: Image.asset('assets/images/basak_icon.webp', width: 32, height: 32),
                     ),
                     const SizedBox(width: 8),
                     Text('باصك', style: AppTextStyles.titleMedium.copyWith(color: BasakUi.ink)),
@@ -252,7 +252,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                                 offset: const Offset(0, 14)),
                           ],
                         ),
-                        child: ClipOval(child: Image.asset('assets/images/basak_icon.png')),
+                        child: ClipOval(child: Image.asset('assets/images/basak_icon.webp')),
                       )
                     : Container(
                         width: centre,

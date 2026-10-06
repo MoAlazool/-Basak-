@@ -9,6 +9,36 @@ import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_reposit
 import 'package:basak_mobile/features/onboarding/onboarding_controller.dart';
 import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
 import 'package:basak_mobile/features/supervisor/models/supervisor_models.dart';
+import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
+
+class _FakeDailyRideRepo implements DailyRideRepository {
+  @override
+  DateTime rideDateForCurrentWindow([DateTime? now]) => DateTime(2026, 10, 4);
+  @override
+  bool isVotingOpen([DateTime? now]) => true;
+  @override
+  Future<Map<DateTime, bool>> getRideStatusesForRange(DateTime from, DateTime to) async => {};
+  @override
+  Future<DailyRideDetails> getRideDetailsForDate(DateTime date) async =>
+      const DailyRideDetails(isRiding: false, isReturning: false);
+  @override
+  Future<bool> getRideStatusForDate(DateTime date) async => false;
+  @override
+  Future<bool> toggleRide({required DateTime rideDate, required bool isRiding}) async => isRiding;
+  @override
+  Future<DailyRideDetails> confirmRide({
+    required DateTime rideDate,
+    required bool isRiding,
+    required String? departureTime,
+    required String? returnTime,
+    required bool isReturning,
+  }) async => DailyRideDetails(
+    isRiding: isRiding,
+    departureTime: departureTime,
+    returnTime: returnTime,
+    isReturning: isReturning,
+  );
+}
 
 void main() {
   test('Egyptian phone numbers share one canonical login format', () {
@@ -144,5 +174,24 @@ void main() {
     });
     expect(period.isUpcoming, isTrue);
     expect(period.key, 'second:2026');
+  });
+
+  testWidgets('StudentHomeScreen has RefreshIndicator for pull to refresh', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentSubscriptionProvider.overrideWith((ref) => Future.value(null)),
+          dailyRideRepoProvider.overrideWithValue(_FakeDailyRideRepo()),
+        ],
+        child: MaterialApp(
+          home: StudentHomeScreen(
+            onNavigateToSubscription: () {},
+            onNavigateToQr: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(RefreshIndicator), findsOneWidget);
   });
 }

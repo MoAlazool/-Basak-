@@ -2,10 +2,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../auth/providers/auth_provider.dart';
 import '../../lines/data/lines_repository.dart';
 import '../../lines/models/line_model.dart';
 import '../../lines/models/trip_model.dart';
@@ -21,25 +23,35 @@ final linesRepoProvider = Provider((ref) => LinesRepository());
 // autoDispose: refetched each time the subscription page opens, so lines the
 // admin adds or links to a university appear without restarting the app.
 final studentCatalogProvider = FutureProvider.autoDispose<List<CatalogCompany>>(
-    (ref) => ref.watch(linesRepoProvider).getCatalog());
+    (ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(linesRepoProvider).getCatalog();
+});
 
 final paymentMethodsProvider = FutureProvider.autoDispose
     .family<List<PaymentMethodModel>, String>(
-        (ref, companyId) => ref.watch(subscriptionRepoProvider).getPaymentMethods(companyId));
+        (ref, companyId) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(subscriptionRepoProvider).getPaymentMethods(companyId);
+});
 
 final allLinesProvider = FutureProvider<List<LineModel>>((ref) async {
+  ref.watch(currentUserIdProvider);
   return ref.watch(linesRepoProvider).getAllLines();
 });
 final subscriptionReceiptsProvider =
     FutureProvider.family<List<ReceiptModel>, String>((ref, id) async {
+  ref.watch(currentUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getReceiptsHistory(id);
 });
 final allSubscriptionsProvider =
     FutureProvider<List<SubscriptionModel>>((ref) async {
+  ref.watch(currentUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getSubscriptions();
 });
 final purchasablePeriodsProvider =
     FutureProvider.family<List<PurchasablePeriod>, String>((ref, lineId) async {
+  ref.watch(currentUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getPurchasablePeriods(lineId);
 });
 
@@ -90,6 +102,15 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   void _refreshSubscriptions() {
     ref.invalidate(currentSubscriptionProvider);
     ref.invalidate(allSubscriptionsProvider);
+  }
+
+  Future<void> _handleRefresh() async {
+    _refreshSubscriptions();
+    ref.invalidate(allLinesProvider);
+    ref.invalidate(studentCatalogProvider);
+    try {
+      await ref.read(allSubscriptionsProvider.future);
+    } catch (_) {}
   }
 
   List<TripModel> _tripsFor(bool departure) =>
@@ -156,7 +177,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         setState(() => _isLoadingStations = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('تعذر تحميل المحطات: $e'),
+              content: Text('تعذر تحميل المحطات: ${errorMessage(e)}'),
               backgroundColor: AppColors.error),
         );
       }
@@ -221,7 +242,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(e.toString()), backgroundColor: AppColors.error),
+              content: Text(errorMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -293,7 +314,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         setState(() => _isUploadingReceipt = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(e.toString()), backgroundColor: AppColors.error),
+              content: Text(errorMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -307,21 +328,33 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     return GlassScaffold(
       body: ColoredBox(
         color: const Color(0xFFF5F8FD),
-        child: subsAsync.when(
-          data: (subs) {
-            final open = subs.where((s) => !s.isExpired).toList()
-              ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
-            final history = subs.where((s) => s.isExpired).toList();
-            if (_buying || open.isEmpty) {
-              return _buildSubscriptionSelectionView(linesAsync, open: open);
-            }
-            final focused = open.firstWhere((s) => s.id == _focusedSubId,
-                orElse: () => open.first);
-            return _buildActiveSubDetailView(focused,
-                open: open, history: history);
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, _) => Center(child: Text('تعذر تحميل الاشتراك: $err')),
+        child: RefreshIndicator(
+          color: AppColors.teal,
+          onRefresh: _handleRefresh,
+          child: subsAsync.when(
+            data: (subs) {
+              final open = subs.where((s) => !s.isExpired).toList()
+                ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
+              final history = subs.where((s) => s.isExpired).toList();
+              if (_buying || open.isEmpty) {
+                return _buildSubscriptionSelectionView(linesAsync, open: open);
+              }
+              final focused = open.firstWhere((s) => s.id == _focusedSubId,
+                  orElse: () => open.first);
+              return _buildActiveSubDetailView(focused,
+                  open: open, history: history);
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.7,
+                child: Center(child: Text('تعذر تحميل الاشتراك: ${errorMessage(err)}')),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -334,6 +367,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final active = sub.isActive;
     final pendingReview = sub.isPendingReview;
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -899,6 +935,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Widget _buildSubscriptionSelectionView(AsyncValue<List<LineModel>> linesAsync,
       {required List<SubscriptionModel> open}) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -926,7 +965,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           // 1. Company → 2. Line (only active, serving the student's university)
           ref.watch(studentCatalogProvider).when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => Text('تعذر تحميل الشركات: $err'),
+            error: (err, _) => Text('تعذر تحميل الشركات: ${errorMessage(err)}'),
             data: (companies) => companies.isEmpty
                 ? Container(
                     width: double.infinity,
@@ -1185,7 +1224,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final periodsAsync = ref.watch(purchasablePeriodsProvider(line.id));
     return periodsAsync.when(
       loading: () => const LinearProgressIndicator(),
-      error: (e, _) => Text('تعذر تحميل فترات الاشتراك: $e'),
+      error: (e, _) => Text('تعذر تحميل فترات الاشتراك: ${errorMessage(e)}'),
       data: (all) {
         final periods =
             all.where((p) => !open.any((s) => _overlaps(p, s))).toList();

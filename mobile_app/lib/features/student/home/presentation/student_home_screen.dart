@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
@@ -15,6 +17,7 @@ final dailyRideRepoProvider = Provider((ref) => DailyRideRepository());
 
 final currentSubscriptionProvider =
     FutureProvider<SubscriptionModel?>((ref) async {
+  ref.watch(currentUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getCurrentSubscription();
 });
 
@@ -98,6 +101,18 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     }
   }
 
+  Future<void> _handleRefresh() async {
+    ref.invalidate(currentSubscriptionProvider);
+    final user = ref.read(authStateProvider).user;
+    if (user != null) {
+      ref.invalidate(studentProfileSummaryProvider(user.id));
+    }
+    await _loadTodayRideStatus();
+    try {
+      await ref.read(currentSubscriptionProvider.future);
+    } catch (_) {}
+  }
+
   Future<void> _confirmRide(SubscriptionModel sub,
       {required bool isRiding}) async {
     final repository = ref.read(dailyRideRepoProvider);
@@ -150,7 +165,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSavingRide = false);
-      _showRideMessage(e.toString(), isError: true);
+      _showRideMessage(errorMessage(e), isError: true);
     }
   }
 
@@ -226,9 +241,14 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     return GlassScaffold(
       body: ColoredBox(
         color: _canvas,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
+        child: RefreshIndicator(
+          color: _teal,
+          onRefresh: _handleRefresh,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               sliver: SliverList.list(
@@ -286,8 +306,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _header(String firstName, DateTime now, String? avatarUrl) => Row(
         children: [
@@ -308,7 +329,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           CircleAvatar(
             radius: 22,
             backgroundColor: Colors.white,
-            backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+            backgroundImage: avatarUrl == null ? null : avatarImage(avatarUrl),
             child: avatarUrl == null
                 ? const Icon(LucideIcons.userRound, color: _teal, size: 21)
                 : null,
@@ -394,7 +415,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                           style: AppTextStyles.labelSmall
                               .copyWith(color: Colors.white70)),
                       const SizedBox(height: 3),
-                      Text(sub.departureTime ?? 'يُحدد مع المشرف',
+                      Text(
+                          sub.departureTime == null
+                              ? 'يُحدد مع المشرف'
+                              : _timeLabel(sub.departureTime!),
                           style: AppTextStyles.titleLarge
                               .copyWith(color: Colors.white, fontSize: 21)),
                     ],

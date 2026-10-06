@@ -1,7 +1,7 @@
 name: basak_mobile
 description: "University Bus Subscription System (باصك - Basak) - Flutter Mobile Client for Students and Supervisors"
 publish_to: "none"
-version: 1.0.8+9
+version: 1.0.9+10
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -21,20 +21,14 @@ dependencies:
 
   # QR Code & Scanning
   qr_flutter: ^4.1.0
-  mobile_scanner: ^6.0.0
+  mobile_scanner: ^7.4.2
 
   # Image & File Handling (Receipt uploads)
   image_picker: ^1.1.2
   cached_network_image: ^3.4.1
 
-  # Local Storage & Utilities
+  # Local Storage
   flutter_secure_storage: ^9.2.2
-  intl: ^0.20.3
-  uuid: ^4.5.1
-
-  # UI Enhancement
-  google_fonts: ^6.2.1
-  lucide_icons_flutter: ^3.1.20
 
 dev_dependencies:
   flutter_test:
@@ -45,5 +39,26 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/basak_icon.png
+    - assets/images/basak_icon.webp
+    # Licenses of the bundled fonts below.
+    - assets/fonts/CAIRO_OFL.txt
+    - assets/fonts/LUCIDE_FLUTTER_LICENSE.txt
+
+  fonts:
+    # Bundled so every screen renders in Cairo from the first frame, offline too.
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Cairo-ExtraBold.ttf
+          weight: 800
+    # Icons (lib/core/theme/app_icons.dart); tree-shaken to the used glyphs.
+    - family: Lucide
+      fonts:
+        - asset: assets/fonts/lucide.ttf
 

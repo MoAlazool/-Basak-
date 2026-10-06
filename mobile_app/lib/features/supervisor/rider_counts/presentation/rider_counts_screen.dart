@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_container.dart';
@@ -54,7 +55,7 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = errorMessage(e);
           _isLoading = false;
         });
       }
@@ -68,8 +69,14 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
         _counts.fold<int>(0, (sum, st) => sum + st.returningCount);
 
     return GlassScaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        color: AppColors.teal,
+        onRefresh: _loadCounts,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
           // Header
           SliverToBoxAdapter(
             child: Padding(
@@ -285,6 +292,7 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

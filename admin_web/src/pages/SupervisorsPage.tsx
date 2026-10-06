@@ -120,8 +120,8 @@ export const SupervisorsPage: React.FC = () => {
       alert('يرجى ملء جميع الحقول المطلوبة.');
       return;
     }
-    if (password.trim().length < 6) {
-      alert('كلمة المرور يجب ألا تقل عن 6 أحرف.');
+    if (password.trim().length < 8) {
+      alert('كلمة المرور يجب ألا تقل عن 8 أحرف.');
       return;
     }
     if (lineIds.length === 0) {
@@ -224,7 +224,7 @@ export const SupervisorsPage: React.FC = () => {
 
           <div>
             <label className="text-xs font-semibold text-slate-500">كلمة المرور لتطبيق الهاتف</label>
-            <input type="text" autoComplete="new-password" minLength={6} placeholder="6 أحرف على الأقل" value={password}
+            <input type="text" autoComplete="new-password" minLength={8} placeholder="8 أحرف على الأقل" value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
           </div>

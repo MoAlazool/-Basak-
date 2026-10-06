@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
 import '../../splash/splash_gate.dart';
@@ -130,7 +130,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ],
                     ),
                     child: ClipOval(
-                        child: Image.asset('assets/images/basak_icon.png',
+                        child: Image.asset('assets/images/basak_icon.webp',
                             fit: BoxFit.cover)),
                   ),
                   const SizedBox(height: 12),

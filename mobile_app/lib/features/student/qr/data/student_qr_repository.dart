@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/storage/offline_cache.dart';
 
 class StudentPassDetails {
@@ -39,6 +40,7 @@ class StudentPassDetails {
         'phone': phone,
         'university': university,
         'college': college,
+        'profile_image_url': profileImageUrl,
         'line_name': lineName,
         'station_name': stationName,
         'subscription_type': subscriptionType,
@@ -54,6 +56,7 @@ class StudentPassDetails {
         phone: json['phone'] as String?,
         university: json['university'] as String?,
         college: json['college'] as String?,
+        profileImageUrl: json['profile_image_url'] as String?,
         lineName: json['line_name'] as String?,
         stationName: json['station_name'] as String?,
         subscriptionType: json['subscription_type'] as String?,
@@ -67,25 +70,30 @@ class StudentPassDetails {
 class StudentQrRepository {
   final SupabaseClient _client = SupabaseService.client;
 
-  /// Fetch student static QR code value
-  Future<String?> getStudentQrCode() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return null;
-
-    final response = await _client
-        .from(SupabaseTables.students)
-        .select('qr_code_value')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    return response?['qr_code_value'] as String?;
-  }
-
   Future<StudentPassDetails?> getStudentPassDetails() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
     try {
+      // Independent of the student row: runs alongside it instead of after it.
+      // Wrapped in a plain Future so the request is sent exactly once (a
+      // Postgrest builder re-sends on every listener).
+      final subscriptionFuture = Future(() => _client
+          .from(SupabaseTables.subscriptions)
+          .select('''
+            id, type, status, departure_time, return_time,
+            lines(name), stations(name)
+          ''')
+          .eq('student_id', user.id)
+          .inFilter('status', ['pending_payment', 'pending_review', 'active', 'rejected'])
+          // The subscription running today first, then the next upcoming one.
+          .or('end_date.is.null,end_date.gte.${DateTime.now().toIso8601String().substring(0, 10)}')
+          .order('start_date', ascending: true)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle());
+      // Never left unawaited with an error if the student query fails first.
+      subscriptionFuture.ignore();
       final response = await _client
           .from(SupabaseTables.students)
           .select(
@@ -108,20 +116,7 @@ class StudentQrRepository {
         }
       }
 
-      final subscription = await _client
-          .from(SupabaseTables.subscriptions)
-          .select('''
-            id, type, status, departure_time, return_time,
-            lines(name), stations(name)
-          ''')
-          .eq('student_id', user.id)
-          .inFilter('status', ['pending_payment', 'pending_review', 'active', 'rejected'])
-          // The subscription running today first, then the next upcoming one.
-          .or('end_date.is.null,end_date.gte.${DateTime.now().toIso8601String().substring(0, 10)}')
-          .order('start_date', ascending: true)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
+      final subscription = await subscriptionFuture;
       final line = subscription?['lines'] as Map<String, dynamic>?;
       final station = subscription?['stations'] as Map<String, dynamic>?;
       final details = StudentPassDetails(
@@ -137,11 +132,17 @@ class StudentQrRepository {
         subscriptionStatus: subscription?['status'] as String?,
       );
       await OfflineCache.saveStudentPass(details.toCacheJson());
+      OfflineCache.markOnline();
       return details;
-    } catch (_) {
+    } catch (error) {
+      // Only an unreachable server falls back to the saved pass; a refused or
+      // deleted account must not keep showing a valid-looking QR.
+      if (!isNetworkFailure(error)) rethrow;
       final cached = await OfflineCache.readStudentPass();
       if (cached != null && (cached['qr_value'] as String?)?.isNotEmpty == true) {
-        return StudentPassDetails.fromCache(cached);
+        final pass = StudentPassDetails.fromCache(cached);
+        OfflineCache.markOffline(DateTime.tryParse(pass.cachedAt ?? ''));
+        return pass;
       }
       rethrow;
     }

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../auth/providers/auth_provider.dart';
 import '../data/student_qr_repository.dart';
 
 final studentQrRepoProvider = Provider((ref) => StudentQrRepository());
 final studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
+  ref.watch(currentUserIdProvider);
   return ref.watch(studentQrRepoProvider).getStudentPassDetails();
 });
 
@@ -25,20 +29,47 @@ class StudentQrScreen extends ConsumerWidget {
       body: ColoredBox(
         color: const Color(0xFFEAF5FA),
         child: SafeArea(
-          child: passAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => _message('تعذر تحميل بطاقة الطالب',
-                error.toString(), () => ref.invalidate(studentQrProvider)),
-            data: (pass) {
-              if (pass == null || (pass.qrValue ?? '').isEmpty) {
-                return _message(
-                    'البطاقة غير متاحة حالياً',
-                    'سجل دخولك مرة أخرى أو تواصل مع إدارة الجامعة.',
-                    () => ref.invalidate(studentQrProvider));
-              }
-              final active = pass.subscriptionStatus == 'active';
-              return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 105),
+          child: RefreshIndicator(
+            color: _teal,
+            onRefresh: () async {
+              ref.invalidate(studentQrProvider);
+              try {
+                await ref.read(studentQrProvider.future);
+              } catch (_) {}
+            },
+            child: passAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: _message('تعذر تحميل بطاقة الطالب',
+                      errorMessage(error), () => ref.invalidate(studentQrProvider)),
+                ),
+              ),
+              data: (pass) {
+                if (pass == null || (pass.qrValue ?? '').isEmpty) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.7,
+                      child: _message(
+                          'البطاقة غير متاحة حالياً',
+                          'سجل دخولك مرة أخرى أو تواصل مع إدارة الجامعة.',
+                          () => ref.invalidate(studentQrProvider)),
+                    ),
+                  );
+                }
+                final active = pass.subscriptionStatus == 'active';
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 105),
                 child: Column(
                   children: [
                     Row(children: [
@@ -93,7 +124,7 @@ class StudentQrScreen extends ConsumerWidget {
                                   backgroundColor: const Color(0xFFE4F2F9),
                                   backgroundImage: pass.profileImageUrl == null
                                       ? null
-                                      : NetworkImage(pass.profileImageUrl!),
+                                      : avatarImage(pass.profileImageUrl!),
                                   child: pass.profileImageUrl == null
                                       ? const Icon(LucideIcons.userRound,
                                           color: _teal)
@@ -225,8 +256,9 @@ class StudentQrScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   static Widget _detailRow(String label, String value, IconData icon) =>
       Row(children: [

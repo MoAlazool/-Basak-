@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/widgets/floating_glass_nav_bar.dart';
+import '../../core/widgets/offline_banner.dart';
 import 'home/presentation/student_home_screen.dart';
 import 'subscription/presentation/subscription_screen.dart';
 import 'qr/presentation/student_qr_screen.dart';
@@ -29,23 +30,25 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
 
     return Scaffold(
       extendBody: true,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 280),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.025, 0),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
+      body: OfflineBanner(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.025, 0),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
           ),
-        ),
-        child: KeyedSubtree(
-          key: ValueKey(_currentIndex),
-          child: screens[_currentIndex],
+          child: KeyedSubtree(
+            key: ValueKey(_currentIndex),
+            child: screens[_currentIndex],
+          ),
         ),
       ),
       bottomNavigationBar: FloatingGlassNavBar(

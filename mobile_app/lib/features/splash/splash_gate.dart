@@ -35,14 +35,13 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
   // Logo-relative positions (disc centre = 0,0; edge = ±1) from the artwork.
   static const _headlights = [Offset(0.12, 0.22), Offset(0.54, 0.22)];
   static const _pinTip = Offset(-0.02, 0.85);
+  static const _logoAsset = AssetImage('assets/images/basak_icon.webp');
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
     _c.addListener(_measureTarget);
-    _c.forward().whenComplete(() {
-      if (mounted) setState(() => _done = true);
-    });
   }
 
   @override
@@ -51,6 +50,16 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
     // Respect the system "remove animations" setting.
     if (MediaQuery.of(context).disableAnimations && !_c.isCompleted) {
       _c.duration = const Duration(milliseconds: 900);
+    }
+    // Play only once the logo is decoded, so it never fades in half-loaded.
+    if (!_started) {
+      _started = true;
+      precacheImage(_logoAsset, context).whenComplete(() {
+        if (!mounted) return;
+        _c.forward().whenComplete(() {
+          if (mounted) setState(() => _done = true);
+        });
+      });
     }
   }
 
@@ -121,60 +130,65 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
     }
     final logoOpacity = _target == null ? appear * (1 - exit) : appear;
 
+    // Material: gives the name a real text style (none = yellow underline).
     return IgnorePointer(
       ignoring: exit > .6,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Opacity(
-              opacity: 1 - exit,
-              child: const ColoredBox(color: splashBackground),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Opacity(
+                opacity: 1 - exit,
+                child: const ColoredBox(color: splashBackground),
+              ),
             ),
-          ),
-          // Impact wave from the pin tip (0.55–1.35 s).
-          _wave(pos + _pinTip * (size0 / 2) * scale, logo, _phase(550, 1350, Curves.easeOut),
-              1 - exit),
-          // Soft halo that breathes behind the icon.
-          Positioned(
-            left: pos.dx - size0 * .8,
-            top: pos.dy - size0 * .8,
-            width: size0 * 1.6,
-            height: size0 * 1.6,
-            child: Opacity(
-              opacity: (appear * .9) * (1 - exit),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [
-                    const Color(0xFF7EC8E3).withOpacity(.30 + .08 * math.sin(_c.value * math.pi * 4)),
-                    const Color(0xFF7EC8E3).withOpacity(0),
-                  ]),
+            // Impact wave from the pin tip (0.55–1.35 s).
+            _wave(pos + _pinTip * (size0 / 2) * scale, logo, _phase(550, 1350, Curves.easeOut),
+                1 - exit),
+            // Soft halo that breathes behind the icon.
+            Positioned(
+              left: pos.dx - size0 * .8,
+              top: pos.dy - size0 * .8,
+              width: size0 * 1.6,
+              height: size0 * 1.6,
+              child: Opacity(
+                opacity: (appear * .9) * (1 - exit),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: [
+                      const Color(0xFF7EC8E3)
+                          .withOpacity(.30 + .08 * math.sin(_c.value * math.pi * 4)),
+                      const Color(0xFF7EC8E3).withOpacity(0),
+                    ]),
+                  ),
                 ),
               ),
             ),
-          ),
-          // The logo itself.
-          Positioned(
-            left: pos.dx - size0 / 2,
-            top: pos.dy - size0 / 2,
-            width: size0,
-            height: size0,
-            child: Opacity(
-              opacity: logoOpacity.clamp(0.0, 1.0),
-              child: Transform.scale(scale: scale, child: _logo(size0)),
+            // The logo itself.
+            Positioned(
+              left: pos.dx - size0 / 2,
+              top: pos.dy - size0 / 2,
+              width: size0,
+              height: size0,
+              child: Opacity(
+                opacity: logoOpacity.clamp(0.0, 1.0),
+                child: Transform.scale(scale: scale, child: _logo(size0)),
+              ),
             ),
-          ),
-          // «باصك» reveals right → left under the logo (1.2–1.8 s).
-          Positioned(
-            left: 0,
-            right: 0,
-            top: center.dy + logo * .62,
-            child: Opacity(
-              opacity: 1 - exit,
-              child: Center(child: _name(_phase(1200, 1800, Curves.easeOutCubic))),
+            // «باصك» reveals right → left under the logo (1.2–1.8 s).
+            Positioned(
+              left: 0,
+              right: 0,
+              top: center.dy + logo * .62,
+              child: Opacity(
+                opacity: 1 - exit,
+                child: Center(child: _name(_phase(1200, 1800, Curves.easeOutCubic))),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -199,7 +213,7 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
             ),
             child: ClipOval(
               child: Stack(fit: StackFit.expand, children: [
-                Image.asset('assets/images/basak_icon.png', fit: BoxFit.cover),
+                const Image(image: _logoAsset, fit: BoxFit.cover),
                 // Diagonal shine sweep.
                 if (shine > 0 && shine < 1)
                   FractionalTranslation(
@@ -212,7 +226,11 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
                             Colors.white.withOpacity(0),
                             Colors.white.withOpacity(.55),
                             Colors.white.withOpacity(0),
-                          ], stops: const [.35, .5, .65]),
+                          ], stops: const [
+                            .35,
+                            .5,
+                            .65
+                          ]),
                         ),
                       ),
                     ),
@@ -238,7 +256,11 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
                       Color(0xFFFFFBE6),
                       Color(0x99FFE9A8),
                       Color(0x00FFE9A8),
-                    ], stops: [0, .35, 1]),
+                    ], stops: [
+                      0,
+                      .35,
+                      1
+                    ]),
                   ),
                 ),
               ),
@@ -267,15 +289,8 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
     );
   }
 
-  Widget _name(double t) => ShaderMask(
-        blendMode: BlendMode.dstIn,
-        // Wipe from the right edge (start of the Arabic word) to the left.
-        shaderCallback: (rect) => LinearGradient(
-          begin: Alignment.centerRight,
-          end: Alignment.centerLeft,
-          colors: const [Colors.white, Colors.white, Colors.transparent, Colors.transparent],
-          stops: [0, t, (t + .12).clamp(0.0, 1.0), 1],
-        ).createShader(rect),
+  Widget _name(double t) => ClipRect(
+        clipper: _RevealFromRight(t),
         child: Transform.translate(
           offset: Offset(-12 * (1 - t), 0),
           child: Text(
@@ -286,4 +301,25 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
           ),
         ),
       );
+}
+
+/// Wipes the name in from the right edge (start of the Arabic word) to the
+/// left. A plain clip rather than a gradient ShaderMask, which Impeller drew
+/// from the wrong edge (only the word's last letter showed).
+class _RevealFromRight extends CustomClipper<Rect> {
+  final double t;
+
+  const _RevealFromRight(this.t);
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(
+        t >= 1 ? -size.width : size.width * (1 - t),
+        // Taller than the line box so Arabic dots and marks are never cut.
+        -size.height,
+        size.width * 2,
+        size.height * 2,
+      );
+
+  @override
+  bool shouldReclip(_RevealFromRight oldClipper) => oldClipper.t != t;
 }

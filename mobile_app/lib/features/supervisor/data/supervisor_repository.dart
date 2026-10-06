@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/supabase_tables.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../models/supervisor_models.dart';
 import '../qr_scanner/data/qr_scanner_repository.dart';
 
@@ -13,7 +14,8 @@ class SupervisorRepository {
   final QrScannerRepository _lookup = QrScannerRepository();
 
   Future<SupervisorDashboard> getDashboard() async {
-    final response = await _client.rpc(SupabaseRpcs.getSupervisorDashboard);
+    final response = await OfflineCache.readThrough('supervisor.dashboard',
+        () => _client.rpc(SupabaseRpcs.getSupervisorDashboard));
     return SupervisorDashboard.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
@@ -47,18 +49,24 @@ class SupervisorRepository {
   /// students per station with their check-in state for today.
   Future<TripManifest> getTripManifest(
       {required String lineId, required String direction, String? tripId}) async {
-    final response = await _client.rpc(SupabaseRpcs.getSupervisorTripManifest, params: {
-      'p_line_id': lineId,
-      'p_direction': direction,
-      if (tripId != null) 'p_trip_id': tripId,
-    });
+    final day = DateTime.now().toIso8601String().substring(0, 10);
+    final response = await OfflineCache.readThrough(
+        'supervisor.manifest.$day.$lineId.$direction.${tripId ?? '-'}',
+        () => _client.rpc(SupabaseRpcs.getSupervisorTripManifest, params: {
+              'p_line_id': lineId,
+              'p_direction': direction,
+              if (tripId != null) 'p_trip_id': tripId,
+            }));
     return TripManifest.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
   Future<SupervisorMonthlySummary> getMonthlySummary(DateTime month) async {
     final first = DateTime(month.year, month.month, 1);
-    final response = await _client.rpc(SupabaseRpcs.getSupervisorMonthlySummary,
-        params: {'p_month': first.toIso8601String().substring(0, 10)});
+    final monthStr = first.toIso8601String().substring(0, 10);
+    final response = await OfflineCache.readThrough(
+        'supervisor.monthly.$monthStr',
+        () => _client.rpc(SupabaseRpcs.getSupervisorMonthlySummary,
+            params: {'p_month': monthStr}));
     return SupervisorMonthlySummary.fromJson(Map<String, dynamic>.from(response as Map));
   }
 }
@@ -66,8 +74,14 @@ class SupervisorRepository {
 final supervisorRepoProvider = Provider((ref) => SupervisorRepository());
 
 final supervisorDashboardProvider = FutureProvider.autoDispose<SupervisorDashboard>(
-    (ref) => ref.watch(supervisorRepoProvider).getDashboard());
+    (ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(supervisorRepoProvider).getDashboard();
+});
 
 final supervisorMonthlySummaryProvider = FutureProvider.autoDispose
     .family<SupervisorMonthlySummary, DateTime>(
-        (ref, month) => ref.watch(supervisorRepoProvider).getMonthlySummary(month));
+        (ref, month) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(supervisorRepoProvider).getMonthlySummary(month);
+});

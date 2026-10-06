@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/network/supabase_service.dart';
+import '../../../../core/storage/offline_cache.dart';
 
 class DailyRideDetails {
   final bool isRiding;
@@ -47,12 +49,14 @@ class DailyRideRepository {
     if (user == null) return false;
 
     final dateStr = date.toIso8601String().substring(0, 10);
-    final response = await _client
-        .from(SupabaseTables.dailyRideStatus)
-        .select('is_riding')
-        .eq('student_id', user.id)
-        .eq('ride_date', dateStr)
-        .maybeSingle();
+    final response = await OfflineCache.readThrough(
+        'ride.status.$dateStr',
+        () => _client
+            .from(SupabaseTables.dailyRideStatus)
+            .select('is_riding')
+            .eq('student_id', user.id)
+            .eq('ride_date', dateStr)
+            .maybeSingle());
 
     if (response == null) return false;
     return response['is_riding'] as bool? ?? false;
@@ -63,12 +67,14 @@ class DailyRideRepository {
     if (user == null) return const DailyRideDetails(isRiding: false);
 
     final dateStr = date.toIso8601String().substring(0, 10);
-    final row = await _client
-        .from(SupabaseTables.dailyRideStatus)
-        .select('is_riding, departure_time, return_time, is_returning')
-        .eq('student_id', user.id)
-        .eq('ride_date', dateStr)
-        .maybeSingle();
+    final row = await OfflineCache.readThrough(
+        'ride.details.$dateStr',
+        () => _client
+            .from(SupabaseTables.dailyRideStatus)
+            .select('is_riding, departure_time, return_time, is_returning')
+            .eq('student_id', user.id)
+            .eq('ride_date', dateStr)
+            .maybeSingle());
     if (row == null) return const DailyRideDetails(isRiding: false);
     return DailyRideDetails(
       isRiding: row['is_riding'] as bool? ?? false,
@@ -82,12 +88,16 @@ class DailyRideRepository {
       DateTime start, DateTime end) async {
     final user = _client.auth.currentUser;
     if (user == null) return const {};
-    final rows = await _client
-        .from(SupabaseTables.dailyRideStatus)
-        .select('ride_date, is_riding')
-        .eq('student_id', user.id)
-        .gte('ride_date', start.toIso8601String().substring(0, 10))
-        .lte('ride_date', end.toIso8601String().substring(0, 10));
+    final from = start.toIso8601String().substring(0, 10);
+    final to = end.toIso8601String().substring(0, 10);
+    final rows = await OfflineCache.readThrough(
+        'ride.range.$from.$to',
+        () => _client
+            .from(SupabaseTables.dailyRideStatus)
+            .select('ride_date, is_riding')
+            .eq('student_id', user.id)
+            .gte('ride_date', from)
+            .lte('ride_date', to));
     return {
       for (final row in rows as List<dynamic>)
         DateTime.parse(row['ride_date'] as String):
@@ -102,13 +112,13 @@ class DailyRideRepository {
   }) async {
     final dateStr = rideDate.toIso8601String().substring(0, 10);
 
-    final response = await _client.rpc(
-      SupabaseRpcs.toggleStudentDailyRide,
-      params: {
-        'p_ride_date': dateStr,
-        'p_is_riding': isRiding,
-      },
-    );
+    final response = await requireOnline(() => _client.rpc(
+          SupabaseRpcs.toggleStudentDailyRide,
+          params: {
+            'p_ride_date': dateStr,
+            'p_is_riding': isRiding,
+          },
+        ));
 
     if (response != null && response['success'] == true) {
       return response['is_riding'] as bool? ?? false;
@@ -125,16 +135,16 @@ class DailyRideRepository {
     required bool isReturning,
   }) async {
     final dateStr = rideDate.toIso8601String().substring(0, 10);
-    final response = await _client.rpc(
-      SupabaseRpcs.toggleStudentDailyRide,
-      params: {
-        'p_ride_date': dateStr,
-        'p_is_riding': isRiding,
-        'p_departure_time': departureTime,
-        'p_return_time': isReturning ? returnTime : null,
-        'p_is_returning': isReturning,
-      },
-    );
+    final response = await requireOnline(() => _client.rpc(
+          SupabaseRpcs.toggleStudentDailyRide,
+          params: {
+            'p_ride_date': dateStr,
+            'p_is_riding': isRiding,
+            'p_departure_time': departureTime,
+            'p_return_time': isReturning ? returnTime : null,
+            'p_is_returning': isReturning,
+          },
+        ));
     if (response is Map && response['success'] == true) {
       return DailyRideDetails(
         isRiding: response['is_riding'] as bool? ?? false,

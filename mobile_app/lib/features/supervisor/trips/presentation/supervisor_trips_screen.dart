@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../auth/providers/auth_provider.dart';
 import '../../../student/lines/presentation/trip_timetable.dart' show TripDirectionTabs;
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
@@ -12,8 +13,11 @@ import '../../qr_scanner/presentation/supervisor_qr_scanner_screen.dart';
 typedef _ManifestKey = ({String lineId, String direction, String? tripId});
 
 final _manifestProvider = FutureProvider.autoDispose.family<TripManifest, _ManifestKey>(
-  (ref, key) => ref.watch(supervisorRepoProvider)
-      .getTripManifest(lineId: key.lineId, direction: key.direction, tripId: key.tripId),
+  (ref, key) {
+    ref.watch(currentUserIdProvider);
+    return ref.watch(supervisorRepoProvider)
+        .getTripManifest(lineId: key.lineId, direction: key.direction, tripId: key.tripId);
+  },
 );
 
 /// Going / Return trips of the supervisor's line: one flow for both directions.

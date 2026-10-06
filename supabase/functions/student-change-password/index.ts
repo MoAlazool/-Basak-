@@ -29,9 +29,20 @@ Deno.serve(async (request: Request) => {
 
     const service = createClient(url, serviceKey, { auth: { persistSession: false } });
     const { data: student, error: studentError } = await service
-      .from('students').select('id').eq('id', user.id).maybeSingle();
+      .from('students').select('id, must_change_password').eq('id', user.id).maybeSingle();
     if (studentError) throw studentError;
     if (!student) return jsonResponse({ error: 'تغيير كلمة المرور من هنا متاح للطلاب فقط.' }, 403);
+
+    // Outside the forced change after an admin reset, a session alone is not
+    // enough: the current password is required, so a stolen or left-open
+    // session cannot lock the student out of their own account.
+    if (!student.must_change_password) {
+      const currentPassword = String(body.currentPassword ?? '');
+      const { error: verifyError } = !currentPassword || !user.email
+        ? { error: true }
+        : await authClient.auth.signInWithPassword({ email: user.email, password: currentPassword });
+      if (verifyError) return jsonResponse({ error: 'كلمة المرور الحالية غير صحيحة.' }, 403);
+    }
 
     const { error: updateError } = await service.auth.admin.updateUserById(user.id, { password: newPassword });
     if (updateError) throw updateError;
