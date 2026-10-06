@@ -192,7 +192,7 @@ BEGIN
     SELECT c.relname, c.relrowsecurity,
            (SELECT count(*) FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS policies,
            (SELECT count(*) FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname
-              AND (COALESCE(p.qual, '') || COALESCE(p.with_check, '')) ~ '(can_manage_company|has_company_access)\(') AS shared
+              AND (COALESCE(p.qual, '') || COALESCE(p.with_check, '')) ~ '(can_manage_company|has_company_access|managed_company_id|staff_company_id)\(') AS shared
     FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'company_id' AND NOT a.attisdropped
     WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r'
       AND c.relname <> 'password_admin_resets'  -- platform-only audit log; the company is a note
