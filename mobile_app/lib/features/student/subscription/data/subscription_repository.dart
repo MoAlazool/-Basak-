@@ -16,8 +16,9 @@ class SubscriptionRepository {
           *, period_label, period_phase,
           lines(name, supervisors(full_name, phone)),
           stations(name, departure_times, return_times,
-            line_trip_stops(stop_time, line_trips(direction, is_active))),
-          departure_trip:departure_trip_id(label, start_time, universities(name))
+            line_trip_stops(stop_time, line_trips(direction, is_active, start_time))),
+          departure_trip:departure_trip_id(label, start_time, universities(name)),
+          return_trip:return_trip_id(start_time)
         ''';
 
   static String _today() => DateTime.now().toIso8601String().substring(0, 10);

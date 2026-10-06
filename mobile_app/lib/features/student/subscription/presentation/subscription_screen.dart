@@ -616,7 +616,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               sub.stationName ?? 'غير محددة'),
           const SizedBox(height: 10),
           _summaryLine(LucideIcons.clock3, 'الذهاب / العودة',
-              '${sub.departureTime ?? '—'}  /  ${sub.returnTime ?? '—'}'),
+              '${sub.departureTime ?? '—'}  /  ${sub.returnTimeShown ?? '—'}'),
           const SizedBox(height: 12),
           Container(
               width: double.infinity,
@@ -1038,7 +1038,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                           icon: LucideIcons.sunrise),
                     BasakPill(
                         _returnTrip != null
-                            ? 'عودة ${BasakUi.time12(_selectedReturnTime)}'
+                            ? 'عودة ${BasakUi.time12(_returnTrip!.startTime)}'
                             : (_returnOptions.isEmpty ? 'لا توجد رحلة عودة من محطتك' : 'اختر رحلة العودة'),
                         background: const Color(0xFFFFF4E5),
                         foreground: const Color(0xFFB97812),

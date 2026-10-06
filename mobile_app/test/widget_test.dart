@@ -157,6 +157,34 @@ void main() {
     expect(result.message, contains('already been checked in today'));
   });
 
+  test('return times are shown as the trip start at the university, saved as the stop time', () {
+    final sub = SubscriptionModel.fromJson({
+      'id': 'x', 'student_id': 's', 'line_id': 'l', 'station_id': 'st', 'type': 'termly',
+      'status': 'active', 'price': 3500, 'created_at': '2026-10-01',
+      'departure_time': '07:15:00', 'return_time': '13:50:00',
+      'return_trip': {'start_time': '12:00:00'},
+      'stations': {
+        'name': 'ميت تمامه',
+        'line_trip_stops': [
+          {'stop_time': '07:15:00', 'line_trips': {'direction': 'departure', 'is_active': true, 'start_time': '06:30:00'}},
+          {'stop_time': '13:50:00', 'line_trips': {'direction': 'return', 'is_active': true, 'start_time': '12:00:00'}},
+          {'stop_time': '16:40:00', 'line_trips': {'direction': 'return', 'is_active': true, 'start_time': '15:00:00'}},
+          {'stop_time': '18:00:00', 'line_trips': {'direction': 'return', 'is_active': false, 'start_time': '17:00:00'}},
+        ],
+      },
+    });
+    // The choices sent to the server stay the station stop times.
+    expect(sub.returnTimes, ['13:50', '16:40']);
+    // What the student reads is when the bus leaves the university.
+    expect(sub.returnShown('13:50'), '12:00');
+    expect(sub.returnShown('16:40'), '15:00');
+    expect(sub.returnTimeShown, '12:00');
+    // Departure keeps the pickup time at the student's station.
+    expect(sub.departureTimes, ['07:15']);
+    // A time with no known trip (legacy lines) is shown as it is.
+    expect(sub.returnShown('14:30'), '14:30');
+  });
+
   test('subscriptions distinguish current, upcoming and expired periods', () {
     SubscriptionModel sub(String status, String phase) => SubscriptionModel.fromJson({
           'id': 'x', 'student_id': 's', 'line_id': 'l', 'station_id': 'st', 'type': 'termly',

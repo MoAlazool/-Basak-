@@ -655,7 +655,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             children: returnTimes.map((time) {
               final selected = time == selectedReturn;
               return ChoiceChip(
-                label: Text(_timeLabel(time)),
+                label: Text(_timeLabel(sub.returnShown(time))),
                 selected: selected,
                 onSelected: isLocked
                     ? null
@@ -698,7 +698,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                 borderRadius: BorderRadius.circular(13)),
             child: Text(
                 'حضورك مؤكد: ${_timeLabel(selectedDeparture ?? sub.departureTime ?? '')}'
-                '${_isReturningToday && selectedReturn != null ? ' والعودة ${_timeLabel(selectedReturn)}' : ' بدون عودة'}',
+                '${_isReturningToday && selectedReturn != null ? ' والعودة ${_timeLabel(sub.returnShown(selectedReturn))}' : ' بدون عودة'}',
                 style: AppTextStyles.labelSmall
                     .copyWith(color: const Color(0xFF087A56))),
           ),
@@ -794,7 +794,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                     LucideIcons.sunrise)),
             const SizedBox(width: 10),
             Expanded(
-                child: _timeTile('موعد العودة', sub.returnTime ?? 'غير محدد',
+                child: _timeTile('موعد العودة', sub.returnTimeShown ?? 'غير محدد',
                     LucideIcons.sunset)),
           ],
         ),
