@@ -7,7 +7,7 @@ import { WeeklyRidersChart } from '../components/WeeklyRidersChart';
 import { TopLinesPanel } from '../components/TopLinesPanel';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
 import { companyStatusLabel } from '../lib/adminScope';
-import { usePlatformOverview, weekPoints } from '../lib/overview';
+import { nextRideHint, usePlatformOverview, weekPoints } from '../lib/overview';
 
 /** The whole platform: totals across companies, then each company side by side. */
 export const PlatformOverviewPage: React.FC = () => {
@@ -30,7 +30,7 @@ export const PlatformOverviewPage: React.FC = () => {
         cards={[
           { label: 'شركات النقل', value: count(data?.companies.total ?? 0), hint: `${count(data?.companies.active ?? 0)} مفعّلة • ${count(data?.companies.suspended ?? 0)} موقوفة`, icon: Building2, tone: 'amber' },
           { label: 'الطلاب على المنصة', value: count(data?.students ?? 0), hint: `${count(data?.active_subscriptions ?? 0)} اشتراك سارٍ اليوم`, icon: Users, tone: 'blue' },
-          { label: 'نازلين اليوم (مؤكدين)', value: count(data?.riders_today ?? 0), hint: `${count(data?.lines ?? 0)} خط • ${count(data?.supervisors ?? 0)} مشرف`, icon: Bus, tone: 'green' },
+          { label: 'نازلين اليوم (مؤكدين)', value: count(data?.riders_today ?? 0), hint: nextRideHint(data) || `${count(data?.lines ?? 0)} خط • ${count(data?.supervisors ?? 0)} مشرف`, icon: Bus, tone: 'green' },
           { label: 'إجمالي الإيرادات المسجلة', value: egp(Number(data?.revenue ?? 0)), hint: 'مجموع إيرادات الشركات، كلٌّ منذ آخر تصفير لها', icon: Wallet, tone: 'blue' },
         ]}
       />

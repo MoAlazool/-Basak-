@@ -62,3 +62,16 @@ GRANT USAGE ON SCHEMA public, extensions TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+
+-- Realtime: just enough for the broadcast migration (topic policy and realtime.send).
+CREATE SCHEMA IF NOT EXISTS realtime;
+CREATE TABLE IF NOT EXISTS realtime.messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), topic text NOT NULL, extension text NOT NULL DEFAULT 'broadcast',
+  payload jsonb, event text, private boolean DEFAULT true, inserted_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION realtime.topic() RETURNS text LANGUAGE sql STABLE AS
+  $$ SELECT nullif(current_setting('realtime.topic', true), '') $$;
+CREATE OR REPLACE FUNCTION realtime.send(payload jsonb, event text, topic text, private boolean DEFAULT true) RETURNS void
+LANGUAGE sql AS $$ INSERT INTO realtime.messages (payload, event, topic, private) VALUES (payload, event, topic, private) $$;
+GRANT USAGE ON SCHEMA realtime TO anon, authenticated, service_role;
+

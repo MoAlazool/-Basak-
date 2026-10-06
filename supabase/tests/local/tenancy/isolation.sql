@@ -65,10 +65,14 @@ BEGIN
     VALUES ((SELECT id FROM t_ids WHERE t_ids.k = 'co_' || co), 'vodafone_cash', 'Iso cash ' || co, '01012345678');
   END LOOP;
 
+  -- A student signs in with their phone, and the database insists the two match.
+  CREATE TEMP TABLE t_phones ON COMMIT DROP AS
+    SELECT i.id, i.k, '0101111' || lpad(row_number() OVER (ORDER BY i.k)::text, 4, '0') AS phone
+    FROM t_ids i WHERE i.k IN ('a1', 'a2', 'b1', 'b2', 'shared', 'former', 'nobody');
+  UPDATE auth.users u SET email = p.phone || '@busak.app' FROM t_phones p WHERE p.id = u.id;
   INSERT INTO public.students (id, phone, full_name, university, university_id)
-  SELECT i.id, '0101111' || lpad(row_number() OVER ()::text, 4, '0'), 'Iso student ' || i.k,
-         'جامعة العزل للاختبار', (SELECT id FROM t_ids WHERE t_ids.k = 'uni')
-  FROM t_ids i WHERE i.k IN ('a1', 'a2', 'b1', 'b2', 'shared', 'former', 'nobody');
+  SELECT p.id, p.phone, 'Iso student ' || p.k, 'جامعة العزل للاختبار', (SELECT id FROM t_ids WHERE t_ids.k = 'uni')
+  FROM t_phones p;
 
   FOREACH co IN ARRAY ARRAY['a', 'b'] LOOP
     SELECT id INTO v_line FROM t_ids WHERE t_ids.k = 'line_' || co;
@@ -465,6 +469,12 @@ BEGIN
         AND EXISTS (SELECT 1 FROM pg_constraint d
                     WHERE d.contype = 'f' AND d.conrelid = c.conrelid AND d.confrelid = c.confrelid AND d.oid <> c.oid
                       AND d.conkey <@ c.conkey)));
+  PERFORM pg_temp.denied('a second student row cannot take a registered phone, however it is written',
+    format('INSERT INTO public.students (id, phone, full_name, university) VALUES (%L, ''+20 10 1111 0001'', ''x y z w'', ''جامعة العزل للاختبار'')', gen_random_uuid()));
+  PERFORM pg_temp.denied('a student cannot take a supervisor''s phone',
+    format('UPDATE public.students SET phone = ''01099990001'' WHERE id = %L', pg_temp.id('a1')));
+  PERFORM pg_temp.denied('a phone that is not a valid number is refused',
+    format('INSERT INTO public.students (id, phone, full_name, university) VALUES (%L, ''12345'', ''x y z w'', ''جامعة العزل للاختبار'')', gen_random_uuid()));
   PERFORM pg_temp.denied('two companies cannot share a name',
     'INSERT INTO public.companies (name) VALUES (''  ISO COMPANY A '')');
   PERFORM pg_temp.ok('a new company starts with its own copy of the terms',
