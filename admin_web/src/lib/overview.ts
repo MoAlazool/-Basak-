@@ -11,6 +11,9 @@ export interface CompanyNumbers {
   pending_receipts: number;
   revenue: number;
   riders_today: number;
+  /** The day students are confirming for right now (tomorrow, from 4 pm), and how many have. */
+  next_ride_date: string;
+  riders_next: number;
   riders_week: { date: string; riders: number }[];
   lines: number;
   active_lines: number;
@@ -28,6 +31,8 @@ export interface PlatformNumbers {
   pending_receipts: number;
   revenue: number;
   riders_today: number;
+  next_ride_date: string;
+  riders_next: number;
   riders_week: { date: string; riders: number }[];
   lines: number;
   supervisors: number;
@@ -63,3 +68,15 @@ const weekday = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', timeZone: 'U
 /** Shapes riders_week for the weekly chart. */
 export const weekPoints = (week: { date: string; riders: number }[] | undefined) =>
   (week ?? []).map(({ date, riders }) => ({ dateStr: date, dayName: weekday.format(new Date(`${date}T00:00:00Z`)), count: riders }));
+
+const dayName = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+/**
+ * The line under "riding today": confirmations for the next ride, which is the
+ * number that moves while students vote in the evening.
+ */
+export function nextRideHint(numbers: { riders_today: number; riders_next: number; next_ride_date: string; riders_week: { date: string }[] } | null): string {
+  if (!numbers) return '';
+  const today = numbers.riders_week[numbers.riders_week.length - 1]?.date;
+  if (!numbers.next_ride_date || numbers.next_ride_date === today) return 'التأكيد مفتوح لرحلة اليوم حتى ٦ ص';
+  return `لرحلة ${dayName.format(new Date(`${numbers.next_ride_date}T00:00:00Z`))}: ${numbers.riders_next.toLocaleString('ar-EG')} مؤكد حتى الآن`;
+}

@@ -19,6 +19,9 @@ class AuthRepository {
         return String.fromCharCode(0x30 + (code >= 0x06F0 ? code - 0x06F0 : code - 0x0660));
       });
 
+  static const phoneAlreadyRegisteredMessage =
+      'رقم الهاتف مسجل بالفعل. سجّل الدخول به، أو استخدم «نسيت كلمة المرور».';
+
   static String normalizeEgyptianPhone(String phone) {
     var digits = toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.startsWith('20') && digits.length >= 12) {
@@ -78,22 +81,8 @@ class AuthRepository {
     }
     final authEmail = phoneToAuthEmail(cleanPhone);
 
-    // 2. Check if student already exists in public.students table
-    try {
-      final existing = await _client
-          .from(SupabaseTables.students)
-          .select('id')
-          .eq('phone', cleanPhone)
-          .maybeSingle();
-
-      if (existing != null) {
-        throw Exception('الرقم مستخدم بالفعل. يرجى تسجيل الدخول مباشرة.');
-      }
-    } catch (e) {
-      if (e.toString().contains('مسجل مسبقاً')) rethrow;
-    }
-
-    // 3. Create Auth User in Supabase Auth
+    // 2. Create the sign-in account. The phone is its login, so a number that is
+    // already registered is refused here by the server, whatever password is typed.
     User? user;
     try {
       final authResponse = await _client.auth.signUp(
@@ -106,15 +95,16 @@ class AuthRepository {
         },
       );
       user = authResponse.user;
-    } catch (authError) {
-      // If user already exists in auth or email rate limit was triggered, try sign in
-      try {
-        final signRes = await _client.auth.signInWithPassword(
-          email: authEmail,
-          password: password,
-        );
-        user = signRes.user;
-      } catch (_) {}
+      // Some configurations answer a duplicate sign-up with a user that has no identities.
+      if (user != null && (user.identities?.isEmpty ?? false) && authResponse.session == null) {
+        throw Exception(phoneAlreadyRegisteredMessage);
+      }
+    } on AuthException catch (authError) {
+      final text = '${authError.code ?? ''} ${authError.message}'.toLowerCase();
+      if (text.contains('already') || text.contains('user_already_exists') || text.contains('exists')) {
+        throw Exception(phoneAlreadyRegisteredMessage);
+      }
+      rethrow;
     }
 
     // Phone-based synthetic email addresses do not need an email confirmation.
@@ -174,7 +164,7 @@ class AuthRepository {
       }
       if (e.toString().contains('duplicate') ||
           e.toString().contains('unique')) {
-        throw Exception('الرقم مستخدم بالفعل.');
+        throw Exception(phoneAlreadyRegisteredMessage);
       }
       throw Exception('تعذر حفظ بيانات الطالب في قاعدة البيانات: $e');
     }
