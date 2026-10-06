@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/media/image_optimizer.dart';
+import '../../../../core/media/picker_errors.dart';
 import '../../../../core/sync/session.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -248,7 +249,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('تعذر فتح الصور أو الكاميرا: $e'),
+              content: Text(pickerErrorMessage(e)),
               backgroundColor: AppColors.error),
         );
       }

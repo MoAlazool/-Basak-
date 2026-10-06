@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,8 +31,13 @@ class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
       _SupervisorQrScannerScreenState();
 }
 
-class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen> {
-  final MobileScannerController _cameraController = MobileScannerController();
+class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen>
+    with WidgetsBindingObserver {
+  // Started and stopped here rather than by the MobileScanner widget: with a
+  // controller of our own the widget ignores app lifecycle, and on Android the
+  // camera preview stays black after the app returns from the background (or
+  // from the permission dialog) unless the camera is restarted.
+  final MobileScannerController _cameraController = MobileScannerController(autoStart: false);
   bool _isProcessing = false;
   late String _direction =
       widget.direction ?? (DateTime.now().hour < 12 ? 'departure' : 'return');
@@ -75,9 +82,42 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
       );
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_startCamera());
+  }
+
+  Future<void> _startCamera() async {
+    try {
+      await _cameraController.start();
+    } on MobileScannerException {
+      // Shown by the scanner's errorBuilder.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The permission dialog itself changes the lifecycle state; leave the
+    // camera alone until access has been granted.
+    if (!_cameraController.value.hasCameraPermission) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_startCamera());
+      case AppLifecycleState.inactive:
+        unawaited(_cameraController.stop());
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        break;
+    }
+  }
+
+  @override
   void dispose() {
-    _cameraController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+    unawaited(_cameraController.dispose());
   }
 
   @override
@@ -85,7 +125,11 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
     return GlassScaffold(
       body: Stack(
         children: [
-          MobileScanner(controller: _cameraController, onDetect: _onDetect),
+          MobileScanner(
+            controller: _cameraController,
+            onDetect: _onDetect,
+            errorBuilder: (context, error) => _CameraError(error: error, onRetry: _startCamera),
+          ),
 
           // Viewfinder
           Center(
@@ -189,6 +233,54 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
           child: Icon(icon, color: BasakUi.teal, size: 22),
         ),
       );
+}
+
+/// Shown in place of the camera preview when the camera can't be opened, so
+/// the supervisor sees why instead of a black screen.
+class _CameraError extends StatelessWidget {
+  final MobileScannerException error;
+  final Future<void> Function() onRetry;
+
+  const _CameraError({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(denied ? LucideIcons.cameraOff : LucideIcons.triangleAlert,
+                color: Colors.white, size: 44),
+            const SizedBox(height: 14),
+            Text(
+              denied ? 'لا يوجد إذن لاستخدام الكاميرا' : 'تعذر تشغيل الكاميرا',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.titleMedium.copyWith(color: Colors.white),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              denied
+                  ? 'اسمح لتطبيق باصك باستخدام الكاميرا من إعدادات الهاتف ثم أعد المحاولة.'
+                  : 'أغلق أي تطبيق آخر يستخدم الكاميرا ثم أعد المحاولة.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.labelSmall.copyWith(color: Colors.white70),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: BasakUi.teal, foregroundColor: Colors.white),
+              onPressed: onRetry,
+              icon: const Icon(LucideIcons.refreshCw, size: 18),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class _CheckInResultSheet extends StatelessWidget {
