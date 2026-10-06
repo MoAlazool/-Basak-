@@ -51,6 +51,35 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: 'اختر رحلة الذهاب للطالب.' }, 400);
     }
 
+    // The phone may already belong to someone. An existing student is never
+    // attached to the company directly: they get an invitation and decide in the app.
+    const { data: existing, error: existingError } = await serviceClient
+      .from('students').select('id').eq('phone', phone).maybeSingle();
+    if (existingError) throw existingError;
+    if (existing) {
+      const { data: membership, error: membershipError } = await serviceClient.from('company_students')
+        .select('status').eq('company_id', line.company_id).eq('student_id', existing.id).maybeSingle();
+      if (membershipError) throw membershipError;
+      if (membership?.status === 'active') {
+        return jsonResponse({ error: 'هذا الطالب مسجل في شركتك بالفعل. أضف له اشتراكاً من قائمة الطلاب.' }, 409);
+      }
+      const { error: inviteError } = await serviceClient.from('company_invites').insert({
+        company_id: line.company_id, student_id: existing.id, phone,
+        line_id: line.id, station_id: station.id, subscription_type: subscriptionType,
+        period_code: subscriptionType === 'daily' ? null : periodCode,
+        academic_year: subscriptionType === 'daily' ? null : academicYear,
+        departure_trip_id: departureTripId, return_trip_id: returnTripId,
+        invited_by: context.user.id,
+      });
+      if (inviteError) {
+        if (inviteError.code === '23505') {
+          return jsonResponse({ error: 'توجد دعوة معلقة لهذا الرقم بالفعل. تظهر للطالب في التطبيق.' }, 409);
+        }
+        throw inviteError;
+      }
+      return jsonResponse({ invited: true });
+    }
+
     const priceColumn = { termly: 'price_termly', yearly: 'price_yearly', daily: 'price_daily' }[subscriptionType] as 'price_termly' | 'price_yearly' | 'price_daily';
 
     const email = `${phone}@busak.app`;

@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
+import { useQueryClient } from '@tanstack/react-query';
 import { keys, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
-import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, UserMinus } from 'lucide-react';
+import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
+import { MembershipRequests } from '../components/MembershipRequests';
 
 const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) =>
   url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
@@ -196,6 +198,7 @@ export const StudentsPage: React.FC = () => {
   }, [options.data]);
 
   const fetchInitialData = studentsPage.reload;
+  const client = useQueryClient();
 
   const universityIdOf = (name: string) => universities.find((university) => university.name === name)?.id;
 
@@ -305,14 +308,17 @@ export const StudentsPage: React.FC = () => {
     try {
       setIsSubmitting(true);
 
-      await invokeEdgeFunction('admin-create-student', {
+      const created = await invokeEdgeFunction<{ id?: string; invited?: boolean }>('admin-create-student', {
         fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password,
         lineId: selectedLineId, stationId: selectedStationId, subscriptionType,
         departureTripId, returnTripId: returnTripId || null,
         ...(subscriptionType !== 'daily' ? { periodCode, academicYear: Number(academicYear) } : {}),
       });
 
-      alert('تم تسجيل الطالب بنجاح!');
+      alert(created?.invited
+        ? 'لهذا الرقم حساب في باصك بالفعل، فأُرسلت له دعوة للانضمام إلى شركتك. يظهر في قائمتك بعد أن يوافق من التطبيق (بحسابه وكلمة مروره الحاليين).'
+        : 'تم تسجيل الطالب بنجاح!');
+      void client.invalidateQueries({ queryKey: keys.company(company.id, 'invites') });
       setFullName('');
       setPhone('');
       setPassword('');
@@ -333,6 +339,18 @@ export const StudentsPage: React.FC = () => {
     const { error } = await supabase.rpc('company_remove_student', { p_company_id: company.id, p_student_id: studentId });
     if (error) alert('تعذرت إزالة الطالب: ' + error.message);
     else await fetchInitialData();
+  };
+
+  // A member's name belongs to their account, which other companies may share:
+  // the company proposes the fix and the platform admin applies it.
+  const requestCorrection = async (student: Student) => {
+    const value = window.prompt(`الاسم الصحيح للطالب (رباعي). الاسم الحالي: ${student.full_name}\nيُرسل الطلب لإدارة المنصة للاعتماد.`, student.full_name);
+    if (!value || value.trim() === student.full_name) return;
+    const { error } = await supabase.rpc('request_student_correction', {
+      p_company_id: company.id, p_student_id: student.id, p_field: 'full_name', p_new_value: value.trim(),
+    });
+    if (error) alert('تعذر إرسال الطلب: ' + error.message);
+    else { alert('أُرسل طلب التصحيح إلى إدارة المنصة.'); void client.invalidateQueries({ queryKey: keys.company(company.id, 'corrections') }); }
   };
 
   // Deleting the whole account is the platform admin's call (or the student's own, in the app).
@@ -373,6 +391,7 @@ export const StudentsPage: React.FC = () => {
       </div>
 
       <PasswordResetRequests companyId={company.id} />
+      <MembershipRequests companyId={company.id} />
 
       {/* Add Student Card */}
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -616,6 +635,13 @@ export const StudentsPage: React.FC = () => {
                             <KeyRound className="h-4 w-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => void requestCorrection(s)}
+                          className="ml-3 text-slate-400 hover:text-sky-600 transition"
+                          title="طلب تصحيح الاسم (تعتمده إدارة المنصة)"
+                        >
+                          <PencilLine className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => void handleRemoveStudent(s.id, s.full_name)}
                           className="text-slate-400 hover:text-rose-600 transition"

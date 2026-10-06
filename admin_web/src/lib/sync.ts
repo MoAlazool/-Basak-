@@ -26,6 +26,8 @@ const AFFECTS: Record<string, string[]> = {
   wallet_card_settings: ['walletCard'],
   password_reset_requests: ['resetRequests'],
   companies: ['company', 'overview', 'settings'],
+  company_invites: ['invites', 'students'],
+  student_correction_requests: ['corrections', 'students'],
 };
 
 /** Joins a private topic. The database refuses listeners the topic is not meant for. */
