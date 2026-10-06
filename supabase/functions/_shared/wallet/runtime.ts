@@ -53,10 +53,23 @@ export function appleConfig(): AppleConfig | null {
 }
 
 /** null until the Google secrets are set. */
+/** The service account's JSON key file, pasted whole (alternative to the e-mail + key secrets). */
+function serviceAccountJson(): { client_email?: string; private_key?: string } {
+  const raw = Deno.env.get('GOOGLE_WALLET_SA_JSON')?.trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error('GOOGLE_WALLET_SA_JSON is not valid JSON: paste the whole key file.');
+    return {};
+  }
+}
+
 export function googleConfig(): GoogleConfig | null {
   const issuerId = Deno.env.get('GOOGLE_WALLET_ISSUER_ID')?.trim();
-  const serviceAccountEmail = Deno.env.get('GOOGLE_WALLET_SA_EMAIL')?.trim();
-  const privateKeyPem = pem('GOOGLE_WALLET_SA_PRIVATE_KEY');
+  const keyFile = serviceAccountJson();
+  const serviceAccountEmail = Deno.env.get('GOOGLE_WALLET_SA_EMAIL')?.trim() || keyFile.client_email?.trim();
+  const privateKeyPem = pem('GOOGLE_WALLET_SA_PRIVATE_KEY') ?? keyFile.private_key?.replace(/\\n/g, '\n') ?? null;
   if (!issuerId || !serviceAccountEmail || !privateKeyPem) return null;
   return {
     issuerId, serviceAccountEmail, privateKeyPem,

@@ -82,6 +82,7 @@ alone is picked up the next time the student is scanned or opens the QR screen.
    supabase secrets set --project-ref <ref> --env-file wallet-secrets.env
    # APPLE_PASS_TYPE_ID, APPLE_TEAM_ID, APPLE_PASS_CERT_PEM, APPLE_PASS_KEY_PEM, APPLE_WWDR_PEM
    # GOOGLE_WALLET_ISSUER_ID, GOOGLE_WALLET_SA_EMAIL, GOOGLE_WALLET_SA_PRIVATE_KEY
+   #   or, instead of the e-mail + key: GOOGLE_WALLET_SA_JSON = the whole JSON key file
    ```
 
    Never commit these. Until a platform's secrets are set, its button answers "not enabled yet".
