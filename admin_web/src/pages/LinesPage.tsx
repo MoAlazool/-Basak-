@@ -52,6 +52,14 @@ const addMinutes = (t: string, minutes: number) => {
   const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
+/**
+ * Return trips may leave every station time empty: the trip then serves all the
+ * line's stations and students see when it leaves the university. It is saved
+ * with each stop at the start time (what the app and the server match on), and
+ * read back as "no times set".
+ */
+const stopTimesUnset = (direction: Direction, start: string, stopTimes: string[]) =>
+  direction === 'return' && stopTimes.length > 0 && stopTimes.every((t) => hhmm(t) === hhmm(start));
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
 const activeStations = (line: LineRow) =>
@@ -102,7 +110,9 @@ const draftFromLine = (line: LineRow): LineDraft => {
       .map((t) => ({
         key: t.id, id: t.id, direction: t.direction, label: t.label || '', start_time: hhmm(t.start_time),
         arrival_time: hhmm(t.arrival_time), university_id: t.university_id || '', is_active: t.is_active,
-        times: Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
+        times: stopTimesUnset(t.direction, t.start_time, (t.line_trip_stops ?? []).map((s) => s.stop_time))
+          ? {}
+          : Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
       })),
   };
 };
@@ -305,6 +315,7 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trips.map((trip) => {
             const times = Object.fromEntries((trip.line_trip_stops ?? []).map((s) => [s.station_id, s.stop_time]));
+            const unset = stopTimesUnset(trip.direction, trip.start_time, Object.values(times));
             return (
               <div key={trip.id} className="rounded-2xl border-r-4 border-emerald-400 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -322,7 +333,7 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
                       <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
                       <span className="text-slate-700">{s.name}</span>
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
-                        {times[s.id] ? fmt12(times[s.id]) : 'لا يقف'}
+                        {times[s.id] ? (unset ? 'يمر' : fmt12(times[s.id])) : 'لا يقف'}
                       </span>
                     </li>
                   ))}
@@ -393,6 +404,12 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const save = async () => {
     setError('');
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
+    const noStops = d.trips.find((t) => t.direction === 'departure' && !Object.values(t.times).some(Boolean));
+    if (noStops) {
+      setTab('departure');
+      setError(`رحلة الذهاب ${fmt12(noStops.start_time)}: حدد موعد مرورها على المحطات، فالطلاب يركبون منها.`);
+      return;
+    }
     const badTrip = d.trips.find((t) => tripProblem(t, routeFor(t.direction)));
     if (badTrip) {
       setTab(badTrip.direction);
@@ -414,8 +431,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
       trips: d.trips.map((t) => ({
         id: t.id ?? null, direction: t.direction, label: t.label.trim(), start_time: t.start_time,
         arrival_time: t.arrival_time || null, university_id: t.university_id || null, is_active: t.is_active,
-        stops: Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
-          .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
+        stops: t.direction === 'return' && !Object.values(t.times).some(Boolean)
+          // No times set: the trip serves every station (see stopTimesUnset).
+          ? stations.map((_, i) => ({ station_index: i, time: t.start_time }))
+          : Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
+            .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
       })),
     };
     setSaving(true);
@@ -551,6 +571,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       </select>
                     </label>
                   </div>
+                  {tab === 'return' && !Object.values(trip.times).some(Boolean) && (
+                    <p className="rounded-xl bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
+                      بدون مواعيد محطات: الرحلة تمر على كل المحطات، والطالب يرى موعد الانطلاق من الجامعة. مواعيد المحطات هنا اختيارية.
+                    </p>
+                  )}
                   <div className="space-y-1.5">
                     {routeFor(tab).map((s) => (
                       <div key={s.key} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
@@ -592,7 +617,7 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 </p>
               );
             })()}
-            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
+            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. في رحلات العودة يمكن ترك كل مواعيد المحطات فارغة: تمر الرحلة على كل المحطات. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
           </section>
         </div>
 

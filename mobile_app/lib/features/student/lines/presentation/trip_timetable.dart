@@ -175,13 +175,14 @@ class TripTimetable extends StatelessWidget {
                           style: AppTextStyles.bodyLarge
                               .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: _greenSoft, borderRadius: BorderRadius.circular(12)),
-                      child: Text(BasakUi.time12(trip.timeAt(station.id)),
-                          style: AppTextStyles.labelSmall.copyWith(
-                              color: const Color(0xFF15803D), fontWeight: FontWeight.w800)),
-                    ),
+                    if (!trip.stopTimesUnset)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: _greenSoft, borderRadius: BorderRadius.circular(12)),
+                        child: Text(BasakUi.time12(trip.timeAt(station.id)),
+                            style: AppTextStyles.labelSmall.copyWith(
+                                color: const Color(0xFF15803D), fontWeight: FontWeight.w800)),
+                      ),
                   ]),
                 ),
               ),

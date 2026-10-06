@@ -406,6 +406,17 @@ class TripManifest {
   });
 
   bool get isReturn => direction == 'return';
+
+  /// A return trip saved without station times: every stop carries the start time.
+  bool get stopTimesUnset {
+    final times = stations.map((s) => s.stopTime).whereType<String>().toList();
+    String hhmm(String t) => t.length >= 5 ? t.substring(0, 5) : t;
+    return isReturn &&
+        trip != null &&
+        times.isNotEmpty &&
+        times.every((t) => hhmm(t) == hhmm(trip!.startTime));
+  }
+
   List<ManifestStudent> get students => [for (final s in stations) ...s.students];
   int get totalStudents => students.length;
   int get checkedIn => students.where((s) => s.isCheckedIn).length;

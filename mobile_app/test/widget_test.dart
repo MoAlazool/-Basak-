@@ -9,6 +9,7 @@ import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_reposit
 import 'package:basak_mobile/features/onboarding/onboarding_controller.dart';
 import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
 import 'package:basak_mobile/features/supervisor/models/supervisor_models.dart';
+import 'package:basak_mobile/features/student/lines/models/trip_model.dart';
 import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
 
 class _FakeDailyRideRepo implements DailyRideRepository {
@@ -183,6 +184,35 @@ void main() {
     expect(sub.departureTimes, ['07:15']);
     // A time with no known trip (legacy lines) is shown as it is.
     expect(sub.returnShown('14:30'), '14:30');
+  });
+
+  test('a return trip saved without station times serves every station with no times shown', () {
+    TripModel trip(String direction, Map<String, String> stops) => TripModel.fromJson({
+          'id': 't', 'direction': direction, 'label': '', 'start_time': '14:00:00',
+          'line_trip_stops': [
+            for (final e in stops.entries) {'station_id': e.key, 'stop_time': e.value},
+          ],
+        });
+    // Saved by the dashboard with every stop at the start time.
+    expect(trip('return', {'a': '14:00:00', 'b': '14:00:00'}).stopTimesUnset, isTrue);
+    expect(trip('return', {'a': '14:00:00', 'b': '14:00:00'}).timeAt('a'), '14:00');
+    // Real station times are shown as before.
+    expect(trip('return', {'a': '14:30:00', 'b': '14:50:00'}).stopTimesUnset, isFalse);
+    // Departure trips always carry their pickup times.
+    expect(trip('departure', {'a': '14:00:00'}).stopTimesUnset, isFalse);
+
+    TripManifest manifest(String stopTime) => TripManifest.fromJson({
+          'line': {'id': 'l', 'name': 'خط', 'origin_name': 'المنصورة'},
+          'direction': 'return',
+          'trips': [],
+          'trip': {'id': 't', 'label': '', 'start_time': '14:00:00', 'students': 0},
+          'stations': [
+            {'id': 's1', 'name': 'المنصورة', 'stop_time': stopTime, 'students': []},
+            {'id': 's2', 'name': 'ميت تمامة', 'stop_time': null, 'students': []},
+          ],
+        });
+    expect(manifest('14:00:00').stopTimesUnset, isTrue);
+    expect(manifest('16:00:00').stopTimesUnset, isFalse);
   });
 
   test('subscriptions distinguish current, upcoming and expired periods', () {

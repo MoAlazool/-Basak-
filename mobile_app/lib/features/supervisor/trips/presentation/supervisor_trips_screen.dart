@@ -213,7 +213,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
             trailing: BasakPill('${m.stations.where((s) => s.stopTime != null).length} محطة',
                 icon: LucideIcons.mapPin)),
         for (final station in m.stations.where((s) => s.stopTime != null || s.students.isNotEmpty))
-          _station(station),
+          _station(station, timesUnset: m.stopTimesUnset),
         const SizedBox(height: 8),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
@@ -280,7 +280,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
         ]),
       );
 
-  Widget _station(ManifestStation station) {
+  Widget _station(ManifestStation station, {bool timesUnset = false}) {
     final open = _openStations.contains(station.id);
     final done = station.students.isNotEmpty && station.checkedIn == station.students.length;
     return Container(
@@ -306,7 +306,12 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(station.name,
                       style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                  Text(station.stopTime == null ? 'الرحلة لا تقف هنا' : BasakUi.time12(station.stopTime),
+                  Text(
+                      station.stopTime == null
+                          ? 'الرحلة لا تقف هنا'
+                          : timesUnset
+                              ? 'تمر الرحلة هنا'
+                              : BasakUi.time12(station.stopTime),
                       style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
                 ]),
               ),
