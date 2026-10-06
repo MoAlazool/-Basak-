@@ -75,7 +75,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
       p_enabled: enabled, p_company_id: target,
     });
     if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
-    await load();
+    await Promise.all([load(), switchesPage.reload()]);
   };
 
   const setDaily = async (enabled: boolean, target: string | null) => {

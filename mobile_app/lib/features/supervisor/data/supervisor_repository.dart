@@ -67,6 +67,15 @@ class SupervisorRepository {
     return TripManifest.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
+  Future<({bool annual, bool daily})> getOfferedTypes(String companyId) async {
+    final response = await OfflineCache.readThrough(
+        'supervisor.offered.$companyId',
+        () => _client.rpc(SupabaseRpcs.getSubscriptionSwitches,
+            params: {'p_company_id': companyId}));
+    final switches = Map<String, dynamic>.from(response as Map);
+    return (annual: switches['annual_effective'] == true, daily: switches['daily_effective'] == true);
+  }
+
   Future<SupervisorMonthlySummary> getMonthlySummary(DateTime month) async {
     final first = DateTime(month.year, month.month, 1);
     final monthStr = first.toIso8601String().substring(0, 10);
@@ -79,6 +88,11 @@ class SupervisorRepository {
 }
 
 final supervisorRepoProvider = Provider((ref) => SupervisorRepository());
+
+/// Subscription types the company offers now (platform AND company switches).
+final offeredSubscriptionTypesProvider =
+    FutureProvider.autoDispose.family<({bool annual, bool daily}), String>(
+        (ref, companyId) => ref.watch(supervisorRepoProvider).getOfferedTypes(companyId));
 
 /// The supervisor's lines and today's numbers: from the saved copy at once, then
 /// from the server; kept between tabs and refreshed by live events.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/main.dart';
@@ -79,6 +80,8 @@ void main() {
   });
 
   testWidgets('Basak opens the Arabic sign-in screen', (tester) async {
+    PackageInfo.setMockInitialValues(appName: 'باصك', packageName: 'com.basak.basak_mobile',
+        version: '1.0.2', buildNumber: '14', buildSignature: '');
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -99,6 +102,8 @@ void main() {
 
     expect(find.text('باصك | Basak'), findsOneWidget);
     expect(find.text('تسجيل الدخول'), findsOneWidget);
+    // The installed version, under the sign-in form.
+    expect(find.text('الإصدار 1.0.2'), findsOneWidget);
     await tester.tap(find.text('مشرف'));
     await tester.pump();
     expect(find.text('إنشاء حساب جديد'), findsNothing);

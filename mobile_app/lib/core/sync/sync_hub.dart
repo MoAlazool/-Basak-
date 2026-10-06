@@ -153,6 +153,7 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     } else if (role == UserRole.supervisor) {
       ref.invalidate(supervisorDashboardProvider);
       ref.invalidate(tripManifestProvider);
+      ref.invalidate(offeredSubscriptionTypesProvider);
       if (tables.contains('supervisor_scan_events')) ref.invalidate(supervisorMonthlySummaryProvider);
     }
   }
@@ -166,6 +167,9 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
       _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students'});
+      // Company settings (annual / daily switches) send no event to students.
+      ref.invalidate(purchasablePeriodsProvider);
+      ref.invalidate(dailySubscriptionEnabledProvider);
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {
       _invalidateFor(const {'supervisor_scan_events'});

@@ -49,15 +49,18 @@ final allSubscriptionsProvider =
   ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getSubscriptions();
 });
+// The offered periods and the daily switch follow the company's settings, which
+// send no live event to a student: autoDispose re-reads them each time the
+// picker is shown, and resume / pull to refresh re-read them while it is.
 final purchasablePeriodsProvider =
-    FutureProvider.family<List<PurchasablePeriod>, String>((ref, lineId) async {
+    FutureProvider.autoDispose.family<List<PurchasablePeriod>, String>((ref, lineId) async {
   ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getPurchasablePeriods(lineId);
 });
 
 /// Daily (cash) subscription offered by a company (platform and company switches).
 final dailySubscriptionEnabledProvider =
-    FutureProvider.family<bool, String>((ref, companyId) async {
+    FutureProvider.autoDispose.family<bool, String>((ref, companyId) async {
   ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).isDailySubscriptionEnabled(companyId);
 });
@@ -115,6 +118,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     _refreshSubscriptions();
     ref.invalidate(allLinesProvider);
     ref.invalidate(studentCatalogProvider);
+    ref.invalidate(purchasablePeriodsProvider);
+    ref.invalidate(dailySubscriptionEnabledProvider);
     try {
       await ref.read(allSubscriptionsProvider.future);
     } catch (_) {}
@@ -208,6 +213,19 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         const SnackBar(content: Text('اختر فترة الاشتراك (الفصل الدراسي).')),
       );
       return;
+    }
+    if (_selectedType == 'daily') {
+      // The company may have switched it off since the picker was shown.
+      final offered = await ref
+          .refresh(dailySubscriptionEnabledProvider(_selectedLine!.companyId).future)
+          .catchError((_) => true); // offline: the server decides
+      if (!offered) {
+        if (!mounted) return;
+        setState(() => _selectedType = 'termly');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('الاشتراك اليومي غير متاح حالياً لدى هذه الشركة.')));
+        return;
+      }
     }
 
     setState(() => _isSubmitting = true);

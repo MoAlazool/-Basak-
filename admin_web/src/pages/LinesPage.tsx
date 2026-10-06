@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
-import { keys, usePageData } from '../lib/query';
+import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
 import {
   ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
@@ -131,6 +131,10 @@ export const LinesPage: React.FC = () => {
   const [draft, setDraft] = useState<LineDraft | null>(null);
   const [busyLine, setBusyLine] = useState<string | null>(null);
 
+  // Same cache entry as the settings page: switching a type off shows here at once.
+  const switches = usePageData(keys.company(company.id, 'switches'), () =>
+    unwrap<{ annual_effective: boolean; daily_effective: boolean }>(
+      supabase.rpc('get_subscription_switches', { p_company_id: company.id }))).data;
   const page = usePageData(keys.company(company.id, 'lines'), async () => {
     const [lineRes, uniRes, supRes, assignRes] = await Promise.all([
       supabase.from('lines')
@@ -254,7 +258,11 @@ export const LinesPage: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{dep.length} رحلة ذهاب</span>
                       <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">{ret.length} رحلة عودة</span>
-                      <span>ترم {line.price_termly} · سنوي {line.price_yearly} · يومي {line.price_daily} ج.م</span>
+                      <span>{[
+                        `ترم ${line.price_termly} ج.م`,
+                        switches && !switches.annual_effective ? 'سنوي معطّل' : `سنوي ${line.price_yearly} ج.م`,
+                        switches && !switches.daily_effective ? 'يومي معطّل' : `يومي ${line.price_daily} ج.م`,
+                      ].join(' · ')}</span>
                       <span className="inline-flex items-center gap-1"><UserCheck className="h-3.5 w-3.5" />{sups.length ? sups.join('، ') : 'بدون مشرف (من صفحة المشرفين)'}</span>
                     </div>
                   </div>

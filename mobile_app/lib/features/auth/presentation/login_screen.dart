@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import 'auth_form_styles.dart';
 import 'forgot_password_screen.dart';
 import '../../splash/splash_gate.dart';
+import '../../../core/widgets/app_version_label.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, required this.onSignup});
@@ -336,6 +337,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ]),
                     ),
+                  const SizedBox(height: 24),
+                  const AppVersionLabel(),
                 ],
               ),
             ),
