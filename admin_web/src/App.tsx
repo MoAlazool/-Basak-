@@ -97,7 +97,7 @@ export function App() {
   const home = admin.role === 'super_admin' ? '/platform' : `/c/${admin.company_id}`;
   return (
     <AdminScopeProvider admin={admin}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           {admin.role === 'super_admin' && (
             <Route path="/platform/*" element={<PlatformArea onLogout={handleLogout} />} />
