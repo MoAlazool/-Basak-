@@ -135,7 +135,7 @@ export const CompanyAdminsPage: React.FC = () => {
           </div>
         )}
       </div>
-      <p className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 text-emerald-600" />لا تُحفظ كلمة المرور في قاعدة البيانات. سلّمها للمدير مباشرة، أو اتركها فارغة ليختارها من رابط الدعوة (يتطلب SMTP مخصص).</p>
+      <p className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 text-emerald-600" />تُحفظ كلمة المرور مشفّرة ولا يمكن عرضها بعد الإنشاء. سلّمها للمدير مباشرة، أو اتركها فارغة ليختارها من رابط الدعوة (يتطلب SMTP مخصص).</p>
     </div>
   );
 };
