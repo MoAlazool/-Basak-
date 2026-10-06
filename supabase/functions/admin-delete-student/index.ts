@@ -1,4 +1,4 @@
-import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 async function removeStudentFiles(service: SupabaseClient, studentId: string) {
@@ -25,7 +25,10 @@ Deno.serve(async (request: Request) => {
   if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
 
   try {
-    const { admin, serviceClient } = await requireAdmin(request);
+    // Deleting the account is for the person themselves (in the app) or the
+    // platform admin. A company removes a student from the company instead
+    // (company_remove_student), which leaves the account and other companies alone.
+    const { serviceClient } = await requireSuperAdmin(request);
     const { studentId } = await request.json();
     if (typeof studentId !== 'string' || !studentId) {
       return jsonResponse({ error: 'معرّف الطالب غير صحيح.' }, 400);
@@ -35,24 +38,6 @@ Deno.serve(async (request: Request) => {
       .from('students').select('id').eq('id', studentId).maybeSingle();
     if (lookupError) throw lookupError;
     if (!profile) return jsonResponse({ error: 'الطالب غير موجود.' }, 404);
-
-    if (admin.role === 'company_admin') {
-      const { data: ownedLines, error: linesError } = await serviceClient.from('lines')
-        .select('id').eq('company_id', admin.company_id);
-      if (linesError) throw linesError;
-      const companyLineIds = (ownedLines || []).map((line) => line.id);
-      const { data: otherCompanySubs, error: subscriptionsError } = await serviceClient.from('subscriptions')
-        .select('line_id,lines!inner(company_id)').eq('student_id', studentId)
-        .neq('lines.company_id', admin.company_id || '');
-      if (subscriptionsError) throw subscriptionsError;
-      if ((otherCompanySubs || []).length > 0 || companyLineIds.length === 0) {
-        return jsonResponse({ error: 'لا يمكن حذف حساب طالب مرتبط بخطوط شركة أخرى. استخدم إدارة حالة اشتراك شركتك.' }, 403);
-      }
-      const { count, error: ownershipError } = await serviceClient.from('subscriptions')
-        .select('id', { count: 'exact', head: true }).eq('student_id', studentId).in('line_id', companyLineIds);
-      if (ownershipError) throw ownershipError;
-      if (!count) return jsonResponse({ error: 'الطالب ليس مشتركاً في خطوط شركتك.' }, 403);
-    }
 
     await removeStudentFiles(serviceClient, profile.id);
 

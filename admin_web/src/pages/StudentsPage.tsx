@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
-import { useAdminScope } from '../lib/adminScope';
-import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, Building2, KeyRound } from 'lucide-react';
+import { useAdminScope, useCompany } from '../lib/adminScope';
+import { useCompanyRealtime } from '../lib/useCompanyRealtime';
+import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
 
@@ -58,7 +59,7 @@ interface Student {
   }[];
 }
 
-type LineRef = { name: string; companies?: { name: string } | { name: string }[] | null };
+type LineRef = { name: string };
 
 const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
 
@@ -83,7 +84,6 @@ interface LineOption {
   line_trips: TripOption[];
 }
 
-interface CompanyOption { id: string; name: string; }
 
 const activeStations = (line?: LineOption) =>
   (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
@@ -103,8 +103,8 @@ const lineServesUniversity = (line: LineOption, universityId: string | undefined
 
 export const StudentsPage: React.FC = () => {
   const admin = useAdminScope();
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const company = useCompany();
+  const selectedCompanyId = company.id;
   const [departureTripId, setDepartureTripId] = useState('');
   const [returnTripId, setReturnTripId] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -130,26 +130,36 @@ export const StudentsPage: React.FC = () => {
   useEffect(() => {
     fetchInitialData();
   }, []);
+  // A student subscribing from the app, or a receipt being approved, shows up without a reload.
+  useCompanyRealtime(company.id, ['company_students', 'subscriptions'], () => { void loadStudents().catch(() => {}); });
+
+  // The company's active members, each with their subscriptions to this company only.
+  const loadStudents = async () => {
+    const { data: studentsData, error: sErr } = await supabase
+      .from('students')
+      .select(`
+        id, phone, full_name, university, college, profile_image_url, created_at,
+        company_students!inner(company_id, status),
+        subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name),
+          departure_trip:departure_trip_id(label, universities(name)))
+      `)
+      .eq('company_students.company_id', company.id)
+      .eq('company_students.status', 'active')
+      .eq('subscriptions.company_id', company.id)
+      .order('created_at', { ascending: false });
+
+    if (sErr) throw sErr;
+    const loadedStudents = (studentsData || []) as unknown as Student[];
+    setStudents(loadedStudents);
+    void signAvatarUrls(loadedStudents.map((st) => st.profile_image_url).filter((x): x is string => !!x))
+      .then(setAvatarUrls);
+  };
 
   const fetchInitialData = async () => {
     try {
       setLoading(true);
 
-      // Fetch students with active subscriptions and line names
-      const { data: studentsData, error: sErr } = await supabase
-        .from('students')
-        .select(`
-          id, phone, full_name, university, college, profile_image_url, created_at,
-          subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name, companies(name)),
-            departure_trip:departure_trip_id(label, universities(name)))
-        `)
-        .order('created_at', { ascending: false });
-
-      if (sErr) throw sErr;
-      const loadedStudents = (studentsData || []) as unknown as Student[];
-      setStudents(loadedStudents);
-      void signAvatarUrls(loadedStudents.map((st) => st.profile_image_url).filter((x): x is string => !!x))
-        .then(setAvatarUrls);
+      await loadStudents();
 
       // Fetch active universities
       const { data: uniData, error: uniError } = await supabase
@@ -166,30 +176,17 @@ export const StudentsPage: React.FC = () => {
 
       const { data: lineRows, error: lineError } = await supabase.from('lines')
         .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
-        .eq('is_active', true).order('name');
+        .eq('company_id', company.id).eq('is_active', true).order('name');
       if (lineError) throw lineError;
       const availableLines = (lineRows || []) as unknown as LineOption[];
       setLines(availableLines);
 
-      let companyOptions: CompanyOption[];
-      if (admin.role === 'company_admin' && admin.company_id) {
-        companyOptions = [{ id: admin.company_id, name: admin.companyName || 'شركتي' }];
-      } else {
-        const { data: companyRows, error: companyError } = await supabase
-          .from('companies').select('id,name').eq('is_active', true).order('name');
-        if (companyError) throw companyError;
-        companyOptions = (companyRows || []) as CompanyOption[];
-      }
-      setCompanies(companyOptions);
-      const companyId = companyOptions.some((company) => company.id === selectedCompanyId)
-        ? selectedCompanyId
-        : (companyOptions.find((company) => availableLines.some((line) => line.company_id === company.id)) ?? companyOptions[0])?.id || '';
+      const companyId = company.id;
       // State from this load is not visible to the apply* helpers yet, so resolve here.
       const uniName = selectedUniversity || uniData?.[0]?.name || '';
       const uniId = (uniData || []).find((university) => university.name === uniName)?.id;
       const firstLine = availableLines.find((line) => line.company_id === companyId && lineServesUniversity(line, uniId));
       const firstStation = activeStations(firstLine)[0];
-      setSelectedCompanyId(companyId);
       setSelectedLineId(firstLine?.id || '');
       setSelectedStationId(firstStation?.id || '');
       setDepartureTripId(stopOptions(firstLine, 'departure', firstStation?.id || '', uniId)[0]?.trip.id || '');
@@ -218,7 +215,6 @@ export const StudentsPage: React.FC = () => {
   };
 
   const applyCompany = (companyId: string, source: LineOption[] = lines, universityName = selectedUniversity) => {
-    setSelectedCompanyId(companyId);
     const universityId = universityIdOf(universityName);
     const firstLine = source.find((line) => line.company_id === companyId && lineServesUniversity(line, universityId));
     applyLine(firstLine?.id || '', source, universityName);
@@ -289,10 +285,6 @@ export const StudentsPage: React.FC = () => {
       alert('اختر الجامعة من القائمة.');
       return;
     }
-    if (!selectedCompanyId) {
-      alert('اختر الشركة أولاً.');
-      return;
-    }
     if (!selectedLine || !selectedStation) {
       alert('اختر خطاً ومحطة نشطين تابعين للشركة المختارة ويخدمان جامعة الطالب.');
       return;
@@ -333,14 +325,26 @@ export const StudentsPage: React.FC = () => {
     }
   };
 
+  // A company ends its relationship with a student; the person's account, QR,
+  // wallet card and any other company they ride with are not touched.
+  const handleRemoveStudent = async (studentId: string, studentName: string) => {
+    if (!confirm(`إزالة الطالب "${studentName}" من ${company.name}؟\nتنتهي اشتراكاته المفتوحة مع الشركة ولا يظهر في قوائمها. يبقى حسابه في التطبيق كما هو، وتبقى الإيرادات المسجلة في تقارير الشركة.`)) {
+      return;
+    }
+    const { error } = await supabase.rpc('company_remove_student', { p_company_id: company.id, p_student_id: studentId });
+    if (error) alert('تعذرت إزالة الطالب: ' + error.message);
+    else await fetchInitialData();
+  };
+
+  // Deleting the whole account is the platform admin's call (or the student's own, in the app).
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
-    if (!confirm(`هل أنت متأكد من حذف الطالب "${studentName}"؟ سيتم حذف حسابه واشتراكاته وبياناته، مع الاحتفاظ بمبلغ الإيراد في السجل المالي.`)) {
+    if (!confirm(`حذف حساب الطالب "${studentName}" نهائياً من المنصة؟\nيُحذف حسابه وبياناته واشتراكاته لدى كل الشركات، مع الاحتفاظ بمبالغ الإيرادات في السجل المالي. لا يمكن التراجع.`)) {
       return;
     }
 
     try {
       await invokeEdgeFunction('admin-delete-student', { studentId });
-      alert('تم حذف الطالب بنجاح.');
+      alert('تم حذف حساب الطالب.');
       fetchInitialData();
     } catch (err: any) {
       alert('فشل حذف الطالب: ' + err.message);
@@ -375,7 +379,7 @@ export const StudentsPage: React.FC = () => {
         </p>
       </div>
 
-      <PasswordResetRequests />
+      <PasswordResetRequests companyId={company.id} />
 
       {/* Add Student Card */}
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -430,23 +434,6 @@ export const StudentsPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Company */}
-          <div>
-            <label className="text-xs font-semibold text-slate-500">الشركة</label>
-            <div className="relative mt-1">
-              <Building2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => applyCompany(e.target.value)}
-                disabled={admin.role === 'company_admin'}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-600"
-                required
-              >
-                {companies.length === 0 && <option value="">لا توجد شركات مفعّلة</option>}
-                {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-              </select>
-            </div>
-          </div>
 
           <div>
             <label className="text-xs font-semibold text-slate-500">الخط والمحطة</label>
@@ -602,7 +589,6 @@ export const StudentsPage: React.FC = () => {
                                 {sub.period_label && (
                                   <span className="font-semibold text-slate-600" title={`${sub.start_date ?? ''} → ${sub.end_date ?? ''}`}>{sub.period_label}</span>
                                 )}
-                                <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700"><Building2 className="h-3 w-3" />{one(one(sub.lines)?.companies)?.name || '—'}</span>
                                 <span className="font-semibold text-slate-700">{one(sub.lines)?.name || '—'}</span>
                                 {sub.departure_time && (
                                   <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">
@@ -638,12 +624,21 @@ export const StudentsPage: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => handleDeleteStudent(s.id, s.full_name)}
-                          className="text-rose-400 hover:text-rose-600 transition"
-                          title="حذف الطالب والاشتراكات"
+                          onClick={() => void handleRemoveStudent(s.id, s.full_name)}
+                          className="text-slate-400 hover:text-rose-600 transition"
+                          title="إزالة الطالب من الشركة"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <UserMinus className="h-4 w-4" />
                         </button>
+                        {admin.role === 'super_admin' && (
+                          <button
+                            onClick={() => handleDeleteStudent(s.id, s.full_name)}
+                            className="mr-3 text-rose-400 hover:text-rose-600 transition"
+                            title="حذف الحساب نهائياً من المنصة"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -657,7 +652,7 @@ export const StudentsPage: React.FC = () => {
         <ResetStudentPasswordDialog
           student={{
             id: resetTarget.id, full_name: resetTarget.full_name, phone: resetTarget.phone, university: resetTarget.university,
-            company: one(one(resetTarget.subscriptions?.[0]?.lines)?.companies)?.name ?? null,
+            company: company.name,
           }}
           onClose={() => setResetTarget(null)}
         />

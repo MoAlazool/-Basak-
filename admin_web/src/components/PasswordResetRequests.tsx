@@ -26,22 +26,23 @@ const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 /**
- * Student "Forgot password" requests (scoped by the database to the admin's
- * company). The admin verifies the student by phone, then issues a one-time
- * code that the student types into the app together with a new password.
+ * Student "Forgot password" requests. In a workspace: those of that company's
+ * members. Without a company (platform admin): everyone's, including students
+ * who ride with no company. The admin verifies the student by phone, then issues
+ * a one-time code that the student types into the app with a new password.
  */
-export const PasswordResetRequests: React.FC = () => {
+export const PasswordResetRequests: React.FC<{ companyId: string | null }> = ({ companyId }) => {
   const [requests, setRequests] = useState<ResetRequest[]>([]);
   const [error, setError] = useState('');
   const [issued, setIssued] = useState<{ request: ResetRequest; code: string; expiresAt: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const { data, error: loadError } = await supabase.rpc('admin_list_password_reset_requests');
+    const { data, error: loadError } = await supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId });
     if (loadError) { setError(loadError.message); return; }
     setError('');
     setRequests((data || []) as ResetRequest[]);
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     void load();
