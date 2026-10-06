@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 import {
   ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
   Plus, Power, Save, Trash2, UserCheck, Wand2, X,
@@ -91,49 +93,40 @@ const emptyDraft = (companyId: string): LineDraft => ({
 // ── Page ────────────────────────────────────────────────────────────
 export const LinesPage: React.FC = () => {
   const company = useCompany();
-  const [lines, setLines] = useState<LineRow[]>([]);
-  const [universities, setUniversities] = useState<Option[]>([]);
-  const [supervisors, setSupervisors] = useState<{ id: string; full_name: string }[]>([]);
-  const [lineSupervisors, setLineSupervisors] = useState<Record<string, string[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [draft, setDraft] = useState<LineDraft | null>(null);
   const [busyLine, setBusyLine] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    try {
-      setPageError('');
-      setLoading(true);
-      const { data: lineRows, error } = await supabase.from('lines')
+  const page = usePageData(keys.company(company.id, 'lines'), async () => {
+    const [lineRes, uniRes, supRes, assignRes] = await Promise.all([
+      supabase.from('lines')
         .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
           is_active, stations(id, name, order_index, is_active),
           line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
             line_trip_stops(station_id, stop_time)), line_universities(university_id)`)
-        .eq('company_id', company.id).order('name');
-      if (error) throw error;
-      setLines((lineRows || []) as unknown as LineRow[]);
-
-      const [{ data: uniRows, error: uError }, { data: supRows }, { data: assignRows }] = await Promise.all([
-        supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
-        supabase.from('supervisors').select('id, full_name').eq('company_id', company.id).order('full_name'),
-        supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', company.id),
-      ]);
-      if (uError) throw uError;
-      setUniversities(uniRows || []);
-      setSupervisors(supRows || []);
-      const byLine: Record<string, string[]> = {};
-      (assignRows || []).forEach((row) => { (byLine[row.line_id] ||= []).push(row.supervisor_id); });
-      setLineSupervisors(byLine);
-
-    } catch (err) {
-      setPageError(err instanceof Error ? err.message : 'تعذر تحميل الخطوط.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void fetchData(); }, []);
+        .eq('company_id', company.id).order('name'),
+      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('supervisors').select('id, full_name').eq('company_id', company.id).order('full_name'),
+      supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', company.id),
+    ]);
+    if (lineRes.error) throw new Error(lineRes.error.message);
+    if (uniRes.error) throw new Error(uniRes.error.message);
+    const lineSupervisors: Record<string, string[]> = {};
+    (assignRes.data || []).forEach((row) => { (lineSupervisors[row.line_id] ||= []).push(row.supervisor_id); });
+    return {
+      lines: (lineRes.data || []) as unknown as LineRow[],
+      universities: (uniRes.data || []) as Option[],
+      supervisors: (supRes.data || []) as { id: string; full_name: string }[],
+      lineSupervisors,
+    };
+  });
+  const lines = page.data?.lines ?? [];
+  const universities = page.data?.universities ?? [];
+  const supervisors = page.data?.supervisors ?? [];
+  const lineSupervisors = page.data?.lineSupervisors ?? {};
+  const loading = page.loading;
+  const pageError = page.error;
+  const fetchData = page.reload;
 
   const uniName = (id?: string | null) => universities.find((u) => u.id === id)?.name;
 
@@ -181,9 +174,7 @@ export const LinesPage: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-        </div>
+        <div className="rounded-2xl border border-slate-100 bg-white"><SkeletonRows /></div>
       ) : lines.length === 0 ? (
         <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-slate-500">
           لا توجد خطوط بعد. اضغط «إنشاء خط جديد» لإضافة الخط بمحطاته ورحلاته في خطوة واحدة.

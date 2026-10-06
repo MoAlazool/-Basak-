@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Plus, X } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
+import { SkeletonRows } from '../components/Skeleton';
 import { count, egp } from '../components/StatsRow';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { companyStatusLabel, CompanyStatus } from '../lib/adminScope';
-import { usePlatformOverview } from '../lib/overview';
+import { prefetchCompanyOverview, usePlatformOverview } from '../lib/overview';
 
 const input = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-[#7EC8E3] focus:outline-none';
 const statusStyle: Record<CompanyStatus, string> = {
@@ -59,13 +60,14 @@ export const AllCompaniesPage: React.FC = () => {
       {(error || actionError) && <div role="alert" className="glass-panel p-4 text-sm text-rose-700">{error || actionError}</div>}
 
       {loading ? (
-        <div className="glass-panel p-10 text-center text-sm text-slate-500">جاري تحميل الشركات...</div>
+        <div className="glass-panel"><SkeletonRows rows={3} /></div>
       ) : companies.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500">لا توجد شركات في هذا التصنيف.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {companies.map((row) => (
-            <div key={row.company.id} className="glass-panel p-5 flex flex-col gap-4">
+            <div key={row.company.id} className="glass-panel p-5 flex flex-col gap-4"
+              onMouseEnter={() => void prefetchCompanyOverview(row.company.id)} onFocus={() => void prefetchCompanyOverview(row.company.id)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="h-10 w-10 flex-shrink-0 rounded-xl bg-[#D6EEF9] text-[#3E8FBF] flex items-center justify-center"><Building2 className="h-5 w-5" /></div>

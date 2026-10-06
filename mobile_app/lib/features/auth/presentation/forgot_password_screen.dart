@@ -130,7 +130,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF17384A))),
           const SizedBox(height: 6),
           const Text(
-              'سيصل طلبك إلى إدارة شركة النقل الخاصة بك. بعد التحقق من هويتك ستعطيك رمزاً من 6 أرقام لتعيين كلمة مرور جديدة.',
+              'سيصل طلبك إلى إدارة شركة النقل التي تشترك معها، أو إلى إدارة باصك إن لم يكن لك اشتراك. بعد التحقق من هويتك ستحصل على رمز من 6 أرقام لتعيين كلمة مرور جديدة.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: Color(0xFF718695))),
           const SizedBox(height: 18),
@@ -161,7 +161,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             decoration: BoxDecoration(
                 color: const Color(0xFFE7F8F0), borderRadius: BorderRadius.circular(14)),
             child: const Text(
-                'تم إرسال طلبك. تواصل مع إدارة شركة النقل للحصول على رمز الاستعادة، ثم أدخله هنا مع كلمة المرور الجديدة. الرمز صالح لمدة 30 دقيقة.',
+                'تم إرسال طلبك. تواصل مع إدارة شركة النقل التي تشترك معها (أو إدارة باصك) للحصول على رمز الاستعادة، ثم أدخله هنا مع كلمة المرور الجديدة. الرمز صالح لمدة 30 دقيقة.',
                 style: TextStyle(fontSize: 13, color: Color(0xFF07865A))),
           ),
           const SizedBox(height: 16),

@@ -7,6 +7,7 @@ import { Topbar } from './components/Topbar';
 import { OverviewPage } from './pages/OverviewPage';
 import { PlatformOverviewPage } from './pages/PlatformOverviewPage';
 import { AllCompaniesPage } from './pages/AllCompaniesPage';
+import { AllStudentsPage } from './pages/AllStudentsPage';
 import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 import { LinesPage } from './pages/LinesPage';
@@ -19,7 +20,11 @@ import { WalletCardDesignPage } from './pages/WalletCardDesignPage';
 import { TeamPage } from './pages/TeamPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { supabase } from './lib/supabase';
+import { useQuery } from '@tanstack/react-query';
+import { clearCache, keys, persistOptions, queryClient } from './lib/query';
+import { usePlatformSync, useWorkspaceSync } from './lib/sync';
 import { usePendingReceipts } from './lib/pendingReceipts';
 import { platformNav, workspaceNav } from './lib/nav';
 import {
@@ -42,6 +47,7 @@ export function App() {
     const applySession = async (userId: string | null) => {
       const current = ++generation;
       if (!userId) {
+        clearCache();
         if (mounted) setAdmin(null);
         return;
       }
@@ -52,6 +58,7 @@ export function App() {
       if (profile && session?.user.id === userId) {
         setAdmin(profile);
       } else {
+        clearCache();
         setAdmin(null);
         if (session) await supabase.auth.signOut();
       }
@@ -83,6 +90,7 @@ export function App() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    clearCache();
     setAdmin(null);
   };
 
@@ -96,6 +104,7 @@ export function App() {
   // own workspace and has no other address to go to.
   const home = admin.role === 'super_admin' ? '/platform' : `/c/${admin.company_id}`;
   return (
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions(admin.id)}>
     <AdminScopeProvider admin={admin}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
@@ -107,6 +116,7 @@ export function App() {
         </Routes>
       </BrowserRouter>
     </AdminScopeProvider>
+    </PersistQueryClientProvider>
   );
 }
 
@@ -122,18 +132,22 @@ async function loadAdminProfile(userId: string): Promise<AdminProfile | null> {
   return { ...data, role: data.role, companyName } as AdminProfile;
 }
 
-const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) => (
+const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+  usePlatformSync();
+  return (
   <Shell items={platformNav} areaLabel="إدارة المنصة" onLogout={onLogout}>
     <Routes>
       <Route index element={<PlatformOverviewPage />} />
       <Route path="companies" element={<AllCompaniesPage />} />
+      <Route path="students" element={<AllStudentsPage />} />
       <Route path="admins" element={<CompanyAdminsPage />} />
       <Route path="universities" element={<UniversitiesPage />} />
       <Route path="defaults" element={<PlatformDefaultsPage />} />
       <Route path="*" element={<Navigate to="/platform" replace />} />
     </Routes>
   </Shell>
-);
+  );
+};
 
 type Loaded = { state: 'loading' } | { state: 'missing' } | { state: 'ready'; company: CompanyScope };
 
@@ -141,17 +155,14 @@ type Loaded = { state: 'loading' } | { state: 'missing' } | { state: 'ready'; co
 const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ admin, onLogout }) => {
   const { companyId = '' } = useParams();
   const allowed = admin.role === 'super_admin' || companyId === admin.company_id;
-  const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
-
-  useEffect(() => {
-    if (!allowed) return;
-    let current = true;
-    setLoaded({ state: 'loading' });
-    void supabase.from('companies').select('id, name, status').eq('id', companyId).maybeSingle().then(({ data }) => {
-      if (current) setLoaded(data ? { state: 'ready', company: data as CompanyScope } : { state: 'missing' });
-    });
-    return () => { current = false; };
-  }, [companyId, allowed]);
+  // The company row itself is cached too, so reopening a workspace does not wait for it.
+  const companyQuery = useQuery({
+    queryKey: keys.company(companyId, 'company'),
+    enabled: allowed,
+    queryFn: async () => (await supabase.from('companies').select('id, name, status').eq('id', companyId).maybeSingle()).data as CompanyScope | null,
+  });
+  const loaded: Loaded = companyQuery.isPending ? { state: 'loading' }
+    : companyQuery.data ? { state: 'ready', company: companyQuery.data } : { state: 'missing' };
 
   if (!allowed) return <Navigate to={`/c/${admin.company_id}`} replace />;
   if (loaded.state === 'loading') return <div className="min-h-screen grid place-items-center" dir="rtl">جاري فتح مساحة الشركة...</div>;
@@ -175,6 +186,7 @@ const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ ad
   // form, timer or live feed of the previous company survives the switch.
   return (
     <CompanyScopeProvider company={company} key={company.id}>
+      <WorkspaceSync companyId={company.id} />
       <Shell items={workspaceNav(company.id)} areaLabel={company.name} onLogout={onLogout} banner={<WorkspaceBar />}>
         <Routes>
           <Route index element={<OverviewPage />} />
@@ -194,6 +206,12 @@ const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ ad
   );
 };
 
+/** Listens to the open company's topic for as long as its workspace is mounted. */
+const WorkspaceSync: React.FC<{ companyId: string }> = ({ companyId }) => {
+  useWorkspaceSync(companyId);
+  return null;
+};
+
 const Notice: React.FC<{ title: string; onLogout: () => void; children?: React.ReactNode }> = ({ title, onLogout, children }) => (
   <div className="min-h-screen grid place-items-center p-6" dir="rtl">
     <div className="glass-panel max-w-md p-8 text-center space-y-4">
@@ -206,13 +224,13 @@ const Notice: React.FC<{ title: string; onLogout: () => void; children?: React.R
 
 const ReceiptsPage: React.FC = () => {
   const company = useCompany();
-  const { receipts, loading, error, refresh } = usePendingReceipts(company.id);
+  const { receipts, loading, error, refresh, review } = usePendingReceipts(company.id);
   return (
     <div className="space-y-6">
       <Topbar title="فحص واعتماد الإيصالات" subtitle="تصل الإيصالات الجديدة هنا فور رفعها" />
       {error
         ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الإيصالات: {error} <button className="mr-3 font-bold underline" onClick={() => void refresh()}>إعادة المحاولة</button></div>
-        : <PendingReceiptsTable receipts={receipts} loading={loading} onReceiptReviewed={() => void refresh()} />}
+        : <PendingReceiptsTable receipts={receipts} loading={loading} onReview={review} />}
     </div>
   );
 };

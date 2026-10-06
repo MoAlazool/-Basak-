@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabase';
-import { useCompanyRealtime } from './useCompanyRealtime';
+import { keys, queryClient, unwrap } from './query';
 
 /** The numbers of one company, as computed by the database (company_overview). */
 export interface CompanyNumbers {
@@ -35,33 +35,29 @@ export interface PlatformNumbers {
   per_company: Omit<CompanyNumbers, 'top_lines' | 'riders_week'>[];
 }
 
-const LIVE_TABLES = ['receipts', 'subscriptions', 'company_students', 'daily_ride_status'] as const;
-
-function useNumbers<T>(load: () => PromiseLike<{ data: unknown; error: { message: string } | null }>, companyId: string | null, tables: readonly string[]) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const refresh = useCallback(async () => {
-    const { data: result, error: loadError } = await load();
-    if (loadError) setError(loadError.message);
-    else { setData(result as T); setError(''); }
-    setLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-  useCompanyRealtime(companyId, tables, () => void refresh());
-  return { data, loading, error, refresh };
+/** One company's numbers. Live events mark them stale; they are also re-read on focus. */
+export function useCompanyOverview(companyId: string) {
+  const query = useQuery({
+    queryKey: keys.company(companyId, 'overview'),
+    queryFn: () => unwrap<CompanyNumbers>(supabase.rpc('company_overview', { p_company_id: companyId })),
+  });
+  return { data: query.data ?? null, loading: query.isPending, error: query.error?.message ?? '', refresh: () => void query.refetch() };
 }
 
-/** One company's numbers, refreshed as its receipts, subscriptions, members and rides change. */
-export const useCompanyOverview = (companyId: string) =>
-  useNumbers<CompanyNumbers>(() => supabase.rpc('company_overview', { p_company_id: companyId }), companyId, LIVE_TABLES);
+/** The whole platform's numbers. */
+export function usePlatformOverview() {
+  const query = useQuery({
+    queryKey: keys.platform('overview'),
+    queryFn: () => unwrap<PlatformNumbers>(supabase.rpc('platform_overview')),
+  });
+  return { data: query.data ?? null, loading: query.isPending, error: query.error?.message ?? '', refresh: () => query.refetch() };
+}
 
-/** The whole platform's numbers, refreshed as any company changes. */
-export const usePlatformOverview = () =>
-  useNumbers<PlatformNumbers>(() => supabase.rpc('platform_overview'), null, [...LIVE_TABLES, 'companies']);
+/** Warms a company's overview before its workspace is opened (hovering its card). */
+export const prefetchCompanyOverview = (companyId: string) => queryClient.prefetchQuery({
+  queryKey: keys.company(companyId, 'overview'),
+  queryFn: () => unwrap<CompanyNumbers>(supabase.rpc('company_overview', { p_company_id: companyId })),
+});
 
 const weekday = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', timeZone: 'UTC' });
 /** Shapes riders_week for the weekly chart. */

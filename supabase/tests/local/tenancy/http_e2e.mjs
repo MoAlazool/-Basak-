@@ -178,9 +178,18 @@ async function main() {
   ok('the student is visible to company A and not to company B',
     (await adminA.from('students').select('id').eq('id', S)).data.length === 1
     && (await adminB.from('students').select('id').eq('id', S)).data.length === 0);
-  ok('a phone that already has an account is not attached to a second company',
-    (await invoke(adminB, 'admin-create-student', student(phone, lineB, stationB.id))).status === 409
-    && (await service.from('company_students').select('company_id').eq('student_id', S)).data.length === 1);
+  // An existing account is invited, never attached: company B learns nothing until the student accepts.
+  const tripB = must(await service.from('line_trips').select('id').eq('line_id', lineB).single(), 'trip B').data.id;
+  const invitation = await invoke(adminB, 'admin-create-student', { ...student(phone, lineB, stationB.id), departureTripId: tripB });
+  ok('existing phone: the company gets an invitation, not a member',
+    invitation.status === 200 && invitation.data?.invited === true
+    && (await service.from('company_students').select('company_id').eq('student_id', S)).data.length === 1
+    && (await adminB.from('students').select('id').eq('id', S)).data.length === 0, `${invitation.status} ${invitation.error}`);
+  ok('existing phone: a second invitation while one is open is refused',
+    (await invoke(adminB, 'admin-create-student', student(phone, lineB, stationB.id))).status === 409);
+  ok('existing phone: the company sees its invitation, the other company does not',
+    (await adminB.from('company_invites').select('id, phone, status')).data.length === 1
+    && (await adminA.from('company_invites').select('id')).data.length === 0);
 
   // ---------------------------------------------- receipt, live, in one company
   const [watchA, watchB] = [await watchReceipts(adminA, A), await watchReceipts(adminB, B)];
@@ -324,6 +333,39 @@ async function main() {
   ok('suspended: company B is unaffected', (await adminB.from('lines').select('id')).data.length === 1);
   must(await platform.from('companies').update({ status: 'active' }).eq('id', A).select('id').single(), 'reactivate');
   ok('reactivated: the admin is back', (await adminA.from('lines').select('id')).data.length >= 1);
+
+  // ------------------------------------------------------ invitation accepted
+  const invites = (await again.rpc('get_my_invites')).data;
+  ok('invitation: the student sees who invites them and to what', invites?.length === 1 && invites[0].company_id === B && !!invites[0].line_name, JSON.stringify(invites));
+  ok('invitation: nobody else can answer it', !!(await adminA.rpc('respond_company_invite', { p_invite_id: invites[0].id, p_accept: true })).error);
+  const accepted = await again.rpc('respond_company_invite', { p_invite_id: invites[0].id, p_accept: true });
+  ok('invitation: accepting makes the student a member and opens the offered subscription',
+    accepted.data?.accepted === true && !!accepted.data?.subscription_id, JSON.stringify(accepted.data ?? accepted.error));
+  ok('invitation: company B now sees the student; company A (which removed them) still does not',
+    (await adminB.from('students').select('id').eq('id', S)).data.length === 1
+    && (await adminA.from('students').select('id').eq('id', S)).data.length === 0);
+
+  // ------------------------------------------------------ identity corrections
+  ok('correction: a company cannot edit a member\'s name directly',
+    (await adminB.from('students').update({ full_name: 'اسم مغير بلا إذن أبدا' }).eq('id', S).select('id')).data.length === 0);
+  ok('correction: a company that is not the student\'s cannot ask for one',
+    !!(await adminA.rpc('request_student_correction', { p_company_id: A, p_student_id: S, p_field: 'full_name', p_new_value: 'طالب بعد التصحيح الكامل هنا' })).error);
+  const correction = await adminB.rpc('request_student_correction', { p_company_id: B, p_student_id: S, p_field: 'full_name', p_new_value: 'طالب بعد التصحيح الكامل هنا' });
+  ok('correction: the student\'s company can ask', !!correction.data, correction.error?.message);
+  ok('correction: the company cannot approve its own request',
+    !!(await adminB.rpc('decide_student_correction', { p_request_id: correction.data, p_approve: true })).error);
+  ok('correction: the platform admin approves and the name changes',
+    !(await platform.rpc('decide_student_correction', { p_request_id: correction.data, p_approve: true })).error
+    && (await again.from('students').select('full_name').single()).data.full_name === 'طالب بعد التصحيح الكامل هنا');
+
+  // ------------------------------------------------------------- all students
+  const everyone = await platform.rpc('platform_students', { p_search: phone });
+  const found = everyone.data?.rows?.[0];
+  ok('all students: the platform admin finds the student with both memberships',
+    everyone.data?.total === 1 && found?.memberships?.length === 2
+    && found.memberships.some((m) => m.company_id === A && m.status === 'removed')
+    && found.memberships.some((m) => m.company_id === B && m.status === 'active'), JSON.stringify(everyone.data ?? everyone.error));
+  ok('all students: a company admin cannot use the platform list', !!(await adminB.rpc('platform_students', {})).error);
 
   // ------------------------------------------------ platform deletes an account
   ok('the platform admin can delete an account', (await invoke(platform, 'admin-delete-student', { studentId: S })).status === 200);

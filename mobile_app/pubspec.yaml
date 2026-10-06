@@ -21,16 +21,18 @@ dependencies:
 
   # QR Code & Scanning
   qr_flutter: ^4.1.0
-  mobile_scanner: ^6.0.0
+  mobile_scanner: ^7.0.0
 
   # Image & File Handling (Receipt uploads)
   image_picker: ^1.1.2
+  image: ^4.2.0
   cached_network_image: ^3.4.1
 
   # Local Storage & Utilities
   flutter_secure_storage: ^9.2.2
-  intl: ^0.20.3
+  intl: ^0.20.2
   uuid: ^4.5.1
+  url_launcher: ^6.3.0
 
   # UI Enhancement
   google_fonts: ^6.2.1

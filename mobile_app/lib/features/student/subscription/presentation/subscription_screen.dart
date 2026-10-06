@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/media/image_optimizer.dart';
+import '../../../../core/sync/session.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -18,28 +20,37 @@ import '../models/payment_method_model.dart';
 import '../../home/presentation/student_home_screen.dart';
 
 final linesRepoProvider = Provider((ref) => LinesRepository());
-// autoDispose: refetched each time the subscription page opens, so lines the
-// admin adds or links to a university appear without restarting the app.
-final studentCatalogProvider = FutureProvider.autoDispose<List<CatalogCompany>>(
-    (ref) => ref.watch(linesRepoProvider).getCatalog());
+// These stay loaded for the session, so opening the page again is instant. They
+// are refreshed when the server announces a change (SyncHub) and on app resume,
+// and belong to the signed-in account only.
+final studentCatalogProvider = FutureProvider<List<CatalogCompany>>((ref) {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(linesRepoProvider).getCatalog();
+});
 
-final paymentMethodsProvider = FutureProvider.autoDispose
-    .family<List<PaymentMethodModel>, String>(
-        (ref, companyId) => ref.watch(subscriptionRepoProvider).getPaymentMethods(companyId));
+final paymentMethodsProvider =
+    FutureProvider.family<List<PaymentMethodModel>, String>((ref, companyId) {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(subscriptionRepoProvider).getPaymentMethods(companyId);
+});
 
 final allLinesProvider = FutureProvider<List<LineModel>>((ref) async {
+  ref.watch(sessionUserIdProvider);
   return ref.watch(linesRepoProvider).getAllLines();
 });
 final subscriptionReceiptsProvider =
     FutureProvider.family<List<ReceiptModel>, String>((ref, id) async {
+  ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getReceiptsHistory(id);
 });
 final allSubscriptionsProvider =
     FutureProvider<List<SubscriptionModel>>((ref) async {
+  ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getSubscriptions();
 });
 final purchasablePeriodsProvider =
     FutureProvider.family<List<PurchasablePeriod>, String>((ref, lineId) async {
+  ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getPurchasablePeriods(lineId);
 });
 
@@ -230,7 +241,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Future<void> _pickReceipt(ImageSource source) async {
     try {
       final picked =
-          await ImagePicker().pickImage(source: source, imageQuality: 85);
+          await ImagePicker().pickImage(
+              source: source, imageQuality: 92, maxWidth: 2600, maxHeight: 2600);
       if (picked != null && mounted) setState(() => _receiptPreview = picked);
     } catch (e) {
       if (mounted) {
@@ -254,18 +266,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
     setState(() => _isUploadingReceipt = true);
     try {
-      final history = await ref
-          .read(subscriptionRepoProvider)
-          .getReceiptsHistory(subscriptionId);
-      if (history.length >= 5) {
-        throw Exception(
-            'وصلت إلى الحد الأقصى لرفع الإيصالات (5 محاولات). تواصل مع الإدارة للمساعدة.');
-      }
-
-      final bytes = await picked.readAsBytes();
-      final ext = picked.name.contains('.')
-          ? picked.name.split('.').last.toLowerCase()
-          : 'jpg';
+      // Only the optimised image is uploaded; the original stays on the phone.
+      final bytes = await ImageOptimizer.receipt(await picked.readAsBytes());
+      const ext = 'jpg';
 
       await ref.read(subscriptionRepoProvider).uploadReceipt(
             subscriptionId: subscriptionId,

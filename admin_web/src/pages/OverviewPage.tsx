@@ -59,7 +59,7 @@ export const OverviewPage: React.FC = () => {
         <PendingReceiptsTable
           receipts={receipts.receipts}
           loading={receipts.loading}
-          onReceiptReviewed={() => { void receipts.refresh(); void refresh(); }}
+          onReview={receipts.review}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/sync/session.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/basak_ui.dart';
@@ -9,12 +10,15 @@ import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
 import '../../qr_scanner/presentation/supervisor_qr_scanner_screen.dart';
 
-typedef _ManifestKey = ({String lineId, String direction, String? tripId});
+typedef ManifestKey = ({String lineId, String direction, String? tripId});
 
-final _manifestProvider = FutureProvider.autoDispose.family<TripManifest, _ManifestKey>(
-  (ref, key) => ref.watch(supervisorRepoProvider)
-      .getTripManifest(lineId: key.lineId, direction: key.direction, tripId: key.tripId),
-);
+// Kept per trip for the session: switching direction or tab and coming back shows
+// the list at once; live events and scans refresh it.
+final tripManifestProvider = FutureProvider.family<TripManifest, ManifestKey>((ref, key) {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(supervisorRepoProvider)
+      .getTripManifest(lineId: key.lineId, direction: key.direction, tripId: key.tripId);
+});
 
 /// Going / Return trips of the supervisor's line: one flow for both directions.
 /// Route in travel order, students per station, who is checked in, and a
@@ -32,18 +36,18 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
   final Map<bool, String?> _tripByDirection = {true: null, false: null};
   final Set<String> _openStations = {};
 
-  _ManifestKey? _key(List<SupervisorLine> lines) {
+  ManifestKey? _key(List<SupervisorLine> lines) {
     if (lines.isEmpty) return null;
     final lineId = lines.any((l) => l.id == _lineId) ? _lineId! : lines.first.id;
     return (lineId: lineId, direction: _going ? 'departure' : 'return', tripId: _tripByDirection[_going]);
   }
 
-  Future<void> _refresh(_ManifestKey key) async {
-    ref.invalidate(_manifestProvider(key));
-    await ref.read(_manifestProvider(key).future);
+  Future<void> _refresh(ManifestKey key) async {
+    ref.invalidate(tripManifestProvider(key));
+    await ref.read(tripManifestProvider(key).future);
   }
 
-  Future<void> _scan(TripManifest m, _ManifestKey key) async {
+  Future<void> _scan(TripManifest m, ManifestKey key) async {
     final trip = m.trip;
     if (trip == null) return;
     await Navigator.of(context).push(MaterialPageRoute(
@@ -61,7 +65,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
         ),
       ),
     ));
-    ref.invalidate(_manifestProvider(key));
+    ref.invalidate(tripManifestProvider(key));
     ref.invalidate(supervisorDashboardProvider);
   }
 
@@ -94,7 +98,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
               ),
             ]);
           }
-          final manifest = ref.watch(_manifestProvider(key));
+          final manifest = ref.watch(tripManifestProvider(key));
           return BasakPage(
             onRefresh: () => _refresh(key),
             children: [
@@ -121,7 +125,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
                   title: 'تعذر تحميل الرحلة',
                   message: '$e',
                   actionLabel: 'إعادة المحاولة',
-                  onAction: () => ref.invalidate(_manifestProvider(key)),
+                  onAction: () => ref.invalidate(tripManifestProvider(key)),
                 ),
                 data: (m) => _content(m, key),
               ),
@@ -151,7 +155,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
         ]),
       );
 
-  Widget _content(TripManifest m, _ManifestKey key) {
+  Widget _content(TripManifest m, ManifestKey key) {
     if (m.trips.isEmpty || m.trip == null) {
       return BasakMessageCard(
         icon: LucideIcons.calendarX2,

@@ -2,38 +2,37 @@ import React, { useEffect, useState } from 'react';
 import { Building2, Mail, Plus, ShieldCheck, UserRound, KeyRound } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
+import { keys, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 interface Company { id: string; name: string; }
 interface CompanyAdmin { id: string; email: string; full_name: string; company_id: string; created_at: string; }
 
 export const CompanyAdminsPage: React.FC = () => {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [admins, setAdmins] = useState<CompanyAdmin[]>([]);
   const [companyId, setCompanyId] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState('');
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const load = async () => {
-    setLoading(true);
-    setError('');
+  const page = usePageData(keys.platform('companyAdmins'), async () => {
     const [{ data: companyRows, error: companyError }, { data: adminRows, error: adminError }] = await Promise.all([
       supabase.from('companies').select('id,name').eq('is_active', true).order('name'),
       supabase.from('admins').select('id,email,full_name,company_id,created_at').eq('role', 'company_admin').order('created_at', { ascending: false }),
     ]);
-    if (companyError || adminError) setError(companyError?.message || adminError?.message || 'تعذر تحميل البيانات.');
-    const available = companyRows || [];
-    setCompanies(available);
-    setAdmins(adminRows || []);
-    setCompanyId((current) => current && available.some((company) => company.id === current) ? current : (available[0]?.id || ''));
-    setLoading(false);
-  };
-
-  useEffect(() => { void load(); }, []);
+    if (companyError || adminError) throw new Error(companyError?.message || adminError?.message || 'تعذر تحميل البيانات.');
+    return { companies: (companyRows || []) as Company[], admins: (adminRows || []) as CompanyAdmin[] };
+  });
+  const companies = page.data?.companies ?? [];
+  const admins = page.data?.admins ?? [];
+  const loading = page.loading;
+  const load = page.reload;
+  useEffect(() => {
+    setCompanyId((current) => current && companies.some((company) => company.id === current) ? current : (companies[0]?.id || ''));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.data]);
 
   const createAdmin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -97,7 +96,7 @@ export const CompanyAdminsPage: React.FC = () => {
 
       <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5"><h2 className="font-bold text-slate-700">الحسابات المرتبطة بالشركات</h2></div>
-        {loading ? <div className="p-8 text-center text-slate-500">جاري التحميل...</div> : admins.length === 0 ? (
+        {loading ? <SkeletonRows rows={3} /> : admins.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا يوجد مديرو شركات بعد.</div>
         ) : (
           <div className="overflow-x-auto">

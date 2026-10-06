@@ -76,6 +76,7 @@ class SupervisorProfile {
   final String phone;
   final bool isActive;
   final DateTime? createdAt;
+  final String? companyId;
   final String? companyName;
   final bool companyActive;
 
@@ -88,6 +89,7 @@ class SupervisorProfile {
     required this.phone,
     required this.isActive,
     required this.createdAt,
+    this.companyId,
     required this.companyName,
     required this.companyActive,
     required this.assignment,
@@ -101,6 +103,7 @@ class SupervisorProfile {
         phone: json['phone'] as String? ?? '',
         isActive: json['is_active'] as bool? ?? false,
         createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+        companyId: json['company_id'] as String?,
         companyName: json['company_name'] as String?,
         companyActive: json['company_active'] as bool? ?? true,
         assignment: json['assignment'] as String? ?? 'none',

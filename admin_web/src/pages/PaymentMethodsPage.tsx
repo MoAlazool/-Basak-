@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Landmark, Pencil, Plus, Power, Smartphone, Trash2, Wallet, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonRows } from '../components/Skeleton';
 
 type MethodType = 'instapay' | 'vodafone_cash' | 'bank';
 
@@ -27,20 +29,15 @@ const empty = (companyId: string, order: number): Draft => ({
 /** Company-specific payment methods shown to students when they pay (no hardcoded accounts). */
 export const PaymentMethodsPage: React.FC = () => {
   const companyId = useCompany().id;
-  const [methods, setMethods] = useState<PaymentMethod[]>([]);
-  const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
 
-  const load = async () => {
-    setLoading(true);
-    const { data, error: loadError } = await supabase.from('company_payment_methods').select('*')
-      .eq('company_id', companyId).order('sort_order').order('created_at');
-    if (loadError) setError(loadError.message);
-    setMethods((data || []) as PaymentMethod[]);
-    setLoading(false);
-  };
-  useEffect(() => { void load(); }, [companyId]);
+  const page = usePageData(keys.company(companyId, 'paymentMethods'), async () =>
+    unwrap<PaymentMethod[]>(supabase.from('company_payment_methods').select('*')
+      .eq('company_id', companyId).order('sort_order').order('created_at')));
+  const methods = page.data ?? [];
+  const loading = page.loading;
+  const load = page.reload;
 
   const save = async () => {
     if (!draft) return;
@@ -107,10 +104,10 @@ export const PaymentMethodsPage: React.FC = () => {
         </div>
       </div>
 
-      {error && !draft && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {(error || page.error) && !draft && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
 
       <div className="space-y-3">
-        {loading ? <div className="p-8 text-center text-slate-500">جاري التحميل...</div> : methods.length === 0 ? (
+        {loading ? <SkeletonRows /> : methods.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500">لا توجد وسائل دفع لهذه الشركة. أضف وسيلة ليتمكن الطلاب من الدفع.</div>
         ) : methods.map((m, i) => (
           <div key={m.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm ${m.is_active ? 'border-slate-100' : 'border-slate-200 opacity-60'}`}>

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
-import { useCompanyRealtime } from './useCompanyRealtime';
+import { keys } from './query';
 
 export interface PendingReceiptRow {
   id: string;
@@ -159,46 +159,40 @@ export async function fetchPendingReceipts(companyId: string): Promise<PendingRe
   }));
 }
 
-/** The receipts one company still has to review, kept current as they arrive. */
+/** The receipts one company still has to review. New ones arrive through the workspace's live topic. */
 export function usePendingReceipts(companyId: string) {
-  const [receipts, setReceipts] = useState<PendingReceiptRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const client = useQueryClient();
+  const key = keys.company(companyId, 'receipts', 'pending');
+  const query = useQuery({ queryKey: key, queryFn: () => fetchPendingReceipts(companyId) });
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      setReceipts(await fetchPendingReceipts(companyId));
-    } catch (loadError) {
-      console.error('Could not load pending receipts:', loadError);
-      setError(loadError instanceof Error ? loadError.message : 'تعذر تحميل الإيصالات.');
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId]);
+  // Approving or rejecting removes the row at once; if the database refuses, it comes back.
+  const review = useMutation({
+    mutationFn: async ({ id, decision, reason }: { id: string; decision: 'approved' | 'rejected'; reason?: string }) => {
+      const { data, error } = await supabase.from('receipts')
+        .update(decision === 'approved' ? { status: 'approved' } : { status: 'rejected', rejection_reason: reason })
+        .eq('id', id).select('id').single();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error('لم يُحفظ القرار؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
+    },
+    onMutate: async ({ id }) => {
+      await client.cancelQueries({ queryKey: key });
+      const before = client.getQueryData<PendingReceiptRow[]>(key);
+      client.setQueryData<PendingReceiptRow[]>(key, (rows) => (rows ?? []).filter((row) => row.id !== id));
+      return { before };
+    },
+    onError: (_error, _input, context) => { if (context?.before) client.setQueryData(key, context.before); },
+    onSettled: () => {
+      for (const name of ['receipts', 'overview', 'students', 'reports']) {
+        void client.invalidateQueries({ queryKey: keys.company(companyId, name) });
+      }
+    },
+  });
 
-  const inFlight = useRef(false);
-  const loadIfVisible = useCallback(() => {
-    if (inFlight.current || document.visibilityState !== 'visible') return;
-    inFlight.current = true;
-    void refresh().finally(() => { inFlight.current = false; });
-  }, [refresh]);
-
-  useCompanyRealtime(companyId, ['receipts'], loadIfVisible);
-
-  useEffect(() => {
-    loadIfVisible();
-    // The live feed is the main signal; this catches anything missed while offline.
-    const interval = window.setInterval(loadIfVisible, 60_000);
-    window.addEventListener('focus', loadIfVisible);
-    document.addEventListener('visibilitychange', loadIfVisible);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', loadIfVisible);
-      document.removeEventListener('visibilitychange', loadIfVisible);
-    };
-  }, [loadIfVisible]);
-
-  return { receipts, loading, error, refresh };
+  return {
+    receipts: query.data ?? [],
+    loading: query.isPending,
+    error: query.error?.message ?? '',
+    refresh: () => void query.refetch(),
+    review: (id: string, decision: 'approved' | 'rejected', reason?: string) => review.mutateAsync({ id, decision, reason }),
+  };
 }
