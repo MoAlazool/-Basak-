@@ -59,6 +59,23 @@ async function watchReceipts(client, companyId) {
   return { events, close: () => client.removeChannel(channel) };
 }
 
+/** Joins a private broadcast topic. `joined` is false when the database refuses the listener. */
+async function listen(client, topic) {
+  const events = [];
+  const { data: { session } } = await client.auth.getSession();
+  await client.realtime.setAuth(session.access_token);
+  const channel = client.channel(topic, { config: { private: true } })
+    .on('broadcast', { event: 'change' }, (message) => events.push(message.payload));
+  const joined = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 8000);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') { clearTimeout(timer); resolve(true); }
+      if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') { clearTimeout(timer); resolve(false); }
+    });
+  });
+  return { events, joined, close: () => client.removeChannel(channel) };
+}
+
 const created = { users: [], companies: [] };
 
 async function main() {
@@ -169,6 +186,29 @@ async function main() {
   const [watchA, watchB] = [await watchReceipts(adminA, A), await watchReceipts(adminB, B)];
   const watchBonA = await watchReceipts(adminB, A);  // B asking for A's feed must get nothing
   const studentClient = await signedIn(`${phone}@busak.app`);
+  // Private topics: the database decides who may listen.
+  // Refused joins are probed from separate connections so they cannot disturb the real listeners.
+  const probe = async (email, topic) => listen(await signedIn(email), topic);
+  const topics = {
+    aOwn: await listen(adminA, `company:${A}`),
+    bOwn: await listen(adminB, `company:${B}`),
+    student: await listen(studentClient, `student:${S}`),
+    studentLine: await listen(studentClient, `line:${lineA}`),
+    platform: await listen(platform, 'platform'),
+    bOnA: await probe(adminEmail('B'), `company:${A}`),
+    studentOnCompany: await probe(`${phone}@busak.app`, `company:${A}`),
+    studentOnPlatform: await probe(`${phone}@busak.app`, 'platform'),
+    studentOtherLine: await probe(`${phone}@busak.app`, `line:${lineB}`),
+    adminOnStudent: await probe(adminEmail('A'), `student:${S}`),
+    aOnPlatform: await probe(adminEmail('A'), 'platform'),
+  };
+  ok('topics: each party joins its own (company, student, subscribed line, platform)',
+    topics.aOwn.joined && topics.bOwn.joined && topics.student.joined && topics.studentLine.joined && topics.platform.joined,
+    JSON.stringify(Object.fromEntries(Object.entries(topics).map(([k, t]) => [k, t.joined]))));
+  ok('topics: nobody joins a topic that is not theirs',
+    !topics.bOnA.joined && !topics.studentOnCompany.joined && !topics.studentOnPlatform.joined
+    && !topics.studentOtherLine.joined && !topics.adminOnStudent.joined && !topics.aOnPlatform.joined,
+    JSON.stringify(Object.fromEntries(Object.entries(topics).map(([k, t]) => [k, t.joined]))));
   const sub = must(await studentClient.from('subscriptions').select('id, company_id, status').single(), 'student subscription').data;
   const receiptPath = `${S}/${sub.id}_${Date.now()}.jpg`;
   must(await studentClient.storage.from('receipts').upload(receiptPath, Buffer.from('not really a jpeg'), { contentType: 'image/jpeg' }), 'receipt upload');
@@ -189,6 +229,26 @@ async function main() {
   ok('company A approves its receipt',
     (await adminA.from('receipts').update({ status: 'approved' }).eq('id', receipt.id).select('id')).data?.length === 1);
   ok('the subscription is now active', (await studentClient.from('subscriptions').select('status').single()).data.status === 'active');
+  await sleep(2500);
+  const seen = (t, table, op) => t.events.some((e) => e.table === table && e.op === op);
+  ok('topics: the company is told about the new receipt and its approval',
+    seen(topics.aOwn, 'receipts', 'INSERT') && seen(topics.aOwn, 'receipts', 'UPDATE') && seen(topics.aOwn, 'subscriptions', 'UPDATE'),
+    JSON.stringify(topics.aOwn.events.map((e) => `${e.table}:${e.op}`)));
+  ok('topics: the student is told their receipt was decided and their subscription changed',
+    seen(topics.student, 'receipts', 'UPDATE') && seen(topics.student, 'subscriptions', 'UPDATE'),
+    JSON.stringify(topics.student.events.map((e) => `${e.table}:${e.op}`)));
+  ok('topics: the platform admin hears it too; company B hears nothing',
+    seen(topics.platform, 'receipts', 'UPDATE') && topics.bOwn.events.length === 0 && topics.bOnA.events.length === 0,
+    `${topics.platform.events.length}/${topics.bOwn.events.length}/${topics.bOnA.events.length}`);
+  const allEvents = Object.values(topics).flatMap((t) => t.events);
+  ok('topics: messages carry ids only, never personal data',
+    allEvents.length > 0 && allEvents.every((e) => Object.keys(e).every((k) => ['table', 'op', 'id', 'company_id'].includes(k))),
+    JSON.stringify(allEvents[0]));
+  must(await adminA.from('stations').update({ name: 'محطة 1 (معدلة)' }).eq('id', stationA.id).select('id').single(), 'rename station');
+  await sleep(2000);
+  ok('topics: a route change reaches the students subscribed to that line', seen(topics.studentLine, 'stations', 'UPDATE'),
+    JSON.stringify(topics.studentLine.events.map((e) => `${e.table}:${e.op}`)));
+  await Promise.all(Object.values(topics).map((t) => t.close()));
 
   // Nested reads, as the dashboard and the mobile app make them, must still resolve
   // (one relationship per pair of tables).
