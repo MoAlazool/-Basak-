@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Landmark, Pencil, Plus, Power, Smartphone, Trash2, Wallet, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAdminScope } from '../lib/adminScope';
+import { useCompany } from '../lib/adminScope';
 
 type MethodType = 'instapay' | 'vodafone_cash' | 'bank';
 
@@ -26,25 +26,13 @@ const empty = (companyId: string, order: number): Draft => ({
 
 /** Company-specific payment methods shown to students when they pay (no hardcoded accounts). */
 export const PaymentMethodsPage: React.FC = () => {
-  const admin = useAdminScope();
-  const isSuper = admin.role === 'super_admin';
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [companyId, setCompanyId] = useState(admin.company_id || '');
+  const companyId = useCompany().id;
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!isSuper) return;
-    void supabase.from('companies').select('id, name').order('name').then(({ data }) => {
-      setCompanies(data || []);
-      setCompanyId((current) => current || data?.[0]?.id || '');
-    });
-  }, [isSuper]);
-
   const load = async () => {
-    if (!companyId) { setMethods([]); setLoading(false); return; }
     setLoading(true);
     const { data, error: loadError } = await supabase.from('company_payment_methods').select('*')
       .eq('company_id', companyId).order('sort_order').order('created_at');
@@ -112,12 +100,7 @@ export const PaymentMethodsPage: React.FC = () => {
           <p className="text-sm text-slate-500">ما يراه الطالب عند الدفع لهذه الشركة: InstaPay وفودافون كاش والحسابات البنكية.</p>
         </div>
         <div className="flex items-center gap-2">
-          {isSuper && (
-            <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="الشركة">
-              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
-          <button disabled={!companyId} onClick={() => setDraft(empty(companyId, (methods[methods.length - 1]?.sort_order ?? 0) + 1))}
+          <button onClick={() => setDraft(empty(companyId, (methods[methods.length - 1]?.sort_order ?? 0) + 1))}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
             <Plus className="h-4 w-4" /> إضافة وسيلة دفع
           </button>

@@ -33,22 +33,14 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   const [previewReceipt, setPreviewReceipt] = useState<PendingReceiptRow | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
-  const [companyFilter, setCompanyFilter] = useState('all');
   const [query, setQuery] = useState('');
-
-  const companyOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    receipts.forEach((row) => { if (row.companyId) map.set(row.companyId, row.companyName); });
-    return [...map.entries()].map(([id, name]) => ({ id, name }));
-  }, [receipts]);
 
   const visibleReceipts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return receipts.filter((row) =>
-      (companyFilter === 'all' || row.companyId === companyFilter) &&
-      (!q || [row.studentName, row.studentPhone, row.lineName, row.companyName, row.university]
-        .some((value) => value.toLowerCase().includes(q))));
-  }, [receipts, companyFilter, query]);
+      !q || [row.studentName, row.studentPhone, row.lineName, row.university]
+        .some((value) => value.toLowerCase().includes(q)));
+  }, [receipts, query]);
 
   const openReceiptPreview = async (row: PendingReceiptRow) => {
     setPreviewReceipt(row);
@@ -146,14 +138,8 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث باسم الطالب، الهاتف، الخط أو الشركة..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-xs focus:border-[#7EC8E3] focus:outline-none" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث باسم الطالب، الهاتف أو الخط..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-xs focus:border-[#7EC8E3] focus:outline-none" />
           </div>
-          {companyOptions.length > 1 && (
-            <select aria-label="تصفية حسب الشركة" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
-              <option value="all">كل الشركات</option>
-              {companyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-            </select>
-          )}
         </div>
       )}
 

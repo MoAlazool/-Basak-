@@ -229,9 +229,11 @@ BEGIN
   r1 := public.supervisor_check_in_student(qr, 'departure');
   r2 := public.supervisor_check_in_student(qr, 'return');
   PERFORM t.ok('D1 first scan today checks in', r1->>'result' = 'checked_in', r1->>'result');
-  PERFORM t.ok('D2 second scan the same day (even other direction) is rejected with a clear message',
-    r2->>'result' = 'already_checked_in' AND r2->>'message' LIKE '%already been checked in today%'
-    AND r2->>'checked_in_at' = r1->>'checked_in_at', r2->>'message');
+  -- One check-in per direction per day: the return trip is its own check-in.
+  PERFORM t.ok('D2 the return trip the same day is a separate check-in', r2->>'result' = 'checked_in', r2->>'message');
+  r2 := public.supervisor_check_in_student(qr, 'departure');
+  PERFORM t.ok('D2b a second scan in the same direction is reported as already checked in, with the first time',
+    r2->>'result' = 'already_checked_in' AND r2->>'checked_in_at' = r1->>'checked_in_at', r2->>'message');
   PERFORM t.ok('D3 supervisor cannot insert a check-in row directly',
     t.err(format($q$INSERT INTO public.supervisor_scan_events (supervisor_id, student_id, ride_date, direction, result)
       VALUES (auth.uid(), 'c0000000-0000-0000-0000-000000000001', public.cairo_today() + 1, 'departure', 'checked_in')$q$)) IS NOT NULL);
@@ -245,9 +247,10 @@ DO $$ BEGIN
 END $$;
 RESET ROLE; SELECT set_config('request.jwt.claims', '', false);
 DO $$ BEGIN
-  PERFORM t.ok('D5 exactly one check-in row today',
-    (SELECT count(*) FROM public.supervisor_scan_events WHERE student_id = 'c0000000-0000-0000-0000-000000000001'
-       AND ride_date = public.cairo_today() AND result = 'checked_in') = 1);
+  PERFORM t.ok('D5 exactly one check-in row per direction today',
+    (SELECT count(*) = 2 AND count(DISTINCT direction) = 2 FROM public.supervisor_scan_events
+     WHERE student_id = 'c0000000-0000-0000-0000-000000000001'
+       AND ride_date = public.cairo_today() AND result = 'checked_in'));
   PERFORM t.ok('D6 database rejects a second check-in row even without the RPC',
     t.err($q$INSERT INTO public.supervisor_scan_events (supervisor_id, student_id, ride_date, direction, result)
       VALUES ('b0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', public.cairo_today(), 'return', 'checked_in')$q$) LIKE '%duplicate key%');
@@ -370,10 +373,16 @@ DO $$ BEGIN
     t.err($q$UPDATE public.academic_terms SET start_month = 1, start_day = 15 WHERE code = 'second'$q$) LIKE '%يتداخل%');
   PERFORM t.ok('E17b invalid day (31 Feb) is rejected',
     t.err($q$UPDATE public.academic_terms SET end_month = 2, end_day = 31 WHERE code = 'second'$q$) IS NOT NULL);
+  -- The defaults are a template for new companies: editing them moves nobody's subscription.
   UPDATE public.academic_terms SET end_day = 31 WHERE code = 'first';
-  PERFORM t.ok('E18 super admin edit propagates to open first-semester subscriptions',
-    (SELECT to_char(end_date, 'DD-MM') FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001') = '31-01');
+  PERFORM t.ok('E18 editing the default terms leaves existing subscriptions alone',
+    (SELECT to_char(end_date, 'DD-MM') FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001') = '30-01');
   UPDATE public.academic_terms SET end_day = 30 WHERE code = 'first';
+  -- A company's own terms do move its open subscriptions.
+  PERFORM public.save_company_terms('11111111-1111-1111-1111-111111111111', '[{"code": "first", "end_day": 31}]');
+  PERFORM t.ok('E18b a company''s own term edit moves its open first-semester subscriptions',
+    (SELECT to_char(end_date, 'DD-MM') FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001') = '31-01');
+  PERFORM public.save_company_terms('11111111-1111-1111-1111-111111111111', '[{"code": "first", "end_day": 30}]');
 END $$;
 
 -- Expiry of an unpaid period that ended.

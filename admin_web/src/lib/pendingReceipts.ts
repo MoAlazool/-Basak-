@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './supabase';
+import { useCompanyRealtime } from './useCompanyRealtime';
 
 export interface PendingReceiptRow {
   id: string;
@@ -88,10 +89,10 @@ const hhmm = (value?: string | null) => (value ? String(value).slice(0, 5) : '')
  * separate scoped queries. Nested embeds silently returned null when a relation
  * was ambiguous or blocked, which left the review table without student data.
  */
-export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
+export async function fetchPendingReceipts(companyId: string): Promise<PendingReceiptRow[]> {
   const { data: receiptRows, error } = await supabase.from('receipts')
     .select('id, image_url, attempt_number, created_at, subscription_id, amount')
-    .eq('status', 'pending').order('created_at', { ascending: true });
+    .eq('company_id', companyId).eq('status', 'pending').order('created_at', { ascending: true });
   if (error) throw error;
   const receipts = (receiptRows || []) as Row[];
   if (!receipts.length) return [];
@@ -158,8 +159,8 @@ export async function fetchPendingReceipts(): Promise<PendingReceiptRow[]> {
   }));
 }
 
-/** One shared query keeps the dashboard and the dedicated receipt page in sync. */
-export function usePendingReceipts() {
+/** The receipts one company still has to review, kept current as they arrive. */
+export function usePendingReceipts(companyId: string) {
   const [receipts, setReceipts] = useState<PendingReceiptRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -168,39 +169,36 @@ export function usePendingReceipts() {
     setLoading(true);
     setError('');
     try {
-      setReceipts(await fetchPendingReceipts());
+      setReceipts(await fetchPendingReceipts(companyId));
     } catch (loadError) {
       console.error('Could not load pending receipts:', loadError);
       setError(loadError instanceof Error ? loadError.message : 'تعذر تحميل الإيصالات.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyId]);
+
+  const inFlight = useRef(false);
+  const loadIfVisible = useCallback(() => {
+    if (inFlight.current || document.visibilityState !== 'visible') return;
+    inFlight.current = true;
+    void refresh().finally(() => { inFlight.current = false; });
+  }, [refresh]);
+
+  useCompanyRealtime(companyId, ['receipts'], loadIfVisible);
 
   useEffect(() => {
-    let inFlight = false;
-    const loadIfVisible = () => {
-      if (inFlight || document.visibilityState !== 'visible') return;
-      inFlight = true;
-      void refresh().finally(() => { inFlight = false; });
-    };
-
     loadIfVisible();
-    const channel = supabase
-      .channel('admin-pending-receipts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts' }, loadIfVisible)
-      .subscribe();
-    const interval = window.setInterval(loadIfVisible, 30_000);
+    // The live feed is the main signal; this catches anything missed while offline.
+    const interval = window.setInterval(loadIfVisible, 60_000);
     window.addEventListener('focus', loadIfVisible);
     document.addEventListener('visibilitychange', loadIfVisible);
-
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', loadIfVisible);
       document.removeEventListener('visibilitychange', loadIfVisible);
-      void supabase.removeChannel(channel);
     };
-  }, [refresh]);
+  }, [loadIfVisible]);
 
   return { receipts, loading, error, refresh };
 }

@@ -53,8 +53,9 @@ Deno.serve(async (request: Request) => {
     if (flagError) throw flagError;
 
     // Audit without the password.
+    const companyId = /^[0-9a-f-]{36}$/i.test(String(body.companyId ?? '')) ? String(body.companyId) : null;
     await serviceClient.from('password_admin_resets').insert({
-      student_id: student.id, reset_by: user.id, generated,
+      student_id: student.id, reset_by: user.id, generated, company_id: companyId,
     });
 
     return jsonResponse({
