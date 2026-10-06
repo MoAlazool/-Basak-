@@ -63,6 +63,30 @@ const emptyTrip = (direction: Direction, start = ''): TripDraft => ({
   key: newKey(), direction, label: '', start_time: start, arrival_time: '', university_id: '', is_active: true, times: {},
 });
 
+/**
+ * save_line's timing rules, checked while typing: stops in route order and not
+ * before the start, and the arrival not before the last stop. `route` is the
+ * trip's stations in travel order.
+ */
+const tripProblem = (trip: TripDraft, route: StationDraft[]): string | null => {
+  if (!trip.start_time) return null;
+  let prev = trip.start_time;
+  let prevLabel = 'موعد الانطلاق';
+  for (const s of route) {
+    const time = trip.times[s.key];
+    if (!time) continue;
+    if (time < prev) {
+      return `موعد محطة «${s.name || 'بدون اسم'}» (${fmt12(time)}) قبل ${prevLabel} (${fmt12(prev)}). المواعيد يجب أن تكون بترتيب المسار.`;
+    }
+    prev = time;
+    prevLabel = `محطة «${s.name || 'بدون اسم'}»`;
+  }
+  if (trip.arrival_time && trip.arrival_time < prev) {
+    return `موعد الوصول (${fmt12(trip.arrival_time)}) قبل ${prevLabel} (${fmt12(prev)}). عدّل موعد الوصول أو امسحه، أو صحّح موعد المحطة.`;
+  }
+  return null;
+};
+
 const draftFromLine = (line: LineRow): LineDraft => {
   const stations = activeStations(line).map((s) => ({ key: s.id, id: s.id, name: s.name }));
   return {
@@ -355,8 +379,12 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     const times: Record<string, string> = {};
     routeFor(trip.direction).forEach((s, i) => { times[s.key] = addMinutes(trip.start_time, step * (i + 1)); });
     const arrival = addMinutes(trip.start_time, step * (d.stations.length + 1));
-    patchTrip(trip.key, { times, arrival_time: trip.direction === 'departure' ? arrival : trip.arrival_time || arrival });
+    const lastStop = addMinutes(trip.start_time, step * d.stations.length);
+    // A return trip keeps its own arrival, unless it now falls before the last stop.
+    const keepArrival = trip.direction === 'return' && trip.arrival_time && trip.arrival_time >= lastStop;
+    patchTrip(trip.key, { times, arrival_time: keepArrival ? trip.arrival_time : arrival });
   };
+
 
   const duplicate = (trip: TripDraft) => setD((cur) => ({
     ...cur, trips: [...cur.trips, { ...trip, key: newKey(), id: undefined, label: '', times: { ...trip.times } }],
@@ -365,6 +393,12 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const save = async () => {
     setError('');
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
+    const badTrip = d.trips.find((t) => tripProblem(t, routeFor(t.direction)));
+    if (badTrip) {
+      setTab(badTrip.direction);
+      setError(`${badTrip.direction === 'departure' ? 'رحلة الذهاب' : 'رحلة العودة'} ${fmt12(badTrip.start_time)}: ${tripProblem(badTrip, routeFor(badTrip.direction))}`);
+      return;
+    }
     const stations = d.stations.map((s) => ({ ...s, name: s.name.trim() }));
     const indexOf = new Map(stations.map((s, i) => [s.key, i]));
     const payload = {
@@ -531,6 +565,9 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       </div>
                     ))}
                   </div>
+                  {tripProblem(trip, routeFor(tab)) && (
+                    <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{tripProblem(trip, routeFor(tab))}</p>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="flex gap-2">
                       <button onClick={() => autoFill(trip)} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700"><Wand2 className="h-3 w-3" /> تعبئة تلقائية</button>
