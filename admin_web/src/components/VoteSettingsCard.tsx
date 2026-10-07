@@ -1,18 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, Clock3, RotateCcw, Save } from 'lucide-react';
+import { BellRing, CalendarOff, Clock3, Plus, RotateCcw, Save, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { clockLabel } from '../lib/overview';
 
-interface VoteSettings {
+interface Settings {
   opens_at: string;
   closes_at: string;
   reminder_minutes: number;
+  /** Ride days without reminders: ISO weekdays (1 = Monday ... 7 = Sunday) and dates (YYYY-MM-DD). */
+  off_weekdays: number[];
+  off_dates: string[];
+}
+interface VoteSettings extends Settings {
   window_text: string;
   /** The company has its own settings (otherwise it follows the platform). */
   custom: boolean;
   can_edit_platform: boolean;
-  platform: { opens_at: string; closes_at: string; reminder_minutes: number };
+  platform: Settings;
+}
+
+/** The week as it is lived in Egypt, Saturday first (ISO numbers). */
+const WEEK = [
+  { iso: 6, name: 'السبت' }, { iso: 7, name: 'الأحد' }, { iso: 1, name: 'الاثنين' }, { iso: 2, name: 'الثلاثاء' },
+  { iso: 3, name: 'الأربعاء' }, { iso: 4, name: 'الخميس' }, { iso: 5, name: 'الجمعة' },
+];
+const dateLabel = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+const formatDate = (ymd: string) => dateLabel.format(new Date(`${ymd}T00:00:00Z`));
+const sameList = <T,>(a: T[], b: T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+const sorted = (list: number[]) => [...list].sort((a, b) => a - b);
+/** Today in Cairo, YYYY-MM-DD. */
+const cairoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
+
+/** The days off in words: "كل الجمعة، الثلاثاء ٦ أكتوبر". */
+function daysOffText(weekdays: number[], dates: string[]): string {
+  return [
+    ...WEEK.filter((d) => weekdays.includes(d.iso)).map((d) => `كل ${d.name}`),
+    ...dates.map(formatDate),
+  ].join('، ');
 }
 
 const REMINDERS = [
@@ -63,6 +88,9 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
   const [opens, setOpens] = useState('16:00');
   const [closes, setCloses] = useState('06:00');
   const [every, setEvery] = useState(0);
+  const [offWeekdays, setOffWeekdays] = useState<number[]>([]);
+  const [offDates, setOffDates] = useState<string[]>([]);
+  const [newDate, setNewDate] = useState('');
   const [saving, setSaving] = useState(false);
 
   // The editable copy follows what is saved, whenever that changes.
@@ -71,11 +99,25 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
     setOpens(vote.opens_at);
     setCloses(vote.closes_at);
     setEvery(vote.reminder_minutes);
+    setOffWeekdays(sorted(vote.off_weekdays ?? []));
+    setOffDates([...(vote.off_dates ?? [])].sort());
   }, [vote]);
 
   if (page.loading || !vote) return null;
   const editable = companyId ? true : vote.can_edit_platform;
-  const changed = opens !== vote.opens_at || closes !== vote.closes_at || every !== vote.reminder_minutes;
+  const changed = opens !== vote.opens_at || closes !== vote.closes_at || every !== vote.reminder_minutes
+    || !sameList(offWeekdays, sorted(vote.off_weekdays ?? [])) || !sameList(offDates, [...(vote.off_dates ?? [])].sort());
+  const today = cairoToday();
+  const toggleWeekday = (iso: number) =>
+    setOffWeekdays((all) => (all.includes(iso) ? all.filter((d) => d !== iso) : sorted([...all, iso])));
+  const canAddDate = !!newDate && newDate >= today && !offDates.includes(newDate);
+  const addDate = () => {
+    if (!canAddDate) return;
+    setOffDates((all) => [...all, newDate].sort());
+    setNewDate('');
+  };
+  const offText = daysOffText(offWeekdays, offDates);
+  const platformOff = daysOffText(vote.platform.off_weekdays ?? [], vote.platform.off_dates ?? []);
   const sameTimes = opens === closes;
   const times = reminderTimes(opens, closes, every);
 
@@ -87,6 +129,8 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
         p_opens_at: reset ? null : opens,
         p_closes_at: reset ? null : closes,
         p_reminder_minutes: reset ? null : every,
+        p_off_weekdays: reset ? null : offWeekdays,
+        p_off_dates: reset ? null : offDates,
       });
       if (error) throw error;
     } catch (err: any) {
@@ -135,6 +179,52 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
         </label>
       </div>
 
+      <div className="mt-4 rounded-xl border border-slate-100 p-3">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+          <CalendarOff className="h-3.5 w-3.5" /> أيام بدون تذكير
+        </p>
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          المقصود يوم الرحلة نفسه: اختيار الجمعة يوقف التذكير الخاص برحلة الجمعة. التصويت نفسه يظل متاحاً.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {WEEK.map((d) => {
+            const off = offWeekdays.includes(d.iso);
+            return (
+              <button key={d.iso} type="button" disabled={!editable} onClick={() => toggleWeekday(d.iso)} aria-pressed={off}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-60 ${
+                  off ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}>
+                {d.name}{off ? ' · بدون تذكير' : ''}
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="mt-3 text-xs font-semibold text-slate-600">إجازات رسمية</p>
+        {editable && (
+          <div className="mt-1 flex gap-2">
+            <input type="date" min={today} value={newDate} onChange={(e) => setNewDate(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm" />
+            <button type="button" onClick={addDate} disabled={!canAddDate}
+              className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50">
+              <Plus className="h-3.5 w-3.5" /> إضافة
+            </button>
+          </div>
+        )}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {offDates.length === 0 && <span className="text-[11px] text-slate-400">لا توجد إجازات قادمة.</span>}
+          {offDates.map((d) => (
+            <span key={d} className="flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+              {formatDate(d)}
+              {editable && (
+                <button type="button" aria-label={`حذف ${formatDate(d)}`} onClick={() => setOffDates((all) => all.filter((x) => x !== d))}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
         {sameTimes ? (
           <p className="font-semibold text-rose-600">يجب أن يختلف موعد القفل عن موعد الفتح.</p>
@@ -149,11 +239,13 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
                 ? 'لا تُرسل تذكيرات.'
                 : `التذكير ${times.length === 1 ? 'مرة واحدة' : `${times.length.toLocaleString('ar-EG')} مرات`}: ${times.map(clockLabel).join('، ')} — ويتوقف بمجرد أن يؤكد الطالب أو يلغي.`}
             </p>
+            {times.length > 0 && offText && <p className="mt-1">لا تذكير لرحلات: {offText}.</p>}
           </>
         )}
         {companyId && vote.custom && (
           <p className="mt-1 text-slate-400">
-            إعداد المنصة: {clockLabel(vote.platform.opens_at)} ← {clockLabel(vote.platform.closes_at)}، {reminderLabel(vote.platform.reminder_minutes)}.
+            إعداد المنصة: {clockLabel(vote.platform.opens_at)} ← {clockLabel(vote.platform.closes_at)}، {reminderLabel(vote.platform.reminder_minutes)}
+            {platformOff && `، بدون تذكير: ${platformOff}`}.
           </p>
         )}
       </div>

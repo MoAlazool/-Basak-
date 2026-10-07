@@ -13,10 +13,17 @@ class VoteSettings {
   /// Minutes between reminders; 0 = no reminders.
   final int reminderMinutes;
 
+  /// Ride days without reminders: weekdays (DateTime.weekday, 1 = Monday)
+  /// such as Friday, and dates such as official holidays.
+  final Set<int> offWeekdays;
+  final Set<DateTime> offDates;
+
   const VoteSettings({
     required this.opensAt,
     required this.closesAt,
     this.reminderMinutes = 0,
+    this.offWeekdays = const {},
+    this.offDates = const {},
   });
 
   /// Until the server answers: the original 4 PM → 6 AM, no reminders.
@@ -26,6 +33,15 @@ class VoteSettings {
         opensAt: _minutes(json['opens_at']) ?? fallback.opensAt,
         closesAt: _minutes(json['closes_at']) ?? fallback.closesAt,
         reminderMinutes: (json['reminder_minutes'] as num?)?.toInt() ?? 0,
+        offWeekdays: {
+          for (final day in json['off_weekdays'] as List? ?? const [])
+            if (day is num) day.toInt(),
+        },
+        offDates: {
+          for (final date in json['off_dates'] as List? ?? const [])
+            if (DateTime.tryParse('$date') case final parsed?)
+              DateTime(parsed.year, parsed.month, parsed.day),
+        },
       );
 
   static int? _minutes(Object? hhmm) {
@@ -59,10 +75,16 @@ class VoteSettings {
     return !now.isBefore(window.opens) && now.isBefore(window.closes);
   }
 
+  /// Whether the app reminds students about [rideDate] at all.
+  bool remindsFor(DateTime rideDate) =>
+      reminderMinutes > 0 &&
+      !offWeekdays.contains(rideDate.weekday) &&
+      !offDates.contains(DateTime(rideDate.year, rideDate.month, rideDate.day));
+
   /// The reminders for [rideDate]: as its vote opens, then every
-  /// [reminderMinutes] until it closes.
+  /// [reminderMinutes] until it closes. None on a day off.
   List<DateTime> reminderTimesFor(DateTime rideDate) {
-    if (reminderMinutes <= 0) return const [];
+    if (!remindsFor(rideDate)) return const [];
     final window = windowFor(rideDate);
     return [
       for (var at = window.opens;
@@ -102,8 +124,13 @@ class VoteSettings {
       other is VoteSettings &&
       other.opensAt == opensAt &&
       other.closesAt == closesAt &&
-      other.reminderMinutes == reminderMinutes;
+      other.reminderMinutes == reminderMinutes &&
+      other.offWeekdays.length == offWeekdays.length &&
+      other.offWeekdays.containsAll(offWeekdays) &&
+      other.offDates.length == offDates.length &&
+      other.offDates.containsAll(offDates);
 
   @override
-  int get hashCode => Object.hash(opensAt, closesAt, reminderMinutes);
+  int get hashCode => Object.hash(opensAt, closesAt, reminderMinutes,
+      Object.hashAllUnordered(offWeekdays), Object.hashAllUnordered(offDates));
 }

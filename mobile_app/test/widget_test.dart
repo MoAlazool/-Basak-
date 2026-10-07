@@ -112,6 +112,34 @@ void main() {
     expect(VoteSettings.fallback.reminderTimesFor(DateTime(2026, 10, 8)), isEmpty);
   });
 
+  test('no reminders on days off: a weekday (Friday) or a holiday', () {
+    final vote = VoteSettings.fromJson({
+      'opens_at': '16:00',
+      'closes_at': '06:00',
+      'reminder_minutes': 360,
+      'off_weekdays': [5],
+      'off_dates': ['2026-10-06'],
+    });
+    // 9 Oct 2026 is a Friday: its reminders would start on Thursday evening.
+    expect(vote.remindsFor(DateTime(2026, 10, 9)), isFalse);
+    expect(vote.reminderTimesFor(DateTime(2026, 10, 9)), isEmpty);
+    expect(vote.reminderTimesFor(DateTime(2026, 10, 6)), isEmpty);
+    expect(vote.reminderTimesFor(DateTime(2026, 10, 8)), [
+      DateTime(2026, 10, 7, 16),
+      DateTime(2026, 10, 7, 22),
+      DateTime(2026, 10, 8, 4),
+    ]);
+    // Voting itself is not affected.
+    expect(vote.isOpenAt(DateTime(2026, 10, 8, 20)), isTrue);
+    expect(vote, VoteSettings.fromJson({
+      'opens_at': '16:00',
+      'closes_at': '06:00',
+      'reminder_minutes': 360,
+      'off_weekdays': [5],
+      'off_dates': ['2026-10-06'],
+    }));
+  });
+
   test('vote times read in Arabic', () {
     expect(VoteSettings.fallback.opensLabel, '٤ م');
     expect(VoteSettings.fallback.closesLabel, '٦ ص');
