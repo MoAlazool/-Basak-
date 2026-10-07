@@ -167,9 +167,10 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
       _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students'});
-      // Company settings (annual / daily switches) send no event to students.
+      // Company settings (annual / daily switches, vote times) send no event to students.
       ref.invalidate(purchasablePeriodsProvider);
       ref.invalidate(dailySubscriptionEnabledProvider);
+      ref.invalidate(voteSettingsProvider);
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {
       _invalidateFor(const {'supervisor_scan_events'});

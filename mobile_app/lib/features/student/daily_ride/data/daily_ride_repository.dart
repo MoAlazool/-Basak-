@@ -3,6 +3,7 @@ import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../../../../core/storage/offline_cache.dart';
+import '../models/vote_settings.dart';
 
 class DailyRideDetails {
   final bool isRiding;
@@ -21,26 +22,16 @@ class DailyRideDetails {
 class DailyRideRepository {
   final SupabaseClient _client = SupabaseService.client;
 
-  /// Voting opens at 4 PM on the day before a ride and closes at 6 AM
-  /// on the ride day (device local time, configured for Africa/Cairo).
-  bool isVotingOpen() {
-    return isVotingOpenAt(DateTime.now());
-  }
-
-  static bool isVotingOpenAt(DateTime now) {
-    return now.hour >= 16 || now.hour < 6;
-  }
-
-  /// During the evening window students vote for tomorrow; before 6 AM they
-  /// vote for today's ride. Between windows, today's submitted vote is shown
-  /// read-only until the next evening.
-  DateTime rideDateForCurrentWindow() {
-    return rideDateFor(DateTime.now());
-  }
-
-  static DateTime rideDateFor(DateTime now) {
-    final today = DateTime(now.year, now.month, now.day);
-    return now.hour >= 16 ? today.add(const Duration(days: 1)) : today;
+  /// When [companyId]'s students may vote and how often they are reminded
+  /// (the platform's settings when null). Kept for offline starts.
+  Future<VoteSettings> getVoteSettings(String? companyId) async {
+    final response = await OfflineCache.readThrough(
+        'vote_settings.${companyId ?? 'platform'}',
+        () => _client.rpc(SupabaseRpcs.getVoteSettings,
+            params: {'p_company_id': companyId}));
+    return response is Map
+        ? VoteSettings.fromJson(Map<String, dynamic>.from(response))
+        : VoteSettings.fallback;
   }
 
   /// Get ride status for a specific date
@@ -105,7 +96,7 @@ class DailyRideRepository {
     };
   }
 
-  /// Toggle ride status for a specific date (Calls stored procedure with 1:00 PM cutoff enforcement)
+  /// Toggle ride status for a specific date (the database enforces the vote window)
   Future<bool> toggleRide({
     required DateTime rideDate,
     required bool isRiding,

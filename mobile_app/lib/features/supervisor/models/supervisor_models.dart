@@ -1,3 +1,4 @@
+import '../../student/daily_ride/models/vote_settings.dart';
 import '../qr_scanner/models/scanned_student_details.dart';
 
 int _int(dynamic value) => (value as num?)?.toInt() ?? 0;
@@ -83,6 +84,9 @@ class SupervisorProfile {
   /// 'direct' = the company assigned lines to this supervisor; 'none' = no line yet.
   final String assignment;
 
+  /// When the company's students vote (tomorrow's counts move from its opening).
+  final VoteSettings vote;
+
   SupervisorProfile({
     required this.id,
     required this.fullName,
@@ -93,6 +97,7 @@ class SupervisorProfile {
     required this.companyName,
     required this.companyActive,
     required this.assignment,
+    this.vote = VoteSettings.fallback,
   });
 
   bool get isDirectlyAssigned => assignment == 'direct';
@@ -107,6 +112,9 @@ class SupervisorProfile {
         companyName: json['company_name'] as String?,
         companyActive: json['company_active'] as bool? ?? true,
         assignment: json['assignment'] as String? ?? 'none',
+        vote: json['vote'] is Map
+            ? VoteSettings.fromJson(Map<String, dynamic>.from(json['vote'] as Map))
+            : VoteSettings.fallback,
       );
 }
 

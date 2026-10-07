@@ -8,6 +8,7 @@ import '../../../core/storage/offline_cache.dart';
 import '../../../core/storage/snapshot_store.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
+import '../../student/daily_ride/data/vote_reminders.dart';
 import '../../student/qr/data/student_qr_repository.dart';
 
 final activeUniversitiesProvider =
@@ -202,6 +203,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
     try {
       await requireOnline(_repo.deleteStudentAccount);
+      await VoteReminders.cancelAll();
       await OfflineCache.clearAll();
       await SnapshotStore.clear();
       state = const AuthState();
@@ -221,6 +223,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // revoke failed, so the student is still signed out on this device.
       if (!isNetworkFailure(error)) rethrow;
     }
+    // The next account on this phone must not get this student's reminders.
+    await VoteReminders.cancelAll();
     await OfflineCache.clearAll();
     await SnapshotStore.clear();
     state = const AuthState();

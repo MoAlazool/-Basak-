@@ -7,6 +7,7 @@ import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/main.dart';
 import 'package:basak_mobile/features/student/lines/models/line_model.dart';
 import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
+import 'package:basak_mobile/features/student/daily_ride/models/vote_settings.dart';
 import 'package:basak_mobile/features/onboarding/onboarding_controller.dart';
 import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
 import 'package:basak_mobile/features/supervisor/models/supervisor_models.dart';
@@ -15,9 +16,7 @@ import 'package:basak_mobile/features/student/home/presentation/student_home_scr
 
 class _FakeDailyRideRepo implements DailyRideRepository {
   @override
-  DateTime rideDateForCurrentWindow([DateTime? now]) => DateTime(2026, 10, 4);
-  @override
-  bool isVotingOpen([DateTime? now]) => true;
+  Future<VoteSettings> getVoteSettings(String? companyId) async => VoteSettings.fallback;
   @override
   Future<Map<DateTime, bool>> getRideStatusesForRange(DateTime from, DateTime to) async => {};
   @override
@@ -64,19 +63,62 @@ void main() {
     expect(station.returnTime, '16:00');
   });
 
-  test('ride voting opens at 4 PM and closes at 6 AM for the ride date', () {
+  test('the default vote opens at 4 PM and closes at 6 AM on the ride day', () {
+    const vote = VoteSettings.fallback;
     final evening = DateTime(2026, 9, 27, 16);
     final beforeDeadline = DateTime(2026, 9, 28, 5, 59);
     final deadline = DateTime(2026, 9, 28, 6);
     final closed = DateTime(2026, 9, 28, 15, 59);
 
-    expect(DailyRideRepository.isVotingOpenAt(evening), isTrue);
-    expect(DailyRideRepository.rideDateFor(evening), DateTime(2026, 9, 28));
-    expect(DailyRideRepository.isVotingOpenAt(beforeDeadline), isTrue);
-    expect(
-        DailyRideRepository.rideDateFor(beforeDeadline), DateTime(2026, 9, 28));
-    expect(DailyRideRepository.isVotingOpenAt(deadline), isFalse);
-    expect(DailyRideRepository.isVotingOpenAt(closed), isFalse);
+    expect(vote.isOpenAt(evening), isTrue);
+    expect(vote.rideDateFor(evening), DateTime(2026, 9, 28));
+    expect(vote.isOpenAt(beforeDeadline), isTrue);
+    expect(vote.rideDateFor(beforeDeadline), DateTime(2026, 9, 28));
+    expect(vote.isOpenAt(deadline), isFalse);
+    expect(vote.isOpenAt(closed), isFalse);
+    // Closed: today's vote stays on screen until the next one opens.
+    expect(vote.rideDateFor(closed), DateTime(2026, 9, 28));
+  });
+
+  test('a vote may open and close the same evening', () {
+    final vote = VoteSettings.fromJson(
+        {'opens_at': '12:00', 'closes_at': '22:30', 'reminder_minutes': 0});
+    expect(vote.closesOnRideDay, isFalse);
+    expect(vote.isOpenAt(DateTime(2026, 10, 7, 11, 59)), isFalse);
+    expect(vote.isOpenAt(DateTime(2026, 10, 7, 12)), isTrue);
+    expect(vote.rideDateFor(DateTime(2026, 10, 7, 12)), DateTime(2026, 10, 8));
+    expect(vote.isOpenAt(DateTime(2026, 10, 7, 22, 29)), isTrue);
+    expect(vote.isOpenAt(DateTime(2026, 10, 7, 22, 30)), isFalse);
+    // After it closes, the closed vote's ride day (tomorrow) is shown.
+    expect(vote.rideDateFor(DateTime(2026, 10, 7, 23)), DateTime(2026, 10, 8));
+    final window = vote.windowFor(DateTime(2026, 10, 8));
+    expect(window.opens, DateTime(2026, 10, 7, 12));
+    expect(window.closes, DateTime(2026, 10, 7, 22, 30));
+  });
+
+  test('reminders run from the opening every interval until the close', () {
+    final vote = VoteSettings.fromJson(
+        {'opens_at': '16:00', 'closes_at': '06:00', 'reminder_minutes': 180});
+    expect(vote.reminderTimesFor(DateTime(2026, 10, 8)), [
+      DateTime(2026, 10, 7, 16),
+      DateTime(2026, 10, 7, 19),
+      DateTime(2026, 10, 7, 22),
+      DateTime(2026, 10, 8, 1),
+      DateTime(2026, 10, 8, 4),
+    ]);
+    final once = VoteSettings.fromJson(
+        {'opens_at': '18:00', 'closes_at': '23:00', 'reminder_minutes': 1440});
+    expect(once.reminderTimesFor(DateTime(2026, 10, 8)), [DateTime(2026, 10, 7, 18)]);
+    expect(VoteSettings.fallback.reminderTimesFor(DateTime(2026, 10, 8)), isEmpty);
+  });
+
+  test('vote times read in Arabic', () {
+    expect(VoteSettings.fallback.opensLabel, '٤ م');
+    expect(VoteSettings.fallback.closesLabel, '٦ ص');
+    expect(VoteSettings.clock(6 * 60 + 30, long: true), '٦:٣٠ صباحاً');
+    expect(VoteSettings.clock(12 * 60, long: true), '١٢ ظهراً');
+    expect(VoteSettings.fallback.windowSentence,
+        'التصويت من ٤ مساءً في اليوم السابق حتى ٦ صباحاً يوم الرحلة.');
   });
 
   testWidgets('Basak opens the Arabic sign-in screen', (tester) async {

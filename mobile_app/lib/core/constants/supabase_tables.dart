@@ -25,6 +25,7 @@ class SupabaseRpcs {
   static const String getPurchasablePeriods = 'get_purchasable_periods';
   static const String dailySubscriptionEnabled = 'daily_subscription_enabled';
   static const String getSubscriptionSwitches = 'get_subscription_switches';
+  static const String getVoteSettings = 'get_vote_settings';
   static const String requestStudentPasswordReset = 'request_student_password_reset';
   static const String walletRefreshMyCard = 'wallet_refresh_my_card';
 }

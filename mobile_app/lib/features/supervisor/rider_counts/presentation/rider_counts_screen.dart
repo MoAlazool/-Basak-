@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../student/daily_ride/models/vote_settings.dart';
 import '../data/rider_counts_repository.dart';
 import '../models/station_rider_count_model.dart';
 
@@ -20,7 +21,13 @@ class RiderCountsScreen extends ConsumerStatefulWidget {
 }
 
 class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
-  bool _isTomorrowSelected = DateTime.now().hour >= 16;
+  // Tomorrow once its vote has opened (the company's opening time).
+  late bool _isTomorrowSelected = () {
+    final vote = ref.read(supervisorDashboardProvider).valueOrNull?.profile.vote ??
+        VoteSettings.fallback;
+    final now = DateTime.now();
+    return vote.rideDateFor(now).day != now.day;
+  }();
   bool _isLoading = true;
   List<StationRiderCountModel> _counts = [];
   String? _error;

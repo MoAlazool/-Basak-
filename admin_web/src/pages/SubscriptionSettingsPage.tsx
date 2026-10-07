@@ -5,6 +5,7 @@ import { Topbar } from '../components/Topbar';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
+import { VoteSettingsCard } from '../components/VoteSettingsCard';
 
 interface Term {
   code: 'first' | 'second' | 'summer';
@@ -133,7 +134,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   return (
     <div className="space-y-6">
       {companyId ? (
-        <Topbar title="إعدادات الشركة" subtitle={`مواعيد الفصول والاشتراك السنوي واليومي الخاصة بـ ${companyName}`} />
+        <Topbar title="إعدادات الشركة" subtitle={`مواعيد الفصول والاشتراكات وتأكيد الرحلة الخاصة بـ ${companyName}`} />
       ) : (
         <Topbar title="الإعدادات الافتراضية" subtitle="ما تبدأ به كل شركة جديدة. تغييرها لا يمس الشركات القائمة." />
       )}
@@ -265,6 +266,8 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
           )}
         </>
       )}
+
+      <VoteSettingsCard companyId={companyId} companyName={companyName} />
     </div>
   );
 };
