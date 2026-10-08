@@ -27,6 +27,13 @@ Deno.serve(async (request: Request) => {
     // Legacy rows can exist without a matching Auth user.
     const { error: deleteRowError } = await serviceClient.from('supervisors').delete().eq('id', supervisorId);
     if (deleteRowError) throw deleteRowError;
+    // Their photos go too. A leftover file is harmless (nobody can see it), so
+    // a storage hiccup does not fail the deletion.
+    const { data: photos } = await serviceClient.storage.from('supervisor-avatars').list(supervisorId);
+    if (photos?.length) {
+      await serviceClient.storage.from('supervisor-avatars')
+        .remove(photos.map((photo) => `${supervisorId}/${photo.name}`));
+    }
     return jsonResponse({ deleted: true });
   } catch (error) {
     return jsonResponse({ error: errorMessage(error, 'تعذر حذف المشرف.') }, errorStatus(error));
