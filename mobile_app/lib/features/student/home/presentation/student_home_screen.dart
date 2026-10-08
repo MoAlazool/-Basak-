@@ -465,7 +465,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                  child: Text(sub.lineName ?? 'خط الجامعة',
+                  child: Text(sub.routeTitle,
                       style: AppTextStyles.titleMedium
                           .copyWith(color: Colors.white))),
               const SizedBox(width: 10),

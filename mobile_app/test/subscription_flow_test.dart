@@ -1,0 +1,387 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:basak_mobile/features/student/subscription/models/payment_method_model.dart';
+import 'package:basak_mobile/features/student/subscription/models/sale_catalog.dart';
+import 'package:basak_mobile/features/student/subscription/models/subscription_draft.dart';
+import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
+import 'package:basak_mobile/features/student/subscription/presentation/purchase_flow.dart';
+import 'package:basak_mobile/features/student/subscription/presentation/receipt_card.dart';
+import 'package:basak_mobile/features/student/subscription/presentation/subscription_screen.dart';
+
+/// What get_subscription_catalog() returns for a student of جامعة الدلتا.
+SaleCatalog catalog({bool withSecond = true}) => SaleCatalog.fromJson(jsonDecode(jsonEncode({
+      'university': {'id': 'u1', 'name': 'جامعة الدلتا'},
+      'companies': [
+        {
+          'id': 'c1',
+          'name': 'المستقبل',
+          'lines': [
+            {
+              'id': 'l1', 'name': 'منية النصر', 'origin_name': 'منية النصر', 'university': 'جامعة الدلتا',
+              'first_departure': '06:30:00', 'last_return': '17:30:00',
+              'stations': [
+                {
+                  'id': 's1', 'name': 'ميت تمامة',
+                  'departures': [
+                    {'trip_id': 't1', 'time': '07:00:00', 'start': '06:30:00', 'label': ''},
+                    {'trip_id': 't2', 'time': '09:00:00', 'start': '08:30:00', 'label': ''},
+                  ],
+                  'returns': [
+                    {'trip_id': 'r1', 'time': '15:50:00', 'start': '15:00:00', 'label': ''},
+                  ],
+                },
+                {
+                  'id': 's2', 'name': 'البجلات',
+                  'departures': [
+                    {'trip_id': 't1', 'time': '07:10:00', 'start': '06:30:00', 'label': ''},
+                  ],
+                  'returns': [],
+                },
+              ],
+              'options': [
+                {'option': 'first', 'academic_year': 2026, 'name': 'الفصل الدراسي الأول', 'label': 'الفصل الدراسي الأول 2026/2027',
+                 'type': 'termly', 'start_date': '2026-09-05', 'end_date': '2027-01-30', 'phase': 'current', 'price': 8000},
+                {'option': 'both', 'academic_year': 2026, 'name': 'الفصلان معاً', 'label': 'الفصلان معاً 2026/2027',
+                 'type': 'yearly', 'start_date': '2026-09-05', 'end_date': '2027-06-30', 'phase': 'current', 'price': 15000},
+                if (withSecond)
+                  {'option': 'second', 'academic_year': 2026, 'name': 'الفصل الدراسي الثاني', 'label': 'الفصل الدراسي الثاني 2026/2027',
+                   'type': 'termly', 'start_date': '2027-02-01', 'end_date': '2027-06-30', 'phase': 'upcoming', 'price': 8500},
+              ],
+              'daily': {'enabled': true, 'price': 50},
+            },
+            {
+              'id': 'l2', 'name': 'دكرنس', 'origin_name': 'دكرنس', 'university': 'جامعة الدلتا',
+              'first_departure': '07:00:00', 'last_return': null,
+              'stations': [
+                {'id': 's9', 'name': 'دكرنس', 'departures': [{'trip_id': 't9', 'time': '07:05:00', 'start': '07:00:00', 'label': ''}], 'returns': []},
+              ],
+              'options': [
+                {'option': 'first', 'academic_year': 2026, 'name': 'الفصل الدراسي الأول', 'label': 'الفصل الدراسي الأول 2026/2027',
+                 'type': 'termly', 'start_date': '2026-09-05', 'end_date': '2027-01-30', 'phase': 'current', 'price': 6000},
+              ],
+              'daily': {'enabled': false, 'price': 40},
+            },
+          ],
+        },
+      ],
+    })) as Map<String, dynamic>);
+
+SubscriptionModel subscription(String status, {String type = 'termly', String code = 'first'}) =>
+    SubscriptionModel.fromJson({
+      'id': 'sub1', 'student_id': 'me', 'line_id': 'l1', 'company_id': 'c1', 'station_id': 's2', 'type': type,
+      'status': status, 'price': 8000, 'created_at': '2026-10-08',
+      'start_date': '2026-09-05', 'end_date': '2027-01-30', 'period_code': type == 'daily' ? null : code,
+      'academic_year': 2026, 'period_label': 'الفصل الدراسي الأول 2026/2027', 'period_phase': 'current',
+      'lines': {'name': 'منية النصر', 'companies': {'name': 'المستقبل'}},
+      'stations': {'name': 'البجلات'},
+      'student': {'university': 'جامعة الدلتا'},
+    });
+
+const receipt = SubscriptionReceipt(
+  subscriptionId: 'sub1', number: 7, companyName: 'المستقبل', studentName: 'طالب تجريبي محلي',
+  studentPhone: '01055512301', universityName: 'جامعة الدلتا', lineName: 'منية النصر', stationName: 'البجلات',
+  periodLabel: 'الفصل الدراسي الأول 2026/2027', startDate: '2026-09-05', endDate: '2027-01-30',
+  amount: 8000, paymentMethod: 'InstaPay', approvedAt: '2026-10-08T10:00:00Z',
+);
+
+void main() {
+  group('the selection draft', () {
+    final c = catalog();
+
+    test('each choice opens the next step, in order', () {
+      var d = const SubscriptionDraft();
+      expect(d.firstOpenStep, DraftStep.company);
+      d = d.pickCompany(c, 'c1');
+      expect(d.firstOpenStep, DraftStep.line);
+      d = d.pickLine(c, 'l1');
+      expect(d.firstOpenStep, DraftStep.station);
+      d = d.pickStation('s2');
+      expect(d.firstOpenStep, DraftStep.period);
+      d = d.pickOption('second:2026');
+      expect(d.firstOpenStep, DraftStep.review);
+      expect(d.canOpen(DraftStep.company), isTrue);
+    });
+
+    test('changing the line clears only what the new line does not have', () {
+      final d = const SubscriptionDraft().pickCompany(c, 'c1').pickLine(c, 'l1').pickStation('s2').pickOption('first:2026');
+      final other = d.pickLine(c, 'l2');
+      expect(other.lineId, 'l2');
+      expect(other.stationId, isNull, reason: 'البجلات is not on the new line');
+      expect(other.optionKey, 'first:2026', reason: 'the new line sells the first semester too');
+      final both = d.pickOption('both:2026').pickLine(c, 'l2');
+      expect(both.optionKey, isNull, reason: 'the new line does not sell both');
+      // Picking the same line again keeps everything.
+      expect(d.pickLine(c, 'l1'), d);
+    });
+
+    test('a choice that is no longer on sale is dropped when the catalog refreshes', () {
+      final d = const SubscriptionDraft(companyId: 'c1', lineId: 'l1', stationId: 's1', optionKey: 'second:2026');
+      final after = d.reconciled(catalog(withSecond: false));
+      expect(after.optionKey, isNull);
+      expect(after.stationId, 's1');
+      expect(after.firstOpenStep, DraftStep.period);
+    });
+
+    test('the request carries the chosen option and its own price', () {
+      final d = const SubscriptionDraft(companyId: 'c1', lineId: 'l1', stationId: 's1', optionKey: 'second:2026');
+      final r = SubscriptionRequest.from(d, c)!;
+      expect([r.type, r.periodCode, r.academicYear, r.price], ['termly', 'second', 2026, 8500]);
+      // The earliest trip of each direction at that station.
+      expect([r.departureTripId, r.departureTime, r.returnTripId, r.returnTime], ['t1', '07:00:00', 'r1', '15:50:00']);
+      final both = SubscriptionRequest.from(d.pickOption('both:2026'), c)!;
+      expect([both.type, both.periodCode, both.price], ['yearly', 'both', 15000]);
+      final daily = SubscriptionRequest.from(d.pickOption(SubscriptionDraft.dailyKey), c)!;
+      expect([daily.type, daily.periodCode, daily.price], ['daily', null, 50]);
+      expect(SubscriptionRequest.from(const SubscriptionDraft(companyId: 'c1', lineId: 'l1'), c), isNull);
+    });
+  });
+
+  group('titles', () {
+    test('line ← the student\'s own university, wherever it is shown', () {
+      expect(subscription('active').routeTitle, 'منية النصر ← جامعة الدلتا');
+      expect(subscription('active').periodName, 'الفصل الأول');
+      expect(subscription('active', type: 'yearly', code: 'both').periodName, 'الفصلان معاً');
+      // The older spelling still reads correctly.
+      expect(subscription('active', type: 'yearly', code: 'annual').periodName, 'الفصلان معاً');
+    });
+  });
+
+  group('choosing a subscription', () {
+    late List<SubscriptionRequest> created;
+
+    Future<void> open(WidgetTester tester, {SubscriptionDraft initial = const SubscriptionDraft(), bool allowDaily = true}) async {
+      created = [];
+      tester.view.physicalSize = const Size(1170, 2800);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          saleCatalogProvider.overrideWith((ref) async => catalog()),
+          subscriptionCreatorProvider.overrideWithValue((request) async {
+            created.add(request);
+            return subscription('pending_payment');
+          }),
+        ],
+        child: MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: PurchaseFlow(initial: initial, allowDaily: allowDaily, onCreated: (_) {}),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> tap(WidgetTester tester, String key) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('five steps, forward and back, changing choices: nothing is written until confirm', (tester) async {
+      await open(tester);
+      expect(find.text('الشركات التي تخدم جامعة الدلتا'), findsOneWidget);
+      await tap(tester, 'company-c1');
+
+      // Line card: name, own university, counts, range of times, lowest price. Nothing repeated.
+      expect(find.text('منية النصر'), findsOneWidget);
+      expect(find.text('إلى جامعة الدلتا'), findsNWidgets(2));
+      expect(find.text('من 8000 ج.م'), findsOneWidget);
+      expect(find.text('أول ذهاب 6:30 ص'), findsOneWidget);
+      expect(find.text('آخر عودة 5:30 م'), findsOneWidget);
+      expect(find.textContaining('يخدم'), findsNothing);
+      await tap(tester, 'line-l1');
+
+      // Station: one time per trip that stops there, returns apart.
+      await tap(tester, 'station-s1');
+      expect(find.textContaining('7:00 ص · 9:00 ص', findRichText: true), findsOneWidget);
+      expect(find.textContaining('3:00 م', findRichText: true), findsOneWidget);
+      await tap(tester, 'station-s2');
+      expect(find.textContaining('7:10 ص', findRichText: true), findsOneWidget);
+      expect(find.textContaining('9:00 ص', findRichText: true), findsNothing);
+      await tap(tester, 'flow-next');
+
+      // Period: exactly what is on sale, each with its price, and no dates.
+      expect(find.text('الفصل الأول'), findsOneWidget);
+      expect(find.text('الفصل الثاني'), findsOneWidget);
+      expect(find.text('الفصلان معاً'), findsOneWidget);
+      expect(find.text('الفصل الصيفي'), findsNothing);
+      expect(find.text('8500 ج.م'), findsOneWidget);
+      expect(find.textContaining('2026'), findsNothing);
+      expect(find.textContaining('2027'), findsNothing);
+      await tap(tester, 'option-second');
+      await tap(tester, 'flow-next');
+
+      // Review: every choice once, the amount once.
+      expect(find.text('8500 ج.م'), findsOneWidget);
+      expect(find.text('البجلات'), findsOneWidget);
+      expect(find.text('المستقبل'), findsOneWidget);
+
+      // Back to the station, change it, come forward again: the period is kept.
+      await tap(tester, 'review-edit-station');
+      await tap(tester, 'station-s1');
+      await tap(tester, 'flow-next');
+      await tap(tester, 'flow-next');
+      expect(find.text('ميت تمامة'), findsOneWidget);
+      expect(find.text('8500 ج.م'), findsOneWidget);
+
+      // Back step by step to the line, pick another line: its missing station is asked again.
+      await tap(tester, 'flow-back');
+      await tap(tester, 'flow-back');
+      await tap(tester, 'flow-back');
+      await tap(tester, 'line-l2');
+      expect(find.text('اختر محطة الصعود'), findsOneWidget);
+      await tap(tester, 'station-s9');
+      await tap(tester, 'flow-next');
+      await tap(tester, 'option-first');
+      await tap(tester, 'flow-next');
+      expect(find.text('6000 ج.م'), findsOneWidget);
+
+      // And change the period from the progress bar.
+      await tap(tester, 'flow-step-line');
+      await tap(tester, 'line-l1');
+      await tap(tester, 'station-s2');
+      await tap(tester, 'flow-next');
+      await tap(tester, 'option-both');
+      await tap(tester, 'flow-next');
+      expect(find.text('15000 ج.م'), findsOneWidget);
+
+      expect(created, isEmpty, reason: 'moving between the steps must not create or change anything');
+
+      await tap(tester, 'flow-confirm');
+      expect(created, hasLength(1));
+      expect([created.single.lineId, created.single.stationId, created.single.periodCode, created.single.price],
+          ['l1', 's2', 'both', 15000]);
+    });
+
+    testWidgets('the next period opens on the review with company, line and station filled in', (tester) async {
+      await open(tester,
+          initial: const SubscriptionDraft(companyId: 'c1', lineId: 'l1', stationId: 's2', optionKey: 'second:2026'),
+          allowDaily: false);
+      expect(find.text('راجع اختياراتك'), findsOneWidget);
+      expect(find.text('8500 ج.م'), findsOneWidget);
+      // A student who already holds a subscription is not offered a cash day ride.
+      await tap(tester, 'review-edit-period');
+      expect(find.byKey(const Key('option-daily')), findsNothing);
+      expect(created, isEmpty);
+    });
+  });
+
+  group('after confirming', () {
+    Future<void> open(WidgetTester tester, SubscriptionModel sub, {SubscriptionReceipt? doc}) async {
+      tester.view.physicalSize = const Size(1170, 4200);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          allSubscriptionsProvider.overrideWith((ref) async => [sub]),
+          saleCatalogProvider.overrideWith((ref) async => catalog()),
+          subscriptionReceiptsProvider.overrideWith((ref, id) async => <ReceiptModel>[]),
+          subscriptionReceiptDocProvider.overrideWith((ref, id) async => doc),
+          paymentMethodsProvider.overrideWith((ref, id) async => [
+                PaymentMethodModel.fromJson({
+                  'id': 'm1', 'company_id': 'c1', 'method_type': 'instapay', 'display_name': 'InstaPay',
+                  'instapay_address': 'almostaqbal@instapay', 'instructions': 'اكتب اسم الطالب في الملاحظات.',
+                  'is_active': true, 'sort_order': 0,
+                }),
+              ]),
+        ],
+        child: const MaterialApp(
+          home: Directionality(textDirection: TextDirection.rtl, child: SubscriptionScreen()),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('payment: the amount once, one block of notes, and no way to change the selection', (tester) async {
+      await open(tester, subscription('pending_payment'));
+      expect(find.text('إتمام الدفع'), findsOneWidget);
+      expect(find.text('منية النصر ← جامعة الدلتا'), findsOneWidget);
+      expect(find.text('البجلات'), findsOneWidget);
+      expect(find.text('المبلغ المطلوب'), findsOneWidget);
+      expect(find.text('8000 ج.م'), findsOneWidget);
+      expect(find.byKey(const Key('payment-notes')), findsOneWidget);
+      expect(find.textContaining('صورة واضحة'), findsOneWidget);
+      // The method's own note joins the same block once the method is chosen.
+      expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsNothing);
+      await tester.tap(find.text('InstaPay').first);
+      await tester.pumpAndSettle();
+      expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsOneWidget);
+      expect(find.text('almostaqbal@instapay'), findsOneWidget);
+      expect(find.text('8000 ج.م'), findsOneWidget);
+      // The selection is fixed once the request exists.
+      expect(find.byKey(const Key('flow-back')), findsNothing);
+      expect(find.textContaining('تعديل'), findsNothing);
+      expect(find.textContaining('تغيير'), findsNothing);
+    });
+
+    testWidgets('rejected: re-upload for the same subscription, still no change of selection', (tester) async {
+      await open(tester, subscription('rejected'));
+      expect(find.text('تم رفض الإيصال'), findsOneWidget);
+      expect(find.text('إيصال التحويل'), findsOneWidget);
+      expect(find.textContaining('تغيير'), findsNothing);
+      expect(find.byKey(const Key('flow-back')), findsNothing);
+    });
+
+    testWidgets('under review: no payment methods, no change of selection', (tester) async {
+      await open(tester, subscription('pending_review'));
+      expect(find.text('إيصالك قيد المراجعة'), findsOneWidget);
+      expect(find.text('المبلغ المطلوب'), findsNothing);
+      expect(find.byKey(const Key('payment-methods')), findsNothing);
+      expect(find.byKey(const Key('payment-notes')), findsNothing);
+      expect(find.textContaining('تغيير'), findsNothing);
+    });
+
+    testWidgets('approved: a different screen with the receipt, never "required amount"', (tester) async {
+      await open(tester, subscription('active'), doc: receipt);
+      expect(find.text('اشتراكك مفعّل'), findsOneWidget);
+      expect(find.text('المبلغ المطلوب'), findsNothing);
+      expect(find.text('المبلغ المدفوع'), findsOneWidget);
+      expect(find.text('8000 ج.م'), findsOneWidget);
+      expect(find.byKey(const Key('payment-methods')), findsNothing);
+      expect(find.byKey(const Key('payment-notes')), findsNothing);
+      expect(find.text('إيصال التحويل'), findsNothing);
+      expect(find.text('00007'), findsOneWidget);
+      expect(find.text('من 5 سبتمبر 2026 إلى 30 يناير 2027'), findsOneWidget);
+      expect(find.byKey(const Key('receipt-pdf')), findsOneWidget);
+      expect(find.byKey(const Key('receipt-image')), findsOneWidget);
+      // The next period, when the company sells it in advance, with its own price.
+      expect(find.text('الفصل الثاني · 8500 ج.م'), findsOneWidget);
+    });
+
+    testWidgets('approved before receipts existed: the summary, without the buttons', (tester) async {
+      await open(tester, subscription('active'));
+      expect(find.text('المبلغ المدفوع'), findsOneWidget);
+      expect(find.text('المبلغ المطلوب'), findsNothing);
+      expect(find.byKey(const Key('receipt-pdf')), findsNothing);
+    });
+  });
+
+  testWidgets('the receipt is captured as drawn and wrapped in a PDF', (tester) async {
+    final key = GlobalKey();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: RepaintBoundary(key: key, child: const ReceiptCard(receipt: receipt)),
+        ),
+      ),
+    ));
+    expect(find.text('المستقبل'), findsOneWidget);
+    expect(find.text('طالب تجريبي محلي'), findsOneWidget);
+    expect(find.text('الفصل الدراسي الأول 2026/2027'), findsOneWidget);
+    final pdf = await tester.runAsync(() async {
+      final png = await ReceiptExport.png(key);
+      expect(png.sublist(1, 4), 'PNG'.codeUnits);
+      return ReceiptExport.pdf(png, title: 'إيصال');
+    });
+    expect(String.fromCharCodes(pdf!.sublist(0, 5)), '%PDF-');
+    expect(ReceiptExport.fileName(receipt, 'pdf'), 'basak-receipt-00007.pdf');
+  });
+}

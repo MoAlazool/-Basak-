@@ -544,12 +544,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
                  'departures', d.list, 'returns', COALESCE(r.list, '[]'::jsonb)) ORDER BY st.order_index, st.name)
         FROM public.stations st
         CROSS JOIN LATERAL (
-          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'label', t.label)
+          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'start', t.start_time, 'label', t.label)
                            ORDER BY x.stop_time) AS list
           FROM trips t JOIN public.line_trip_stops x ON x.trip_id = t.id AND x.station_id = st.id
           WHERE t.line_id = l.id AND t.direction = 'departure') d
         CROSS JOIN LATERAL (
-          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'label', t.label)
+          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'start', t.start_time, 'label', t.label)
                            ORDER BY x.stop_time) AS list
           FROM trips t JOIN public.line_trip_stops x ON x.trip_id = t.id AND x.station_id = st.id
           WHERE t.line_id = l.id AND t.direction = 'return') r
@@ -853,7 +853,8 @@ BEGIN
         'company', f.company_name, 'line', f.line_name, 'type', f.type, 'period', f.period_key,
         'academic_year', f.academic_year, 'label', f.period_label_text,
         'status', f.status, 'phase', f.phase, 'paid', f.is_paid, 'amount', f.paid_amount, 'price', f.price,
-        'paid_at', f.paid_at, 'start_date', f.start_date, 'end_date', f.end_date, 'payment_method', f.payment_method)
+        'paid_at', f.paid_at, 'start_date', f.start_date, 'end_date', f.end_date, 'payment_method', f.payment_method,
+        'receipt_no', (SELECT x.receipt_no FROM public.subscription_receipts x WHERE x.subscription_id = f.id))
         ORDER BY f.paid_at DESC NULLS LAST, f.created_at DESC)
       FROM (SELECT * FROM filtered LIMIT 2000) f), '[]'::jsonb)
   ) INTO v_data;

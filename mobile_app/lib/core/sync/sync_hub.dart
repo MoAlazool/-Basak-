@@ -10,6 +10,7 @@ import '../../features/notifications/data/notifications_repository.dart';
 import '../../features/student/home/presentation/student_home_screen.dart';
 import '../../features/student/invites/invites.dart';
 import '../../features/student/qr/presentation/student_qr_screen.dart';
+import '../../features/student/subscription/presentation/purchase_flow.dart';
 import '../../features/student/subscription/presentation/subscription_screen.dart';
 import '../../features/supervisor/data/supervisor_repository.dart';
 import '../../features/supervisor/trips/presentation/supervisor_trips_screen.dart';
@@ -140,10 +141,11 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
         ref.invalidate(subscriptionReceiptsProvider);
         ref.invalidate(studentQrProvider);
       }
-      if (tables.any(const {'lines', 'stations', 'line_trips'}.contains)) {
-        ref.invalidate(studentCatalogProvider);
-        ref.invalidate(allLinesProvider);
+      // What is on sale depends on the lines, their prices and what the student holds.
+      if (tables.any(const {'lines', 'stations', 'line_trips', 'line_period_prices', 'subscriptions'}.contains)) {
+        ref.invalidate(saleCatalogProvider);
       }
+      if (tables.contains('subscriptions')) ref.invalidate(subscriptionReceiptDocProvider);
       if (tables.contains('company_invites') || tables.contains('company_students')) {
         ref.invalidate(myInvitesProvider);
       }
@@ -170,9 +172,8 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
       _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students', 'notifications'});
-      // Company settings (annual / daily switches, vote times) send no event to students.
-      ref.invalidate(purchasablePeriodsProvider);
-      ref.invalidate(dailySubscriptionEnabledProvider);
+      // Company settings (sale switches, vote times) send no event to students.
+      ref.invalidate(saleCatalogProvider);
       ref.invalidate(voteSettingsProvider);
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {
