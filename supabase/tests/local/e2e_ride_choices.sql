@@ -7,12 +7,12 @@
 --   Going   D1 07:00 (all)          S1 07:10, S2 07:20, S3 07:30
 --           D2 08:00 (Uni Two only) S1 08:10, S2 08:20, S3 08:30
 --           D3 06:00 (inactive)     S1 07:10
---   Return  R1 15:00 (all)          S3 15:15, S2 15:25, S1 15:35
---           R2 17:00 (all)          S3 17:15, S2 17:25, S1 17:35
+--   Return  R1 15:00 (all)          leaves the university at 15:00, no station times
+--           R2 17:00 (all)          leaves the university at 17:00
 -- Today's votes (A, B, H = Uni One; C, D, F = Uni Two; E = Uni One):
---   A  S1  07:10 → D1 (not the inactive D3), back 15:35 → R1
+--   A  S1  07:10 → D1 (not the inactive D3), back 15:00 → R1
 --   B  S2  07:20 → D1, returning with no time saved → their subscription's R2
---   C  S2  08:20 → D2, back 15:25 → R1
+--   C  S2  08:20 → D2, back 15:00 → R1
 --   D  S3  07:30 → D1, not returning
 --   H  S2  08:20, but D2 is closed to Uni One → their subscription's D1
 --   E  S3  no vote at all (unconfirmed)
@@ -79,9 +79,8 @@ INSERT INTO public.line_trip_stops (trip_id, station_id, stop_time)
 SELECT ('e7400000-0000-0000-0000-0000000000' || t)::uuid, ('e7300000-0000-0000-0000-00000000000' || s)::uuid, x::time
 FROM (VALUES ('d1', 1, '07:10'), ('d1', 2, '07:20'), ('d1', 3, '07:30'),
              ('d2', 1, '08:10'), ('d2', 2, '08:20'), ('d2', 3, '08:30'),
-             ('d3', 1, '07:10'),
-             ('a1', 3, '15:15'), ('a1', 2, '15:25'), ('a1', 1, '15:35'),
-             ('a2', 3, '17:15'), ('a2', 2, '17:25'), ('a2', 1, '17:35')) v(t, s, x);
+             ('d3', 1, '07:10')) v(t, s, x);
+-- Return trips have no stops of their own: the bus leaves the university at the trip's time.
 
 -- Supervisors: SA is assigned to the line, SB (same company) is not.
 INSERT INTO auth.users (id, email) VALUES
@@ -114,9 +113,9 @@ FROM rc_students;
 -- The day's votes.
 INSERT INTO public.daily_ride_status (student_id, ride_date, is_riding, departure_time, return_time, is_returning)
 SELECT rc.sid(k), public.cairo_today() + day, riding, dep::time, ret::time, back
-FROM (VALUES ('A', 0, true, '07:10', '15:35', true),
+FROM (VALUES ('A', 0, true, '07:10', '15:00', true),
              ('B', 0, true, '07:20', NULL, true),
-             ('C', 0, true, '08:20', '15:25', true),
+             ('C', 0, true, '08:20', '15:00', true),
              ('D', 0, true, '07:30', NULL, false),
              ('H', 0, true, '08:20', NULL, false),
              ('F', 0, false, NULL, NULL, false),
@@ -158,14 +157,14 @@ BEGIN
 
   g := rc.grp(d, v_today, 'return', r1);
   PERFORM rc.ok('T6 R1 stations in return travel order (S3 → S1)',
-    rc.counts(g->'stations') = 'S3:0 S2:1 S1:1' AND rc.riders(g->'riders') = 'C@S2 15:25, A@S1 15:35',
+    rc.counts(g->'stations') = 'S3:0 S2:1 S1:1' AND rc.riders(g->'riders') = 'C@S2 15:00, A@S1 15:00',
     rc.counts(g->'stations') || ' | ' || rc.riders(g->'riders'));
   PERFORM rc.ok('T7 R1 riders per university',
     rc.counts(g->'universities') = 'E2E Uni One:1 E2E Uni Two:1', rc.counts(g->'universities'));
 
   g := rc.grp(d, v_today, 'return', r2);
   PERFORM rc.ok('T8 returning with no time saved: the subscription''s return trip (B on R2)',
-    rc.riders(g->'riders') = 'B@S2 17:25' AND rc.counts(g->'universities') = 'E2E Uni One:1', g::text);
+    rc.riders(g->'riders') = 'B@S2 17:00' AND rc.counts(g->'universities') = 'E2E Uni One:1', g::text);
 
   g := rc.grp(d, v_today + 1, 'departure', d1);
   PERFORM rc.ok('T9 the next ride day is grouped on its own (A on D1 tomorrow)',
@@ -239,7 +238,7 @@ BEGIN
            station_name, riding_count, returning_count, COALESCE(left(return_time::text, 5), '-')), '; ' ORDER BY departure_time)
   INTO v FROM public.get_line_rider_counts_with_returns('e7200000-0000-0000-0000-000000000001', public.cairo_today());
   PERFORM rc.ok('C1 counts by the chosen trip: riders / returning and the earliest return per station',
-    v = 'D1 S1 1/1 15:35; D1 S2 2/1 17:25; D1 S3 1/0 -; D2 S1 0/0 -; D2 S2 1/1 15:25; D2 S3 0/0 -', v);
+    v = 'D1 S1 1/1 15:00; D1 S2 2/1 17:00; D1 S3 1/0 -; D2 S1 0/0 -; D2 S2 1/1 15:00; D2 S3 0/0 -', v);
 END $$;
 
 -- =============================================================================

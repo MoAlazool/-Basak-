@@ -516,8 +516,9 @@ $$;
 -- 7. What a student can subscribe to
 -- ---------------------------------------------------------------------------
 -- Lines are described by structure: the line's name, the student's own
--- university and the stations. A station has no time of its own: each trip that
--- stops there has its time, and return trips are listed apart from departures.
+-- university and the stations. A station has no time of its own: each departure
+-- trip that stops there has its time. The way back has no stations: it is the
+-- times the bus leaves the student's university.
 CREATE OR REPLACE FUNCTION public.get_subscription_catalog() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   WITH me AS (
@@ -541,20 +542,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
       'last_return', (SELECT max(t.start_time) FROM trips t WHERE t.line_id = l.id AND t.direction = 'return'),
       'stations', COALESCE((
         SELECT jsonb_agg(jsonb_build_object('id', st.id, 'name', st.name, 'order_index', st.order_index,
-                 'departures', d.list, 'returns', COALESCE(r.list, '[]'::jsonb)) ORDER BY st.order_index, st.name)
+                 'departures', d.list) ORDER BY st.order_index, st.name)
         FROM public.stations st
         CROSS JOIN LATERAL (
-          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'start', t.start_time, 'label', t.label)
+          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'label', t.label)
                            ORDER BY x.stop_time) AS list
           FROM trips t JOIN public.line_trip_stops x ON x.trip_id = t.id AND x.station_id = st.id
           WHERE t.line_id = l.id AND t.direction = 'departure') d
-        CROSS JOIN LATERAL (
-          SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', x.stop_time, 'start', t.start_time, 'label', t.label)
-                           ORDER BY x.stop_time) AS list
-          FROM trips t JOIN public.line_trip_stops x ON x.trip_id = t.id AND x.station_id = st.id
-          WHERE t.line_id = l.id AND t.direction = 'return') r
         -- A station no departure trip stops at cannot be boarded from.
         WHERE st.line_id = l.id AND st.is_active AND d.list IS NOT NULL), '[]'::jsonb),
+      -- The way back: when the bus leaves the student's university. No stations.
+      'returns', COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('trip_id', t.id, 'time', t.start_time, 'label', t.label) ORDER BY t.start_time)
+        FROM trips t WHERE t.line_id = l.id AND t.direction = 'return'), '[]'::jsonb),
       'options', COALESCE((
         SELECT jsonb_agg(jsonb_build_object('option', o.option, 'academic_year', o.academic_year, 'name', o.name,
                  'label', o.label, 'type', o.subscription_type, 'start_date', o.start_date, 'end_date', o.end_date,

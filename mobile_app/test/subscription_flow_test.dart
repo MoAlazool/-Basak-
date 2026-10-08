@@ -27,20 +27,20 @@ SaleCatalog catalog({bool withSecond = true}) => SaleCatalog.fromJson(jsonDecode
                 {
                   'id': 's1', 'name': 'ميت تمامة',
                   'departures': [
-                    {'trip_id': 't1', 'time': '07:00:00', 'start': '06:30:00', 'label': ''},
-                    {'trip_id': 't2', 'time': '09:00:00', 'start': '08:30:00', 'label': ''},
-                  ],
-                  'returns': [
-                    {'trip_id': 'r1', 'time': '15:50:00', 'start': '15:00:00', 'label': ''},
+                    {'trip_id': 't1', 'time': '07:00:00', 'label': ''},
+                    {'trip_id': 't2', 'time': '09:00:00', 'label': ''},
                   ],
                 },
                 {
                   'id': 's2', 'name': 'البجلات',
                   'departures': [
-                    {'trip_id': 't1', 'time': '07:10:00', 'start': '06:30:00', 'label': ''},
+                    {'trip_id': 't1', 'time': '07:10:00', 'label': ''},
                   ],
-                  'returns': [],
                 },
+              ],
+              'returns': [
+                {'trip_id': 'r1', 'time': '15:00:00', 'label': ''},
+                {'trip_id': 'r2', 'time': '17:30:00', 'label': ''},
               ],
               'options': [
                 {'option': 'first', 'academic_year': 2026, 'name': 'الفصل الدراسي الأول', 'label': 'الفصل الدراسي الأول 2026/2027',
@@ -57,7 +57,7 @@ SaleCatalog catalog({bool withSecond = true}) => SaleCatalog.fromJson(jsonDecode
               'id': 'l2', 'name': 'دكرنس', 'origin_name': 'دكرنس', 'university': 'جامعة الدلتا',
               'first_departure': '07:00:00', 'last_return': null,
               'stations': [
-                {'id': 's9', 'name': 'دكرنس', 'departures': [{'trip_id': 't9', 'time': '07:05:00', 'start': '07:00:00', 'label': ''}], 'returns': []},
+                {'id': 's9', 'name': 'دكرنس', 'departures': [{'trip_id': 't9', 'time': '07:05:00', 'label': ''}]},
               ],
               'options': [
                 {'option': 'first', 'academic_year': 2026, 'name': 'الفصل الدراسي الأول', 'label': 'الفصل الدراسي الأول 2026/2027',
@@ -130,8 +130,11 @@ void main() {
       final d = const SubscriptionDraft(companyId: 'c1', lineId: 'l1', stationId: 's1', optionKey: 'second:2026');
       final r = SubscriptionRequest.from(d, c)!;
       expect([r.type, r.periodCode, r.academicYear, r.price], ['termly', 'second', 2026, 8500]);
-      // The earliest trip of each direction at that station.
-      expect([r.departureTripId, r.departureTime, r.returnTripId, r.returnTime], ['t1', '07:00:00', 'r1', '15:50:00']);
+      // The earliest departure at that station, and the earliest return from the university.
+      expect([r.departureTripId, r.departureTime, r.returnTripId, r.returnTime], ['t1', '07:00:00', 'r1', '15:00:00']);
+      // The return does not depend on the station.
+      final other = SubscriptionRequest.from(d.pickStation('s2'), c)!;
+      expect([other.departureTime, other.returnTripId, other.returnTime], ['07:10:00', 'r1', '15:00:00']);
       final both = SubscriptionRequest.from(d.pickOption('both:2026'), c)!;
       expect([both.type, both.periodCode, both.price], ['yearly', 'both', 15000]);
       final daily = SubscriptionRequest.from(d.pickOption(SubscriptionDraft.dailyKey), c)!;

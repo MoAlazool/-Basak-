@@ -74,8 +74,8 @@ BEGIN
   END LOOP;
 
   -- Company x: one line for universities u1 and u2. Station 1 is served by two
-  -- departures for everyone, one more for u2 only, and one return; station 2 by
-  -- the first departure only; station 3 by nothing.
+  -- departures for everyone and one more for u2 only; station 2 by the first
+  -- departure only; station 3 by none. One return leaves the university at 15:00.
   INSERT INTO public.lines (company_id, name, origin_name, price_termly, price_yearly, price_daily)
   VALUES (pg_temp.id('co_x'), 'Opt line', 'Opt origin', 1000, 1800, 50) RETURNING id INTO v_line;
   INSERT INTO t_ids VALUES ('line', v_line);
@@ -94,7 +94,6 @@ BEGIN
   INSERT INTO public.line_trip_stops (trip_id, station_id, stop_time) VALUES (t, s1, '08:00');
   INSERT INTO public.line_trips (line_id, direction, start_time) VALUES (v_line, 'return', '15:00') RETURNING id INTO t;
   INSERT INTO t_ids VALUES ('ret1', t);
-  INSERT INTO public.line_trip_stops (trip_id, station_id, stop_time) VALUES (t, s1, '15:30');
 
   -- Company y: a line for u1 only, used for receipt numbering.
   INSERT INTO public.lines (company_id, name, price_termly, price_yearly, price_daily)
@@ -116,6 +115,41 @@ BEGIN
          'جامعة الخيارات ' || CASE p.k WHEN 'st2' THEN 'u2' WHEN 'st3' THEN 'u3' ELSE 'u1' END,
          pg_temp.id(CASE p.k WHEN 'st2' THEN 'u2' WHEN 'st3' THEN 'u3' ELSE 'u1' END)
   FROM t_phones p;
+END $$;
+
+-- ------------------------------------------------- the way back has no stations
+DO $$
+DECLARE v_line uuid := pg_temp.id('line'); v_trip uuid := pg_temp.id('ret1'); v_new uuid; v_sub uuid;
+BEGIN
+  PERFORM pg_temp.ok('a return trip is listed at every station of the line, at the time it leaves the university',
+    (SELECT count(*) = 3 AND bool_and(x.stop_time = '15:00') FROM public.line_trip_stops x WHERE x.trip_id = v_trip),
+    (SELECT string_agg(x.stop_time::text, ',') FROM public.line_trip_stops x WHERE x.trip_id = v_trip));
+  UPDATE public.line_trip_stops SET stop_time = '17:45' WHERE trip_id = v_trip;
+  PERFORM pg_temp.ok('a return trip cannot be given its own station times',
+    (SELECT bool_and(x.stop_time = '15:00') FROM public.line_trip_stops x WHERE x.trip_id = v_trip));
+  UPDATE public.line_trips SET start_time = '15:15' WHERE id = v_trip;
+  PERFORM pg_temp.ok('moving the return time moves it everywhere',
+    (SELECT count(*) = 3 AND bool_and(x.stop_time = '15:15') FROM public.line_trip_stops x WHERE x.trip_id = v_trip));
+  UPDATE public.line_trips SET start_time = '15:00' WHERE id = v_trip;
+  INSERT INTO public.stations (line_id, name, order_index) VALUES (v_line, 'Opt station 4', 4) RETURNING id INTO v_new;
+  PERFORM pg_temp.ok('a new station needs nothing done for the way back',
+    EXISTS (SELECT 1 FROM public.line_trip_stops x WHERE x.trip_id = v_trip AND x.station_id = v_new AND x.stop_time = '15:00'));
+  DELETE FROM public.stations WHERE id = v_new;
+
+  -- Boarding at station 2, which no return stop was ever entered for.
+  INSERT INTO public.subscriptions (student_id, line_id, station_id, departure_trip_id, type, status, start_date, end_date, price)
+  VALUES (pg_temp.id('st6'), pg_temp.id('line_y'), pg_temp.id('s_y'), pg_temp.id('dep_y'), 'daily', 'active', public.cairo_today(), public.cairo_today(), 40)
+  RETURNING id INTO v_sub;
+  PERFORM pg_temp.ok('a line with no return trip asks for none',
+    (SELECT return_trip_id IS NULL AND return_time IS NULL FROM public.subscriptions WHERE id = v_sub));
+  DELETE FROM public.subscriptions WHERE id = v_sub;
+  INSERT INTO public.subscriptions (student_id, line_id, station_id, departure_trip_id, type, status, start_date, end_date, price)
+  VALUES (pg_temp.id('st2'), v_line, pg_temp.id('s2'), pg_temp.id('dep1'), 'daily', 'active', public.cairo_today(), public.cairo_today(), 50)
+  RETURNING id INTO v_sub;
+  PERFORM pg_temp.ok('a student at any station gets the return from their university, without choosing a station for it',
+    (SELECT return_trip_id = v_trip AND return_time = '15:00' FROM public.subscriptions WHERE id = v_sub),
+    (SELECT return_time::text FROM public.subscriptions WHERE id = v_sub));
+  DELETE FROM public.subscriptions WHERE id = v_sub;
 END $$;
 
 -- ------------------------------------------------------------ prices per line
@@ -255,11 +289,11 @@ BEGIN
   PERFORM pg_temp.ok('station 1 lists one departure time per trip serving this university, in order',
     (SELECT jsonb_agg(d->>'time') FROM jsonb_array_elements(l->'stations'->0->'departures') d) = '["07:10:00", "09:10:00"]'::jsonb,
     (l->'stations'->0->'departures')::text);
-  PERFORM pg_temp.ok('return times come from return trips',
-    (l->'stations'->0->'returns'->0->>'time') = '15:30:00' AND jsonb_array_length(l->'stations'->0->'returns') = 1);
-  PERFORM pg_temp.ok('station 2 is served by one departure and no return',
-    jsonb_array_length(l->'stations'->1->'departures') = 1 AND l->'stations'->1->'departures'->0->>'time' = '07:20:00'
-    AND jsonb_array_length(l->'stations'->1->'returns') = 0);
+  PERFORM pg_temp.ok('the way back is the time the bus leaves the university, on the line and not on a station',
+    (l->'returns'->0->>'time') = '15:00:00' AND jsonb_array_length(l->'returns') = 1
+    AND NOT (l->'stations'->0 ? 'returns'), (l->'returns')::text);
+  PERFORM pg_temp.ok('station 2 is served by one departure',
+    jsonb_array_length(l->'stations'->1->'departures') = 1 AND l->'stations'->1->'departures'->0->>'time' = '07:20:00');
   PERFORM pg_temp.ok('a station no departure stops at is not offered',
     jsonb_array_length(l->'stations') = 2);
   PERFORM pg_temp.ok('the card gives the first departure and the last return of the line',
@@ -286,6 +320,12 @@ BEGIN
   SELECT * INTO r FROM public.subscriptions WHERE student_id = auth.uid();
   PERFORM pg_temp.ok('second semester in advance: charged the second-semester price, waiting for payment',
     r.price = 1200 AND r.period_code = 'second' AND r.status = 'pending_payment' AND r.departure_time = '07:10', format('%s %s %s', r.price, r.period_code, r.status));
+  PERFORM pg_temp.ok('the saved return is when the bus leaves the university, whatever was sent',
+    r.return_time = '15:00' AND r.return_trip_id = pg_temp.id('ret1'), r.return_time::text);
+  PERFORM pg_temp.denied('the student cannot delete the request once it exists',
+    'DELETE FROM public.subscriptions WHERE student_id = auth.uid()');
+  PERFORM pg_temp.denied('the student cannot change its line, station or period',
+    format('UPDATE public.subscriptions SET period_code = ''first'', station_id = %L WHERE student_id = auth.uid()', pg_temp.id('s2')));
   PERFORM pg_temp.ok('an option the student already holds, and both, are no longer offered to them',
     (SELECT string_agg(o.option || ':' || COALESCE(o.reason, 'ok'), ' ' ORDER BY o.option) FROM public.line_sale_options(v_line) o)
       LIKE 'both:overlap first:ok second:overlap%');

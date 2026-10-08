@@ -57,14 +57,6 @@ const addMinutes = (t: string, minutes: number) => {
   const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
-/**
- * Return trips may leave every station time empty: the trip then serves all the
- * line's stations and students see when it leaves the university. It is saved
- * with each stop at the start time (what the app and the server match on), and
- * read back as "no times set".
- */
-const stopTimesUnset = (direction: Direction, start: string, stopTimes: string[]) =>
-  direction === 'return' && stopTimes.length > 0 && stopTimes.every((t) => hhmm(t) === hhmm(start));
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
 const activeStations = (line: LineRow) =>
@@ -120,8 +112,8 @@ const draftFromLine = (line: LineRow): LineDraft => {
       .map((t) => ({
         key: t.id, id: t.id, direction: t.direction, label: t.label || '', start_time: hhmm(t.start_time),
         arrival_time: hhmm(t.arrival_time), university_id: t.university_id || '', is_active: t.is_active,
-        times: stopTimesUnset(t.direction, t.start_time, (t.line_trip_stops ?? []).map((s) => s.stop_time))
-          ? {}
+        // The way back has no station times: only when the bus leaves the university.
+        times: t.direction === 'return' ? {}
           : Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
       })),
   };
@@ -322,7 +314,7 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
   const [tab, setTab] = useState<Direction>('departure');
   const stations = activeStations(line);
   const trips = tripsOf(line, tab).filter((t) => t.is_active);
-  const ordered = tab === 'departure' ? stations : [...stations].reverse();
+  const ordered = stations;
   return (
     <div className="border-t border-slate-100 bg-slate-50/50 p-5">
       <div className="mb-4 inline-flex rounded-xl bg-white p-1 shadow-sm">
@@ -339,7 +331,6 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trips.map((trip) => {
             const times = Object.fromEntries((trip.line_trip_stops ?? []).map((s) => [s.station_id, s.stop_time]));
-            const unset = stopTimesUnset(trip.direction, trip.start_time, Object.values(times));
             return (
               <div key={trip.id} className="rounded-2xl border-r-4 border-emerald-400 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -351,18 +342,22 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
                     {trip.university_id ? uniName(trip.university_id) : 'كل الجامعات'}
                   </span>
                 </div>
-                <ol className="relative space-y-2 border-r-2 border-emerald-100 pr-4">
-                  {ordered.map((s) => (
-                    <li key={s.id} className="relative flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                      <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
-                      <span className="text-slate-700">{s.name}</span>
-                      <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
-                        {times[s.id] ? (unset ? 'يمر' : fmt12(times[s.id])) : 'لا يقف'}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                {trip.arrival_time && <p className="mt-3 text-xs text-slate-500">الوصول: {fmt12(trip.arrival_time)}</p>}
+                {tab === 'return' ? (
+                  <p className="text-xs text-slate-500">يتحرك الباص من الجامعة في هذا الموعد ويعيد كل طالب إلى محطته.</p>
+                ) : (
+                  <ol className="relative space-y-2 border-r-2 border-emerald-100 pr-4">
+                    {ordered.map((s) => (
+                      <li key={s.id} className="relative flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
+                        <span className="text-slate-700">{s.name}</span>
+                        <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
+                          {times[s.id] ? fmt12(times[s.id]) : 'لا يقف'}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {tab === 'departure' && trip.arrival_time && <p className="mt-3 text-xs text-slate-500">الوصول: {fmt12(trip.arrival_time)}</p>}
               </div>
             );
           })}
@@ -464,13 +459,15 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
     const noPrice = SALE_OPTIONS.find((o) => d.prices[o].enabled && priceOf(o) <= 0);
     if (noPrice) { setError(`اكتب سعر «${optionName[noPrice]}» أو عطّله.`); return; }
+    const noReturnTime = d.trips.find((t) => t.direction === 'return' && !t.start_time);
+    if (noReturnTime) { setTab('return'); setError('حدد موعد تحرك كل رحلة عودة من الجامعة.'); return; }
     const noStops = d.trips.find((t) => t.direction === 'departure' && !Object.values(t.times).some(Boolean));
     if (noStops) {
       setTab('departure');
       setError(`رحلة الذهاب ${fmt12(noStops.start_time)}: حدد موعد مرورها على المحطات، فالطلاب يركبون منها.`);
       return;
     }
-    const badTrip = d.trips.find((t) => tripProblem(t, routeFor(t.direction)));
+    const badTrip = d.trips.find((t) => t.direction === 'departure' && tripProblem(t, routeFor(t.direction)));
     if (badTrip) {
       setTab(badTrip.direction);
       setError(`${badTrip.direction === 'departure' ? 'رحلة الذهاب' : 'رحلة العودة'} ${fmt12(badTrip.start_time)}: ${tripProblem(badTrip, routeFor(badTrip.direction))}`);
@@ -492,10 +489,10 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
       stations: stations.map((s) => ({ id: s.id ?? null, name: s.name })),
       trips: d.trips.map((t) => ({
         id: t.id ?? null, direction: t.direction, label: t.label.trim(), start_time: t.start_time,
-        arrival_time: t.arrival_time || null, university_id: t.university_id || null, is_active: t.is_active,
-        stops: t.direction === 'return' && !Object.values(t.times).some(Boolean)
-          // No times set: the trip serves every station (see stopTimesUnset).
-          ? stations.map((_, i) => ({ station_index: i, time: t.start_time }))
+        arrival_time: t.direction === 'departure' ? t.arrival_time || null : null,
+        university_id: t.university_id || null, is_active: t.is_active,
+        // A return trip is a time and a university; it has no stops.
+        stops: t.direction === 'return' ? []
           : Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
             .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
       })),
@@ -625,8 +622,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
           {/* 3. Trips */}
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-bold text-slate-700">٣. الرحلات ومواعيد المحطات</h3>
-              <label className="flex items-center gap-2 text-xs text-slate-500">
+              <h3 className="text-sm font-bold text-slate-700">٣. الرحلات والمواعيد</h3>
+              <label className={`flex items-center gap-2 text-xs text-slate-500 ${tab === 'return' ? 'invisible' : ''}`}>
                 <Wand2 className="h-4 w-4 text-blue-500" /> التعبئة التلقائية: كل
                 <input type="number" min={0} value={gap} onChange={(e) => setGap(e.target.value)} className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs" />
                 دقيقة بين المحطات
@@ -636,23 +633,46 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
               {(['departure', 'return'] as Direction[]).map((dir) => (
                 <button key={dir} onClick={() => setTab(dir)}
                   className={`rounded-lg px-4 py-1.5 text-xs font-bold ${tab === dir ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>
-                  {dir === 'departure' ? 'رحلات الذهاب' : 'رحلات العودة'} ({d.trips.filter((t) => t.direction === dir).length})
+                  {dir === 'departure' ? 'رحلات الذهاب' : 'العودة من الجامعة'} ({d.trips.filter((t) => t.direction === dir).length})
                 </button>
               ))}
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
               {tripsInTab.map((trip) => (
+                tab === 'return' ? (
                 <div key={trip.key} className="space-y-3 rounded-2xl border border-slate-200 p-4">
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق {tab === 'departure' ? `من ${d.origin_name || 'البداية'}` : `من ${destName}`}
+                    <label className="text-[11px] font-semibold text-slate-500">موعد التحرك من الجامعة
+                      <input type="time" value={trip.start_time} onChange={(e) => patchTrip(trip.key, { start_time: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">من جامعة
+                      <select value={trip.university_id} onChange={(e) => patchTrip(trip.key, { university_id: e.target.value })} className={`mt-1 ${input}`}>
+                        <option value="">كل جامعات الخط</option>
+                        {universities.filter((u) => d.university_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="col-span-2 text-[11px] font-semibold text-slate-500">اسم الرحلة (اختياري)
+                      <input value={trip.label} placeholder="مثال: عودة الظهر" onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <button onClick={() => duplicate(trip)} className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-600"><Copy className="h-3 w-3" /> نسخ الموعد</button>
+                    <button onClick={() => setD((cur) => ({ ...cur, trips: cur.trips.filter((t) => t.key !== trip.key) }))}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /> حذف</button>
+                  </div>
+                </div>
+                ) : (
+                <div key={trip.key} className="space-y-3 rounded-2xl border border-slate-200 p-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق من {d.origin_name || 'البداية'}
                       <input type="time" value={trip.start_time} onChange={(e) => patchTrip(trip.key, { start_time: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">موعد الوصول (اختياري)
                       <input type="time" value={trip.arrival_time} onChange={(e) => patchTrip(trip.key, { arrival_time: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">اسم الرحلة (اختياري)
-                      <input value={trip.label} placeholder={tab === 'departure' ? 'مثال: أول رحلة صباحية' : 'مثال: عودة الظهر'} onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
+                      <input value={trip.label} placeholder="مثال: أول رحلة صباحية" onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">الجامعة
                       <select value={trip.university_id} onChange={(e) => patchTrip(trip.key, { university_id: e.target.value })} className={`mt-1 ${input}`}>
@@ -661,11 +681,6 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       </select>
                     </label>
                   </div>
-                  {tab === 'return' && !Object.values(trip.times).some(Boolean) && (
-                    <p className="rounded-xl bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
-                      بدون مواعيد محطات: الرحلة تمر على كل المحطات، والطالب يرى موعد الانطلاق من الجامعة. مواعيد المحطات هنا اختيارية.
-                    </p>
-                  )}
                   <div className="space-y-1.5">
                     {routeFor(tab).map((s) => (
                       <div key={s.key} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
@@ -692,10 +707,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /> حذف الرحلة</button>
                   </div>
                 </div>
+                )
               ))}
               <button onClick={() => setD((cur) => ({ ...cur, trips: [...cur.trips, emptyTrip(tab)] }))}
                 className="flex min-h-[120px] items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50">
-                <Bus className="h-4 w-4" /> إضافة رحلة {tab === 'departure' ? 'ذهاب' : 'عودة'}
+                <Bus className="h-4 w-4" /> {tab === 'departure' ? 'إضافة رحلة ذهاب' : 'إضافة موعد عودة'}
               </button>
             </div>
             {(() => {
@@ -707,7 +723,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 </p>
               );
             })()}
-            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. في رحلات العودة يمكن ترك كل مواعيد المحطات فارغة: تمر الرحلة على كل المحطات. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
+            <p className="text-[11px] text-slate-400">
+              {tab === 'departure'
+                ? 'مواعيد المحطات بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.'
+                : 'العودة تبدأ من جامعة الطالب: حدد موعد تحرك الباص من كل جامعة فقط، ويعود كل طالب إلى محطته. لا توجد محطات للعودة.'}
+            </p>
           </section>
         </div>
 

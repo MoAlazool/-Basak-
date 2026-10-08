@@ -52,6 +52,10 @@ class SaleLine {
   final String? firstDeparture;
   final String? lastReturn;
   final List<SaleStation> stations;
+
+  /// The way back: when the bus leaves the student's university. It has no
+  /// stations; every student is taken back to where they board.
+  final List<TripStop> returns;
   final List<SaleOption> options;
   final bool dailyEnabled;
   final double dailyPrice;
@@ -65,6 +69,7 @@ class SaleLine {
     this.firstDeparture,
     this.lastReturn,
     this.stations = const [],
+    this.returns = const [],
     this.options = const [],
     this.dailyEnabled = false,
     this.dailyPrice = 0,
@@ -94,6 +99,7 @@ class SaleLine {
       stations: (json['stations'] as List<dynamic>? ?? const [])
           .map((s) => SaleStation.fromJson(Map<String, dynamic>.from(s as Map)))
           .toList(),
+      returns: SaleStation._stops(json['returns']),
       options: (json['options'] as List<dynamic>? ?? const [])
           .map((o) => SaleOption.fromJson(Map<String, dynamic>.from(o as Map)))
           .toList(),
@@ -103,20 +109,14 @@ class SaleLine {
   }
 }
 
-/// A boarding station. It has no time of its own: each trip that stops here
-/// has its time, and return trips are listed apart from departures.
+/// A boarding station. It has no time of its own: each departure trip that
+/// stops here has its time.
 class SaleStation {
   final String id;
   final String name;
   final List<TripStop> departures;
-  final List<TripStop> returns;
 
-  const SaleStation({
-    required this.id,
-    required this.name,
-    this.departures = const [],
-    this.returns = const [],
-  });
+  const SaleStation({required this.id, required this.name, this.departures = const []});
 
   static List<TripStop> _stops(dynamic value) => (value as List<dynamic>? ?? const [])
       .map((s) => TripStop.fromJson(Map<String, dynamic>.from(s as Map)))
@@ -126,26 +126,20 @@ class SaleStation {
         id: json['id'] as String,
         name: json['name'] as String? ?? '',
         departures: _stops(json['departures']),
-        returns: _stops(json['returns']),
       );
 }
 
-/// One trip's time at one station.
+/// A trip's time: at a station for a departure, at the university for a return.
 class TripStop {
   final String tripId;
   final String time;
-
-  /// When the trip sets off. A return trip leaves the university at this time,
-  /// which is what a student needs to know; [time] is when it reaches the station.
-  final String start;
   final String label;
 
-  const TripStop({required this.tripId, required this.time, this.start = '', this.label = ''});
+  const TripStop({required this.tripId, required this.time, this.label = ''});
 
   factory TripStop.fromJson(Map<String, dynamic> json) => TripStop(
         tripId: json['trip_id'] as String,
         time: json['time'] as String? ?? '',
-        start: json['start'] as String? ?? json['time'] as String? ?? '',
         label: json['label'] as String? ?? '',
       );
 }

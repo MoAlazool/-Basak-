@@ -122,8 +122,9 @@ class SubscriptionRequest {
   });
 
   /// The request for a complete [draft], or null while a choice is missing or
-  /// no longer offered. The subscription records the earliest trip of each
-  /// direction at the station; the student picks the day's times on the home screen.
+  /// no longer offered. The subscription records the earliest departure at the
+  /// station and the earliest return from the university; the student picks the
+  /// day's times on the home screen.
   static SubscriptionRequest? from(SubscriptionDraft draft, SaleCatalog catalog) {
     final line = catalog.line(draft.lineId);
     final station = line?.station(draft.stationId);
@@ -131,7 +132,7 @@ class SubscriptionRequest {
     final option = draft.isDaily ? null : line.option(draft.optionKey);
     if (draft.isDaily ? !line.dailyEnabled : option == null) return null;
     final departure = station.departures.first;
-    final back = station.returns.firstOrNull;
+    final back = line.returns.firstOrNull;
     return SubscriptionRequest(
       lineId: line.id,
       stationId: station.id,

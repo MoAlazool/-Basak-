@@ -144,9 +144,21 @@ class SubscriptionModel {
     final availableDepartureTimes = stops.isNotEmpty
         ? stopTimes('departure', json['departure_time'])
         : stationTimes(station?['departure_times'] ?? json['departure_time']);
-    final availableReturnTimes = stops.isNotEmpty
-        ? stopTimes('return', json['return_time'])
-        : stationTimes(station?['return_times'] ?? json['return_time']);
+    // The way back starts at the university: its times are the return trips'
+    // own times (the trips this student may ride; RLS filters them).
+    final returnTrips = (line?['line_trips'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((t) => t['direction'] == 'return' && t['is_active'] == true)
+        .toList();
+    final availableReturnTimes = returnTrips.isNotEmpty
+        ? (stationTimes([
+            ...returnTrips.map((t) => t['start_time']),
+            if (json['return_time'] != null) json['return_time'],
+          ]).toSet().toList()
+          ..sort())
+        : stops.isNotEmpty
+            ? stopTimes('return', json['return_time'])
+            : stationTimes(station?['return_times'] ?? json['return_time']);
     final returnStartTimes = <String, String>{
       for (final stop in stops)
         if ((stop['line_trips'] as Map<String, dynamic>?)?['direction'] == 'return' &&
