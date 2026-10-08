@@ -11,6 +11,7 @@ import '../../../../core/widgets/glass_scaffold.dart';
 import '../../wallet/data/wallet_pass_repository.dart';
 import '../../wallet/presentation/add_to_wallet_button.dart';
 import '../data/student_qr_repository.dart';
+import '../../subscription/models/subscription_model.dart';
 
 final studentQrRepoProvider = Provider((ref) => StudentQrRepository());
 final studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
@@ -29,6 +30,7 @@ class StudentQrScreen extends ConsumerWidget {
     final passAsync = ref.watch(studentQrProvider);
 
     return GlassScaffold(
+      canvas: const Color(0xFFEAF5FA),
       body: ColoredBox(
         color: const Color(0xFFEAF5FA),
         child: SafeArea(
@@ -68,202 +70,170 @@ class StudentQrScreen extends ConsumerWidget {
                   );
                 }
                 final active = pass.subscriptionStatus == 'active';
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 105),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: Text('بطاقة الطالب',
-                          style: AppTextStyles.displayMedium
-                              .copyWith(color: _ink)),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: Text(
-                          'أظهر الرمز للمشرف للتحقق من اشتراكك وبيانات الرحلة.',
-                          style: AppTextStyles.bodyMedium
-                              .copyWith(color: const Color(0xFF718695))),
-                    ),
-                    const SizedBox(height: 18),
-                    if (pass.isOfflineCache)
-                      Container(
+                // A fixed page, laid out as before: the card hugs its content
+                // with even, tight spacing; the wallet button and the note sit
+                // at the bottom, just above the navigation bar. The QR code is
+                // as large as the card's width allows, and only shrinks when
+                // the phone is too short to show everything.
+                return LayoutBuilder(builder: (context, box) {
+                  final compact = box.maxHeight < 620;
+                  final wallet = AddToWalletButton.canOffer(
+                      pass, WalletPassRepository.platformFor(defaultTargetPlatform));
+                  final showPhone = (pass.phone ?? '').isNotEmpty && !compact;
+                  // Height of everything except the QR itself.
+                  final fixed = 20 + (compact ? 40 : 64) + (pass.isOfflineCache ? 44 : 0) +
+                      32 + 52 + 14 + 22 + 12 + 30 + 14 + 11 +
+                      (showPhone ? 4 : 3) * 22 + (showPhone ? 3 : 2) * 9 +
+                      (wallet ? 66 : 0) + (compact ? 0 : 34);
+                  final qrSide = (box.maxHeight - fixed)
+                      .clamp(150.0, (box.maxWidth - 36 - 36 - 22).clamp(150.0, 280.0));
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+                    child: Column(children: [
+                      SizedBox(
                         width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(11),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF4E5),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Text(
-                          'تعرض البطاقة بيانات محفوظة من آخر اتصال. قد لا تشمل أي تغييرات أحدث على الاشتراك.',
-                          style: AppTextStyles.labelSmall.copyWith(
-                            color: const Color(0xFF8A5A00),
-                            height: 1.4,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
+                        child: Text('بطاقة الطالب',
+                            style: AppTextStyles.displayMedium.copyWith(color: _ink)),
                       ),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(26),
-                          boxShadow: const [
-                            BoxShadow(
-                                color: Color(0x1117384A),
-                                blurRadius: 18,
-                                offset: Offset(0, 7))
-                          ]),
-                      child: Column(children: [
-                        Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircleAvatar(
-                                  radius: 25,
-                                  backgroundColor: const Color(0xFFE4F2F9),
-                                  backgroundImage: pass.profileImageUrl == null
-                                      ? null
-                                      : avatarImage(pass.profileImageUrl!),
-                                  child: pass.profileImageUrl == null
-                                      ? const Icon(LucideIcons.userRound,
-                                          color: _teal)
-                                      : null),
-                              const SizedBox(width: 11),
-                              Flexible(
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
+                      if (!compact)
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text('أظهر الرمز للمشرف عند الصعود.',
+                              style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xFF718695))),
+                        ),
+                      const SizedBox(height: 10),
+                      if (pass.isOfflineCache)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                          decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(14)),
+                          child: Text('بيانات محفوظة من آخر اتصال.',
+                              style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF8A5A00)),
+                              textAlign: TextAlign.center),
+                        ),
+                      // The card takes what it needs; anything left stays below it.
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          // A last resort on very small screens: never overflow.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.topCenter,
+                            child: Container(
+                              width: box.maxWidth - 36,
+                              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                              decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(26),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x1117384A), blurRadius: 18, offset: Offset(0, 7))
+                                  ]),
+                              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                  CircleAvatar(
+                                      radius: 25,
+                                      backgroundColor: const Color(0xFFE4F2F9),
+                                      backgroundImage:
+                                          pass.profileImageUrl == null ? null : avatarImage(pass.profileImageUrl!),
+                                      child: pass.profileImageUrl == null
+                                          ? const Icon(LucideIcons.userRound, color: _teal)
+                                          : null),
+                                  const SizedBox(width: 11),
+                                  Flexible(
+                                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text(pass.fullName ?? 'الطالب',
-                                        style: AppTextStyles.titleLarge
-                                            .copyWith(color: _ink),
-                                        maxLines: 2,
+                                        style: AppTextStyles.titleLarge.copyWith(color: _ink, height: 1.25),
+                                        maxLines: 1,
                                         overflow: TextOverflow.ellipsis),
                                     Text(pass.university ?? 'الجامعة المسجلة',
-                                        style: AppTextStyles.labelSmall
-                                            .copyWith(
-                                                color: const Color(0xFF718695)))
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695)))
                                   ])),
-                            ]),
-                        const SizedBox(height: 18),
-                        Container(
-                          padding: const EdgeInsets.all(13),
-                          decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              border:
-                                  Border.all(color: const Color(0xFFE7EEF3))),
-                          child: QrImageView(
-                            data: pass.qrValue!,
-                            version: QrVersions.auto,
-                            size:
-                                MediaQuery.sizeOf(context).width.clamp(0, 340) -
-                                    76,
-                            backgroundColor: Colors.white,
-                            eyeStyle: const QrEyeStyle(
-                                eyeShape: QrEyeShape.square,
-                                color: Color(0xFF102A3A)),
-                            dataModuleStyle: const QrDataModuleStyle(
-                                dataModuleShape: QrDataModuleShape.square,
-                                color: Color(0xFF102A3A)),
+                                ]),
+                                const SizedBox(height: 14),
+                                Container(
+                                  padding: const EdgeInsets.all(11),
+                                  decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(color: const Color(0xFFE7EEF3))),
+                                  child: QrImageView(
+                                    key: const Key('student-qr'),
+                                    data: pass.qrValue!,
+                                    version: QrVersions.auto,
+                                    size: qrSide,
+                                    padding: EdgeInsets.zero,
+                                    backgroundColor: Colors.white,
+                                    eyeStyle: const QrEyeStyle(
+                                        eyeShape: QrEyeShape.square, color: Color(0xFF102A3A)),
+                                    dataModuleStyle: const QrDataModuleStyle(
+                                        dataModuleShape: QrDataModuleShape.square, color: Color(0xFF102A3A)),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                                    decoration: BoxDecoration(
+                                        color: active ? const Color(0xFFE7F8F0) : const Color(0xFFFFF4E5),
+                                        borderRadius: BorderRadius.circular(18)),
+                                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(active ? LucideIcons.circleCheck : LucideIcons.clock3,
+                                          size: 16,
+                                          color: active ? const Color(0xFF07865A) : const Color(0xFFB56900)),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                          active
+                                              ? 'الاشتراك نشط'
+                                              : pass.subscriptionStatus == 'rejected'
+                                                  ? 'الإيصال مرفوض'
+                                                  : 'الاشتراك غير نشط',
+                                          style: AppTextStyles.labelSmall.copyWith(
+                                              color: active ? const Color(0xFF07865A) : const Color(0xFFB56900),
+                                              fontWeight: FontWeight.bold))
+                                    ])),
+                                const SizedBox(height: 14),
+                                const Divider(height: 1),
+                                const SizedBox(height: 10),
+                                _detailRow(
+                                    'الخط',
+                                    pass.lineName == null
+                                        ? 'لا يوجد اشتراك'
+                                        : SubscriptionModel.routeLabel(pass.lineName, pass.university),
+                                    LucideIcons.busFront),
+                                const SizedBox(height: 9),
+                                _detailRow('محطة الصعود', pass.stationName ?? '—', LucideIcons.mapPin),
+                                const SizedBox(height: 9),
+                                _detailRow('نوع الاشتراك', _typeLabel(pass.subscriptionType), LucideIcons.ticket),
+                                if (showPhone) ...[
+                                  const SizedBox(height: 9),
+                                  _detailRow('رقم الهاتف', pass.phone!, LucideIcons.phone),
+                                ],
+                              ]),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 13),
-                        Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 13, vertical: 7),
-                            decoration: BoxDecoration(
-                                color: active
-                                    ? const Color(0xFFE7F8F0)
-                                    : const Color(0xFFFFF4E5),
-                                borderRadius: BorderRadius.circular(18)),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(
-                                  active
-                                      ? LucideIcons.circleCheck
-                                      : LucideIcons.clock3,
-                                  size: 16,
-                                  color: active
-                                      ? const Color(0xFF07865A)
-                                      : const Color(0xFFB56900)),
-                              const SizedBox(width: 6),
-                              Text(
-                                  active
-                                      ? 'الاشتراك نشط'
-                                      : pass.subscriptionStatus == 'rejected'
-                                          ? 'الإيصال مرفوض'
-                                          : 'الاشتراك غير نشط',
-                                  style: AppTextStyles.labelSmall.copyWith(
-                                      color: active
-                                          ? const Color(0xFF07865A)
-                                          : const Color(0xFFB56900),
-                                      fontWeight: FontWeight.bold))
-                            ])),
-                        const SizedBox(height: 18),
-                        const Divider(height: 1),
-                        const SizedBox(height: 14),
-                        _detailRow(
-                            'المسار',
-                            pass.lineName ?? 'لا يوجد اشتراك',
-                            LucideIcons.busFront),
-                        const SizedBox(height: 11),
-                        _detailRow(
-                            'محطة الصعود',
-                            pass.stationName ?? '—',
-                            LucideIcons.mapPin),
-                        if ((pass.college ?? '').isNotEmpty) ...[
-                          const SizedBox(height: 11),
-                          _detailRow(
-                              'الكلية', pass.college!, LucideIcons.school),
-                        ],
-                        const SizedBox(height: 11),
-                        _detailRow(
-                            'نوع الاشتراك',
-                            _typeLabel(pass.subscriptionType),
-                            LucideIcons.ticket),
-                        if ((pass.phone ?? '').isNotEmpty) ...[
-                          const SizedBox(height: 11),
-                          _detailRow(
-                              'رقم الهاتف', pass.phone!, LucideIcons.phone),
-                        ],
-                      ]),
-                    ),
-                    const SizedBox(height: 13),
-                    if (AddToWalletButton.canOffer(
-                        pass,
-                        WalletPassRepository.platformFor(
-                            defaultTargetPlatform))) ...[
-                      AddToWalletButton(pass: pass),
-                      const SizedBox(height: 13),
-                    ],
-                    Container(
-                        padding: const EdgeInsets.all(13),
-                        decoration: BoxDecoration(
-                            color: const Color(0xFFE3F2FA),
-                            borderRadius: BorderRadius.circular(16)),
-                        child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(LucideIcons.info,
-                                  color: _teal, size: 19),
-                              const SizedBox(width: 9),
-                              Expanded(
-                                  child: Text(
-                                      'رمز QR للتعريف والتحقق فقط. مسحه لا يسجل الحضور تلقائياً؛ أكد رحلتك من الصفحة الرئيسية.',
-                                      style: AppTextStyles.labelSmall.copyWith(
-                                          color: const Color(0xFF315F75),
-                                          height: 1.5)))
-                            ])),
-                  ],
-                ),
-              );
+                      ),
+                      if (wallet) ...[
+                        const SizedBox(height: 10),
+                        AddToWalletButton(pass: pass),
+                      ],
+                      if (!compact) ...[
+                        const SizedBox(height: 8),
+                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(LucideIcons.info, color: _teal, size: 15),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text('الرمز للتحقق فقط. أكّد رحلتك من الصفحة الرئيسية.',
+                                style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF315F75))),
+                          ),
+                        ]),
+                      ],
+                    ]),
+                  );
+                });
             },
           ),
         ),
@@ -272,31 +242,35 @@ class StudentQrScreen extends ConsumerWidget {
   );
 }
 
-  /// The value takes the rest of the row and wraps, so a long route shows whole.
-  static Widget _detailRow(String label, String value, IconData icon) =>
+  /// The value sits right beside its label and wraps when it is long.
+  static Widget _detailRow(String label, String value, IconData icon, [double k = 1]) =>
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 17, color: _teal),
+          padding: const EdgeInsets.only(top: 3),
+          child: Icon(icon, size: 16, color: _teal),
         ),
-        const SizedBox(width: 9),
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
+        const SizedBox(width: 8),
+        SizedBox(
+          // Wide enough for the longest label at the card's scale.
+          width: 100 * k,
           child: Text(label,
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: const Color(0xFF718695))),
+              maxLines: 1,
+              style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695), height: 1.6)),
         ),
-        const SizedBox(width: 14),
         Expanded(
             child: Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                // A phone number reads left to right but stays beside its label.
+                textAlign: TextAlign.right,
+                textDirection: RegExp(r'^[0-9+ ]+$').hasMatch(value) ? TextDirection.ltr : null,
                 style: AppTextStyles.bodyMedium
-                    .copyWith(color: _ink, fontWeight: FontWeight.w600),
-                textAlign: TextAlign.end))
+                    .copyWith(color: _ink, fontWeight: FontWeight.w600, height: 1.45)))
       ]);
 
   static String _typeLabel(String? type) => switch (type) {
-        'yearly' => 'سنوي',
-        'termly' => 'فصلي',
+        'yearly' => 'الفصلان معاً',
+        'termly' => 'فصل دراسي',
         'daily' => 'يومي نقدي',
         _ => '—',
       };

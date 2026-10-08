@@ -94,6 +94,19 @@ class SubscriptionModel {
     return station.isNotEmpty ? station : ((lineName ?? '').trim().isNotEmpty ? lineName!.trim() : 'اشتراكي');
   }
 
+  /// The line as this student should read it: its short name and their own
+  /// university, e.g. "الزرقا ← المنصورة الجديدة". The same line reads
+  /// differently for a student of another university.
+  String get lineLabel => routeLabel(lineName, destination);
+
+  /// "{line} ← {university without the word جامعة}".
+  static String routeLabel(String? lineName, String? university) {
+    final line = (lineName ?? '').trim();
+    final uni = (university ?? '').trim().replaceFirst(RegExp(r'^(جامعة|جامعه)\s+'), '');
+    if (line.isEmpty) return uni.isEmpty ? '—' : uni;
+    return uni.isEmpty || line.contains(uni) ? line : '$line ← $uni';
+  }
+
   /// The student's own university: where the line takes them.
   String? get destination {
     final name = (studentUniversity ?? universityName ?? '').trim();

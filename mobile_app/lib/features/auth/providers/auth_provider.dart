@@ -25,7 +25,7 @@ final studentProfileSummaryProvider =
   final cached = await OfflineCache.readThrough('profile.summary', () async {
     final response = await SupabaseService.client
         .from('students')
-        .select('full_name, phone, university, college, profile_image_url')
+        .select('full_name, phone, university, college, email, birth_date, profile_image_url')
         .eq('id', userId)
         .maybeSingle();
     if (response == null) return null;

@@ -6,7 +6,7 @@ import { WeeklyRidersChart } from '../components/WeeklyRidersChart';
 import { TopLinesPanel } from '../components/TopLinesPanel';
 import { PendingReceiptsTable } from '../components/PendingReceiptsTable';
 import { useCompany } from '../lib/adminScope';
-import { nextRideHint, useCompanyOverview, weekPoints } from '../lib/overview';
+import { ridersCard, useCompanyOverview, weekPoints } from '../lib/overview';
 import { usePendingReceipts } from '../lib/pendingReceipts';
 
 /** One company at a glance. Every number here is this company's and nobody else's. */
@@ -15,6 +15,7 @@ export const OverviewPage: React.FC = () => {
   const { data, loading, error, refresh } = useCompanyOverview(company.id);
   const receipts = usePendingReceipts(company.id);
 
+  const riders = ridersCard(data ?? null, 'حسب تأكيدات الطلاب في التطبيق');
   return (
     <div className="space-y-6">
       <Topbar title={`نظرة عامة — ${company.name}`} subtitle="الحضور، الإيرادات واعتماد الاشتراكات، محدّثة لحظياً" />
@@ -30,7 +31,7 @@ export const OverviewPage: React.FC = () => {
         loading={loading}
         cards={[
           { label: 'الاشتراكات السارية اليوم', value: count(data?.active_subscriptions ?? 0), hint: `${count(data?.members ?? 0)} طالب مسجل في الشركة`, icon: Users, tone: 'blue' },
-          { label: 'نازلين اليوم (مؤكدين)', value: count(data?.riders_today ?? 0), hint: nextRideHint(data) || 'حسب تأكيدات الطلاب في التطبيق', icon: Bus, tone: 'green' },
+          { label: riders.label, value: count(riders.value), hint: riders.hint, icon: Bus, tone: 'green' },
           { label: 'إيصالات بانتظار المراجعة', value: count(data?.pending_receipts ?? 0), hint: 'تظهر أسفل الصفحة فور وصولها', icon: FileCheck2, tone: 'amber' },
           { label: 'إجمالي الإيرادات المسجلة', value: egp(Number(data?.revenue ?? 0)), hint: data?.baseline ? 'منذ آخر تصفير للتقارير' : 'كل الاشتراكات المدفوعة', icon: Wallet, tone: 'blue' },
         ]}

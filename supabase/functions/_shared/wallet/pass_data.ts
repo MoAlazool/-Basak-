@@ -50,6 +50,11 @@ export const PLATFORM_NAME = 'باصك';
 const CARD_KIND = 'بطاقة نقل طلاب';
 const VALIDITY_NOTE = 'هذه البطاقة للتعريف بالطالب. صلاحية الاشتراك يتحقق منها المشرف عند مسح الرمز.';
 const POWERED_BY = 'تشغيل منصة باصك · Powered by Basak';
+/**
+ * The credit printed under the QR code on both wallets. Latin only: Apple
+ * draws this line in the barcode's own encoding (ISO-8859-1).
+ */
+export const BARCODE_CREDIT = 'Powered by Basak';
 const DEFAULT_CONTACT_LABEL = 'للتواصل';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -187,6 +192,7 @@ export function buildApplePassJson(content: CardContent, options: ApplePassOptio
       format: 'PKBarcodeFormatQR',
       message: barcodeMessage(content),
       messageEncoding: 'iso-8859-1',
+      altText: BARCODE_CREDIT,
     }],
   };
 }
@@ -285,6 +291,6 @@ export function buildGoogleObject(content: CardContent, options: GoogleObjectOpt
       uris: reach
         ? [{ id: 'contact', uri: `tel:${reach.phone.replace(/[^0-9+]/g, '')}`, description: `${reach.label}: ${reach.phone}` }] : [],
     },
-    barcode: { type: 'QR_CODE', value: barcodeMessage(content) },
+    barcode: { type: 'QR_CODE', value: barcodeMessage(content), alternateText: BARCODE_CREDIT },
   };
 }

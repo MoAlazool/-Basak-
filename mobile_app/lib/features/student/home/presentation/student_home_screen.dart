@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'supervisor_contact_sheet.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -349,6 +350,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final now = DateTime.now();
 
     return GlassScaffold(
+      canvas: _canvas,
       body: ColoredBox(
         color: _canvas,
         child: RefreshIndicator(
@@ -473,11 +475,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             ],
           ),
           const SizedBox(height: 9),
-          if (sub.destination != null) ...[
-            _whiteInfo(LucideIcons.graduationCap, sub.destination!),
-            const SizedBox(height: 5),
-          ],
-          _whiteInfo(LucideIcons.busFront, sub.lineName ?? 'خط الجامعة'),
+          _whiteInfo(LucideIcons.busFront, sub.lineLabel),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),
@@ -895,40 +893,56 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     );
   }
 
-  Widget _supervisorCard(SubscriptionModel sub) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: _cardDecoration(),
-        child: Row(
-          children: [
-            Builder(builder: (context) {
-              final photo = sub.supervisorPhotoPath == null
-                  ? null
-                  : ref.watch(signedPhotoProvider(
-                          (bucket: 'supervisor-avatars', path: sub.supervisorPhotoPath!)))
-                      .valueOrNull;
-              return CircleAvatar(
+  /// The bus supervisor. Tapping opens a sheet to call them or save their number.
+  Widget _supervisorCard(SubscriptionModel sub) {
+    final photoUrl = sub.supervisorPhotoPath == null
+        ? null
+        : ref.watch(signedPhotoProvider((bucket: 'supervisor-avatars', path: sub.supervisorPhotoPath!))).valueOrNull;
+    final photo = photoUrl == null ? null : avatarImage(photoUrl);
+    final name = sub.supervisorName ?? 'مشرف الخط';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const Key('supervisor-card'),
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => SupervisorContactSheet.show(context,
+            name: name, phone: sub.supervisorPhone ?? '', lineName: sub.lineName, photo: photo),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: _cardDecoration(),
+          child: Row(
+            children: [
+              CircleAvatar(
                   radius: 21,
                   backgroundColor: const Color(0xFFE5F3FA),
-                  backgroundImage: photo == null ? null : avatarImage(photo),
-                  child: photo == null
-                      ? const Icon(LucideIcons.userRound, color: _teal, size: 20)
-                      : null);
-            }),
-            const SizedBox(width: 11),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(sub.supervisorName ?? 'مشرف الخط',
-                      style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-                  SelectableText(sub.supervisorPhone ?? '',
-                      style: AppTextStyles.labelSmall
-                          .copyWith(color: const Color(0xFF718695)))
-                ])),
-            const Icon(LucideIcons.phone, color: _teal, size: 19),
-          ],
+                  backgroundImage: photo,
+                  child: photo == null ? const Icon(LucideIcons.userRound, color: _teal, size: 20) : null),
+              const SizedBox(width: 11),
+              Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
+                const SizedBox(height: 2),
+                Text(sub.supervisorPhone ?? '',
+                    textDirection: TextDirection.ltr,
+                    style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695)))
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFE5F3FA), borderRadius: BorderRadius.circular(14)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(LucideIcons.phone, color: _teal, size: 16),
+                  const SizedBox(width: 6),
+                  Text('تواصل',
+                      style: AppTextStyles.labelSmall.copyWith(color: _teal, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            ],
+          ),
         ),
-      );
+      ),
+    );
+  }
 
   Widget _sectionTitle(String title, {Widget? trailing}) => Row(children: [
         Expanded(

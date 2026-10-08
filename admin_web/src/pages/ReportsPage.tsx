@@ -10,7 +10,7 @@ interface ReportRow {
   id: string; student_name: string; phone: string; university: string | null; company: string; line: string;
   type: string; period: string; academic_year: number | null; label: string | null; status: string;
   phase: 'current' | 'upcoming' | 'expired'; paid: boolean; amount: number | null; price: number;
-  paid_at: string | null; start_date: string | null; end_date: string | null; payment_method: string | null; receipt_no?: number | null;
+  paid_at: string | null; start_date: string | null; end_date: string | null; payment_method: string | null; receipt_no?: number | null; receipt_code?: string | null;
 }
 interface Totals {
   count: number; paid: number; unpaid: number; upcoming: number; upcoming_paid: number; expired: number;
@@ -177,7 +177,11 @@ export const ReportsPage: React.FC = () => {
                       ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-3 w-3" />مدفوع</span>
                       : <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-bold text-rose-600"><Clock3 className="h-3 w-3" />{r.status === 'pending_review' ? 'إيصال قيد المراجعة' : r.status === 'rejected' ? 'إيصال مرفوض' : 'غير مدفوع'}</span>}
                       {r.payment_method && <div className="mt-1 text-[11px] text-slate-400">{r.payment_method}</div>}
-                      {r.receipt_no != null && <div className="mt-1 text-[11px] text-slate-400">إيصال رقم {r.receipt_no}</div>}</td>
+                      {r.receipt_no != null && (
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          إيصال رقم {r.receipt_no}{r.receipt_code ? <> · مرجع الطالب <span dir="ltr">{r.receipt_code}</span></> : null}
+                        </div>
+                      )}</td>
                     <td className="p-3 font-bold text-emerald-700">{r.paid ? money(r.amount) : <span className="text-slate-400">{money(r.price)} مستحق</span>}</td>
                     <td className="p-3 text-xs text-slate-600">{date(r.paid_at)}</td>
                     <td className="p-3 text-xs text-slate-600">{date(r.start_date)} ← {date(r.end_date)}</td>

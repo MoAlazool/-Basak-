@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { keys } from './query';
+import { notify } from './toasts';
 
 /** What the database announces: which row changed, never its contents. */
 interface ChangeEvent { table: string; op: 'INSERT' | 'UPDATE' | 'DELETE'; id: string | null; company_id: string | null; }
@@ -29,6 +30,13 @@ const AFFECTS: Record<string, string[]> = {
   company_invites: ['invites', 'students'],
   student_correction_requests: ['corrections', 'students'],
   notifications: ['notifications'],
+};
+
+/** New rows an admin should hear about, and the page that handles them. */
+const ARRIVALS: Record<string, { title: string; body: string; page: string }> = {
+  receipts: { title: 'إيصال دفع جديد', body: 'طالب رفع إيصالاً وينتظر المراجعة.', page: 'receipts' },
+  password_reset_requests: { title: 'طلب استعادة كلمة مرور', body: 'طالب يطلب رمزاً لتغيير كلمة المرور.', page: 'students' },
+  company_students: { title: 'طالب جديد', body: 'انضم طالب جديد إلى الشركة.', page: 'students' },
 };
 
 /** Joins a private topic. The database refuses listeners the topic is not meant for. */
@@ -84,6 +92,9 @@ export function useWorkspaceSync(companyId: string) {
     // Belt and braces: the topic is this company's, and so must the event be.
     if (event.company_id && event.company_id !== companyId) return;
     refresh(AFFECTS[event.table] ?? []);
+    // Something new for the admin to act on: say so, wherever they are.
+    const arrival = event.op === 'INSERT' ? ARRIVALS[event.table] : undefined;
+    if (arrival) notify({ ...arrival, to: `/c/${companyId}/${arrival.page}` });
   });
   useEffect(() => () => { void client.cancelQueries({ queryKey: keys.company(companyId) }); }, [client, companyId]);
 }

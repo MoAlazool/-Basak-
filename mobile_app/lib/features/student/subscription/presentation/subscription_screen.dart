@@ -19,6 +19,7 @@ import '../../home/presentation/student_home_screen.dart';
 import 'purchase_flow.dart';
 import 'receipt_card.dart';
 import 'receipt_pdf.dart';
+import 'package:gal/gal.dart';
 import '../../../../core/network/supabase_service.dart';
 import 'dart:typed_data';
 
@@ -61,9 +62,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isExporting = false;
   XFile? _receiptPreview;
   String? _paymentMethodId;
-  /// One key per subscription card, for sharing its receipt as an image.
-  final Map<String, GlobalKey> _receiptKeys = {};
-
   /// Cards whose details are open. A card that needs the student to act
   /// (pay, re-upload) opens by itself; the rest stay compact.
   final Set<String> _expanded = {};
@@ -189,22 +187,37 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     }
   }
 
-  /// Saves or shares a receipt: as a real PDF document built from the stored
-  /// receipt, or as an image of its card.
+  /// The receipt as a real PDF document built from the stored receipt: opened
+  /// in the share sheet as a PDF, or saved straight to the phone's photos as a
+  /// picture of that same document.
   Future<void> _exportReceipt(SubscriptionReceipt receipt, {required bool asPdf}) async {
     if (_isExporting) return;
     final box = context.findRenderObject() as RenderBox?;
     final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
     setState(() => _isExporting = true);
     try {
+      final pdf = await ReceiptPdf.build(receipt, logo: await _companyLogo(receipt.companyLogoPath));
       if (asPdf) {
-        final pdf = await ReceiptPdf.build(receipt, logo: await _companyLogo(receipt.companyLogoPath));
         await ReceiptExport.share(pdf, ReceiptPdf.fileName(receipt), 'application/pdf', origin: origin);
       } else {
-        final key = _receiptKeys[receipt.subscriptionId];
-        if (key == null) return;
-        final png = await ReceiptExport.png(key);
-        await ReceiptExport.share(png, ReceiptExport.fileName(receipt, 'png'), 'image/png', origin: origin);
+        // No sheet and no file to deal with: it goes to the photo library.
+        if (!await Gal.hasAccess() && !await Gal.requestAccess()) {
+          throw Exception('اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.');
+        }
+        await Gal.putImageBytes(await ReceiptPdf.image(pdf),
+            name: 'basak-receipt-${receipt.code}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('تم حفظ الإيصال في الاستوديو.'), backgroundColor: AppColors.success));
+        }
+      }
+    } on GalException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.type == GalExceptionType.accessDenied
+                ? 'اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.'
+                : 'تعذر حفظ الصورة في الاستوديو. حاول مرة أخرى.'),
+            backgroundColor: AppColors.error));
       }
     } catch (e) {
       if (mounted) {
@@ -221,8 +234,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final subsAsync = ref.watch(allSubscriptionsProvider);
 
     return GlassScaffold(
+      canvas: const Color(0xFFEAF5FA),
       body: ColoredBox(
-        color: const Color(0xFFF5F8FD),
+        color: const Color(0xFFEAF5FA),
         child: RefreshIndicator(
           color: AppColors.teal,
           onRefresh: _handleRefresh,
@@ -282,7 +296,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 110),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('اشتراكاتي', style: AppTextStyles.displayMedium),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         if (open.isEmpty)
           _subscribeAgainCard()
         else ...[
@@ -300,7 +314,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8, right: 2),
+        padding: const EdgeInsets.only(bottom: 10, right: 2),
         child: Text(text,
             style: AppTextStyles.titleMedium.copyWith(color: AppColors.textSecondary)),
       );
@@ -370,7 +384,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           boxShadow: const [BoxShadow(color: Color(0x0B17384A), blurRadius: 15, offset: Offset(0, 5))]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 15, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Text(sub.periodName, style: AppTextStyles.titleLarge)),
@@ -386,16 +400,20 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 ]),
               ),
             ]),
-            const SizedBox(height: 8),
-            _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
-            const SizedBox(height: 6),
+            const SizedBox(height: 14),
+            if ((sub.companyName ?? '').isNotEmpty) ...[
+              _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
+              const SizedBox(height: 10),
+            ],
+            _summaryLine(LucideIcons.busFront, 'الخط', sub.lineLabel),
+            const SizedBox(height: 10),
             _summaryLine(LucideIcons.mapPin, 'محطة الصعود', sub.stationName ?? '—'),
             if (sub.endDate != null && !sub.isDaily) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
               _summaryLine(LucideIcons.calendarCheck2, sub.isExpired ? 'انتهى في' : 'صالح حتى',
                   ReceiptCard.day(sub.endDate)),
             ],
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             _summaryLine(
                 LucideIcons.wallet,
                 sub.isDaily
@@ -453,10 +471,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     if (receipt == null) {
       return [
         const Divider(height: 18),
-        if ((sub.companyName ?? '').isNotEmpty) ...[
-          _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
-          const SizedBox(height: 8),
-        ],
         if (sub.destination != null) ...[
           _summaryLine(LucideIcons.graduationCap, 'الجامعة', sub.destination!),
           const SizedBox(height: 8),
@@ -473,15 +487,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ],
       ];
     }
-    final key = _receiptKeys.putIfAbsent(sub.id, GlobalKey.new);
     return [
-      RepaintBoundary(
-        key: key,
-        child: ColoredBox(
-          color: Colors.white,
-          child: Padding(padding: const EdgeInsets.all(4), child: ReceiptCard(receipt: receipt)),
-        ),
-      ),
+      ReceiptCard(receipt: receipt),
       const SizedBox(height: 10),
       SizedBox(
         width: double.infinity,
@@ -499,7 +506,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           key: Key('receipt-image-${sub.id}'),
           onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: false),
           icon: const Icon(LucideIcons.image, size: 18),
-          label: const Text('مشاركة كصورة'),
+          label: const Text('حفظ كصورة في الاستوديو'),
         ),
       ),
     ];
@@ -549,43 +556,49 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     ];
   }
 
-  /// Every payment instruction in one place, including the company's own note
-  /// for the chosen method.
+  /// The payment instructions, in one short numbered block.
   Widget _paymentNotes(List<PaymentMethodModel> methods, int attempts) {
-    final chosen = methods.where((m) => m.id == _paymentMethodId).firstOrNull;
     final notes = [
       if (methods.isEmpty)
-        'لم تضف شركة النقل وسائل دفع بعد. تواصل مع إدارة الشركة للحصول على بيانات التحويل.'
+        'تواصل مع إدارة الشركة للحصول على بيانات التحويل.'
       else
-        'اختر وسيلة الدفع وحوّل المبلغ كاملاً إلى البيانات الظاهرة تحتها.',
-      'ارفع صورة واضحة للإيصال يظهر فيها رقم العملية وتاريخ التحويل.',
-      'تراجع إدارة الشركة الإيصال يدوياً، وسيصلك إشعار عند اعتماد الاشتراك.',
-      if ((chosen?.instructions ?? '').trim().isNotEmpty) chosen!.instructions!.trim(),
-      if (attempts > 0 && attempts < 5) 'المتبقي لك ${5 - attempts} من 5 محاولات لرفع الإيصال.',
+        'حوّل المبلغ كاملاً بالوسيلة التي اخترتها.',
+      'ارفع صورة واضحة للإيصال فيها رقم العملية والتاريخ.',
+      'تُراجع الإدارة الإيصال وسيصلك إشعار عند الاعتماد.',
+      if (attempts > 0 && attempts < 5) 'المتبقي ${5 - attempts} من 5 محاولات لرفع الإيصال.',
     ];
+
     return Container(
       key: const Key('payment-notes'),
       width: double.infinity,
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: BoxDecoration(
-          color: const Color(0xFFFFF9EC), borderRadius: BorderRadius.circular(18)),
+          color: const Color(0xFFFFFBF2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFF3E3C2))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(LucideIcons.info, size: 19, color: Color(0xFFB97812)),
-          const SizedBox(width: 8),
+          const Icon(LucideIcons.info, size: 15, color: Color(0xFFB97812)),
+          const SizedBox(width: 6),
           Text('ملاحظات الدفع',
-              style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF8A5A0B))),
+              style: AppTextStyles.labelSmall
+                  .copyWith(color: const Color(0xFF8A5A0B), fontWeight: FontWeight.bold)),
         ]),
-        const SizedBox(height: 8),
-        for (final note in notes)
+        const SizedBox(height: 6),
+        for (var i = 0; i < notes.length; i++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 5),
+            padding: const EdgeInsets.only(bottom: 4),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: CircleAvatar(radius: 2.5, backgroundColor: Color(0xFFB97812))),
-              const SizedBox(width: 8),
-              Expanded(child: Text(note, style: AppTextStyles.bodyMedium)),
+              SizedBox(
+                width: 18,
+                child: Text('${i + 1}.',
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: const Color(0xFFB97812), fontWeight: FontWeight.bold)),
+              ),
+              Expanded(
+                child: Text(notes[i],
+                    style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF5E4A1E), height: 1.45)),
+              ),
             ]),
           ),
       ]),
@@ -639,10 +652,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   Widget _summaryLine(IconData icon, String label, String value, {Key? labelKey, Key? valueKey}) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, size: 16, color: const Color(0xFF00658D))),
+      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Icon(icon, size: 16, color: const Color(0xFF00658D)),
         const SizedBox(width: 8),
         SizedBox(
             width: 104,
@@ -744,24 +755,26 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             const SizedBox(height: 8),
             if (m.type == 'bank' && m.bankName != null) _payLine('البنك', m.bankName!, copy: false),
             _payLine(
-                switch (m.type) { 'instapay' => 'عنوان InstaPay', 'vodafone_cash' => 'رقم المحفظة', _ => 'رقم الحساب' },
+                switch (m.type) { 'instapay' => 'عنوان إنستاباي', 'vodafone_cash' => 'رقم المحفظة', _ => 'رقم الحساب' },
                 m.payTo),
             if (m.type == 'bank' && m.iban != null) _payLine('IBAN', m.iban!),
-            if (m.accountHolder != null) _payLine('باسم', m.accountHolder!, copy: false),
+            if (m.accountHolder != null) _payLine('بإسم', m.accountHolder!, copy: false),
           ],
         ]),
       ),
     );
   }
 
+  /// "label: value" with the value right beside its label (a number or an
+  /// address reads left to right but still sits next to the label).
   Widget _payLine(String label, String value, {bool copy = true}) => Padding(
-        padding: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.only(top: 8),
         child: Row(children: [
           Text('$label: ', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          Expanded(
+          Flexible(
             child: Text(value,
-                textDirection: TextDirection.ltr,
-                textAlign: TextAlign.start,
+                textDirection: copy ? TextDirection.ltr : null,
+                textAlign: TextAlign.right,
                 style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700)),
           ),
           if (copy)

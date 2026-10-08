@@ -74,6 +74,25 @@ export const weekPoints = (week: { date: string; riders: number }[] | undefined)
 
 const dayName = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 /**
+ * The riders card. Students confirm the evening before, so once the vote for
+ * the next ride is open that is the number that moves: it becomes the headline
+ * and today's stays beside it. Before that, today is the headline.
+ */
+export function ridersCard(numbers: Parameters<typeof nextRideHint>[0], fallbackHint: string): { label: string; value: number; hint: string } {
+  if (!numbers) return { label: 'نازلين اليوم (مؤكدين)', value: 0, hint: fallbackHint };
+  const today = numbers.riders_week[numbers.riders_week.length - 1]?.date;
+  if (numbers.next_ride_date && numbers.next_ride_date !== today) {
+    const day = dayName.format(new Date(`${numbers.next_ride_date}T00:00:00Z`));
+    return {
+      label: `مؤكدون لرحلة ${day}`,
+      value: numbers.riders_next,
+      hint: `التأكيد مفتوح الآن • نزل اليوم: ${numbers.riders_today.toLocaleString('ar-EG')}`,
+    };
+  }
+  return { label: 'نازلين اليوم (مؤكدين)', value: numbers.riders_today, hint: nextRideHint(numbers) || fallbackHint };
+}
+
+/**
  * The line under "riding today": confirmations for the next ride, which is the
  * number that moves while students vote in the evening.
  */

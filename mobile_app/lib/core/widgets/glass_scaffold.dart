@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 
 /// GlassScaffold provides subtle background color blooms / gradients
@@ -10,6 +11,11 @@ class GlassScaffold extends StatelessWidget {
   final Widget? floatingActionButton;
   final bool extendBody;
 
+  /// The page's own background colour. When given, it fills the whole screen,
+  /// including behind the status bar, so the top of the page is one colour
+  /// with the rest instead of a separate strip.
+  final Color? canvas;
+
   const GlassScaffold({
     super.key,
     this.appBar,
@@ -17,20 +23,38 @@ class GlassScaffold extends StatelessWidget {
     this.bottomNavigationBar,
     this.floatingActionButton,
     this.extendBody = true, // Allows bottom navigation bar to float with glass blur over content
+    this.canvas,
   });
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
+    final background = canvas ?? AppColors.background;
+    // Android draws its own status and navigation bars: make them the page's
+    // colour with dark icons, so no strip of another colour shows at the top
+    // or the bottom. (iOS takes the icon brightness from the same setting.)
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: background,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+      child: Scaffold(
+      backgroundColor: background,
       extendBody: extendBody,
       extendBodyBehindAppBar: true,
       appBar: appBar,
       body: Stack(
+        // The page fills the screen even when its content is shorter.
+        fit: StackFit.expand,
         children: [
-          // Ambient blurred decorative shapes in background
+          // Ambient blurred decorative shapes in background (pages with their
+          // own canvas colour cover them, so they are not drawn there).
+          if (canvas == null) ...[
           Positioned(
             top: -60,
             left: -40,
@@ -83,6 +107,8 @@ class GlassScaffold extends StatelessWidget {
             ),
           ),
 
+          ],
+
           // Main Screen Content
           SafeArea(
             bottom: !extendBody,
@@ -92,6 +118,7 @@ class GlassScaffold extends StatelessWidget {
       ),
       bottomNavigationBar: bottomNavigationBar,
       floatingActionButton: floatingActionButton,
+      ),
     );
   }
 }

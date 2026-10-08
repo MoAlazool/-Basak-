@@ -196,7 +196,10 @@ class SaleOption {
 /// never changed afterwards. The PDF and the image are built from it alone.
 class SubscriptionReceipt {
   final String subscriptionId;
-  final int number;
+
+  /// The receipt's reference (e.g. 26-7F3A9C2E). It is what students see: unlike
+  /// a running number, it does not tell how many customers the company has.
+  final String code;
   final String companyName;
   final String studentName;
   final String? studentPhone;
@@ -219,7 +222,7 @@ class SubscriptionReceipt {
 
   const SubscriptionReceipt({
     required this.subscriptionId,
-    required this.number,
+    required this.code,
     required this.companyName,
     required this.studentName,
     this.studentPhone,
@@ -241,7 +244,7 @@ class SubscriptionReceipt {
 
   factory SubscriptionReceipt.fromJson(Map<String, dynamic> json) => SubscriptionReceipt(
         subscriptionId: json['subscription_id'] as String,
-        number: (json['receipt_no'] as num).toInt(),
+        code: json['receipt_code'] as String? ?? '—',
         companyName: json['company_name'] as String? ?? '',
         studentName: json['student_name'] as String? ?? '',
         studentPhone: json['student_phone'] as String?,

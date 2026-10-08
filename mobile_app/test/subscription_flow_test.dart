@@ -82,7 +82,7 @@ SubscriptionModel subscription(String status, {String type = 'termly', String co
     });
 
 const receipt = SubscriptionReceipt(
-  subscriptionId: 'sub1', number: 7, companyName: 'المستقبل', studentName: 'طالب تجريبي محلي',
+  subscriptionId: 'sub1', code: '26-7F3A9C2E', companyName: 'المستقبل', studentName: 'طالب تجريبي محلي',
   studentPhone: '01055512301', universityName: 'جامعة الدلتا', lineName: 'منية النصر', stationName: 'البجلات',
   periodLabel: 'الفصل الدراسي الأول 2026/2027', startDate: '2026-09-05', endDate: '2027-01-30',
   amount: 8000, paymentMethod: 'InstaPay', approvedAt: '2026-10-08T10:00:00Z',
@@ -147,6 +147,10 @@ void main() {
     test('the boarding station is the headline; the university and the line are rows under it', () {
       expect(subscription('active').boardingTitle, 'البجلات');
       expect(subscription('active').destination, 'جامعة الدلتا');
+      // The line reads with the student's own university, whatever the admin typed.
+      expect(subscription('active').lineLabel, 'منية النصر ← الدلتا');
+      expect(SubscriptionModel.routeLabel('الزرقا', 'جامعة المنصورة الجديدة'), 'الزرقا ← المنصورة الجديدة');
+      expect(SubscriptionModel.routeLabel('الزرقا', null), 'الزرقا');
       expect(subscription('active').periodName, 'الفصل الأول');
       expect(subscription('active', type: 'yearly', code: 'both').periodName, 'الفصلان معاً');
       // The older spelling still reads correctly.
@@ -311,7 +315,7 @@ void main() {
       expect(find.text('بانتظار الدفع'), findsOneWidget);
       expect(find.text('الفصل الأول'), findsOneWidget);
       expect(find.text('البجلات'), findsOneWidget);
-      expect(find.text('منية النصر'), findsOneWidget);
+      expect(find.text('منية النصر ← الدلتا'), findsOneWidget);
       expect(find.text('المبلغ المطلوب'), findsOneWidget);
       expect(find.text('8,000 ج.م'), findsOneWidget);
       // It needs the student, so it is already open.
@@ -320,8 +324,10 @@ void main() {
       expect(find.byKey(const Key('next-period')), findsNothing);
       await tester.tap(find.text('InstaPay').first);
       await tester.pumpAndSettle();
-      expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsOneWidget);
       expect(find.text('almostaqbal@instapay'), findsOneWidget);
+      // Three short notes, nothing more.
+      expect(find.text('3.'), findsOneWidget);
+      expect(find.text('4.'), findsNothing);
       expect(find.text('8,000 ج.م'), findsOneWidget);
       // The selection is fixed once the request exists.
       expect(find.byKey(const Key('flow-back')), findsNothing);
@@ -357,17 +363,20 @@ void main() {
       expect(find.text('الاشتراك الحالي'), findsOneWidget);
       expect(find.text('الاشتراك مفعّل'), findsOneWidget);
       expect(find.text('المبلغ المدفوع'), findsOneWidget);
+      // The company is on the card itself, before any details are opened.
+      expect(find.text('شركة النقل'), findsOneWidget);
+      expect(find.text('المستقبل'), findsOneWidget);
       expect(find.text('المبلغ المطلوب'), findsNothing);
       expect(find.text('30 يناير 2027'), findsOneWidget);
       // Collapsed: no receipt, no payment form, ever.
       expect(find.byKey(const Key('receipt-pdf-sub1')), findsNothing);
-      expect(find.text('00007'), findsNothing);
+      expect(find.text('26-7F3A9C2E'), findsNothing);
       expect(find.byKey(const Key('payment-methods')), findsNothing);
       expect(find.text('إيصال التحويل'), findsNothing);
 
       await toggle(tester, 'sub1');
       expect(find.text('إخفاء التفاصيل'), findsOneWidget);
-      expect(find.text('00007'), findsOneWidget);
+      expect(find.text('26-7F3A9C2E'), findsOneWidget);
       expect(find.text('طالب تجريبي محلي'), findsOneWidget);
       expect(find.text('InstaPay'), findsOneWidget);
       expect(find.text('من 5 سبتمبر 2026 إلى 30 يناير 2027'), findsOneWidget);
@@ -376,7 +385,7 @@ void main() {
       expect(find.byKey(const Key('payment-methods')), findsNothing);
 
       await toggle(tester, 'sub1');
-      expect(find.text('00007'), findsNothing);
+      expect(find.text('26-7F3A9C2E'), findsNothing);
       // The next period, when the company sells it in advance, with its own price.
       expect(find.text('الفصل الثاني · 8,500 ج.م'), findsOneWidget);
     });
@@ -395,7 +404,7 @@ void main() {
         sub('now', 'active', 'second', 'current', '2027-02-01', '2027-06-30'),
         sub('old2', 'expired', 'summer', 'expired', '2026-07-01', '2026-09-01'),
       ], docs: {
-        'old1': const SubscriptionReceipt(subscriptionId: 'old1', number: 3, companyName: 'المستقبل', studentName: 'طالب',
+        'old1': const SubscriptionReceipt(subscriptionId: 'old1', code: '25-0B11C4D2', companyName: 'المستقبل', studentName: 'طالب',
             lineName: 'خط قديم', periodLabel: 'الفصل الدراسي الأول 2025/2026', amount: 7000, approvedAt: '2025-09-01T10:00:00Z'),
       });
       expect(find.text('الاشتراك الحالي'), findsOneWidget);
@@ -409,7 +418,7 @@ void main() {
       // All compact; an old one opens to its own receipt, as it was issued.
       expect(find.text('إخفاء التفاصيل'), findsNothing);
       await toggle(tester, 'old1');
-      expect(find.text('00003'), findsOneWidget);
+      expect(find.text('25-0B11C4D2'), findsOneWidget);
       expect(find.text('خط قديم'), findsOneWidget);
       expect(find.byKey(const Key('receipt-pdf-old1')), findsOneWidget);
       expect(find.byKey(const Key('receipt-pdf-now')), findsNothing);
@@ -426,19 +435,12 @@ void main() {
     });
   });
 
-  testWidgets('the receipt card can be shared as an image', (tester) async {
-    final key = GlobalKey();
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: RepaintBoundary(key: key, child: const ReceiptCard(receipt: receipt)),
-        ),
-      ),
+  testWidgets('the receipt card shows the stored receipt', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: SingleChildScrollView(child: ReceiptCard(receipt: receipt))),
     ));
     expect(find.text('المستقبل'), findsOneWidget);
     expect(find.text('طالب تجريبي محلي'), findsOneWidget);
-    final png = await tester.runAsync(() => ReceiptExport.png(key));
-    expect(png!.sublist(1, 4), 'PNG'.codeUnits);
-    expect(ReceiptExport.fileName(receipt, 'png'), 'basak-receipt-00007.png');
+    expect(find.text('26-7F3A9C2E'), findsOneWidget);
   });
 }

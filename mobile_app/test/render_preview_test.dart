@@ -12,6 +12,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/theme/app_theme.dart';
+import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
+import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
+import 'package:basak_mobile/features/student/home/presentation/supervisor_contact_sheet.dart';
 import 'package:basak_mobile/features/student/subscription/models/payment_method_model.dart';
 import 'package:basak_mobile/features/student/subscription/models/sale_catalog.dart';
 import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
@@ -123,5 +126,77 @@ void main() {
     await tester.tap(find.byKey(const Key('sub-toggle-sub1')));
     tester.view.physicalSize = const Size(402 * 2, 1500 * 2);
     await _shot(tester, '8-expanded');
+  }, skip: _dir == null);
+
+  for (final size in const [Size(402, 874), Size(375, 667), Size(430, 932)]) {
+    testWidgets('draw the student card at ${size.width.toInt()}x${size.height.toInt()}', (tester) async {
+      await tester.runAsync(_fonts);
+      tester.view.physicalSize = size * 2;
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          studentQrProvider.overrideWith((ref) async => const StudentPassDetails(
+              qrValue: 'BASAK-STUDENT-QR-0001-EXAMPLE', fullName: 'محمد عادل إبراهيم', phone: '01055512301',
+              university: 'جامعة الدلتا للعلوم والتكنولوجيا', college: 'الهندسة', lineName: 'منيه النصر',
+              stationName: 'البجلات', subscriptionType: 'termly', subscriptionStatus: 'active')),
+        ],
+        child: RepaintBoundary(
+          key: _key,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            locale: const Locale('ar'),
+            supportedLocales: const [Locale('ar')],
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            // Framed as in the app: the floating navigation bar over the page's bottom.
+            home: Scaffold(
+              extendBody: true,
+              body: const StudentQrScreen(),
+              bottomNavigationBar: Container(
+                height: 64,
+                margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await _shot(tester, 'card-${size.height.toInt()}');
+      expect(find.byType(Scrollable), findsNothing, reason: 'the card page is fixed');
+      expect(tester.getSize(find.byKey(const Key('student-qr'))).width, greaterThan(150));
+      expect(find.text('الكلية'), findsNothing);
+    }, skip: _dir == null);
+  }
+
+  testWidgets('draw the supervisor sheet', (tester) async {
+    await tester.runAsync(_fonts);
+    tester.view.physicalSize = const Size(402 * 2, 874 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(RepaintBoundary(
+      key: _key,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        locale: const Locale('ar'),
+        supportedLocales: const [Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Scaffold(
+          backgroundColor: const Color(0xFFEAF5FA),
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () => SupervisorContactSheet.show(context,
+                    name: 'أحمد علي محمود', phone: '01012345678', lineName: 'منيه النصر'),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await _shot(tester, '9-supervisor');
   }, skip: _dir == null);
 }

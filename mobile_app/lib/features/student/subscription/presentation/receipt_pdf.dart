@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/sale_catalog.dart';
 
@@ -42,9 +44,31 @@ class ReceiptPdf {
     return '$grouped ج.م';
   }
 
-  static String number(int value) => value.toString().padLeft(5, '0');
+  static String fileName(SubscriptionReceipt receipt) => 'basak-receipt-${receipt.code}.pdf';
 
-  static String fileName(SubscriptionReceipt receipt) => 'basak-receipt-${number(receipt.number)}.pdf';
+  /// The same document as a picture: the first page of the PDF drawn at print
+  /// quality, so the image is the receipt itself and not a photo of the screen.
+  static Future<Uint8List> image(Uint8List pdf, {double dpi = 200}) async {
+    await for (final page in Printing.raster(pdf, pages: const [0], dpi: dpi)) {
+      return flattenOnWhite(await page.toPng());
+    }
+    throw Exception('تعذر تجهيز صورة الإيصال.');
+  }
+
+  /// A JPEG of [png] on a white sheet: no transparency can survive, whatever
+  /// the gallery or the app it is sent to does with see-through pictures.
+  static Uint8List flattenOnWhite(Uint8List png) {
+    final picture = img.decodePng(png);
+    if (picture == null) return png;
+    final sheet = img.Image(width: picture.width, height: picture.height, numChannels: 3)
+      ..clear(img.ColorRgb8(255, 255, 255));
+    img.compositeImage(sheet, picture);
+    return img.encodeJpg(sheet, quality: 92);
+  }
+
+  /// What the student sees as the receipt's number: its reference, which does
+  /// not count the company's customers.
+  static String reference(SubscriptionReceipt receipt) => receipt.code;
 
   static Future<pw.Font> _font(String weight) async =>
       pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-$weight.ttf'));
@@ -59,7 +83,7 @@ class ReceiptPdf {
         pw.TextStyle(font: font ?? regular, fontSize: size, color: color, lineSpacing: 1.5);
 
     final doc = pw.Document(
-      title: 'إيصال اشتراك ${number(r.number)}',
+      title: 'إيصال اشتراك ${r.code}',
       author: r.companyName,
       creator: 'Basak',
     );
@@ -108,10 +132,15 @@ class ReceiptPdf {
     final validity = r.startDate != null && r.endDate != null ? 'من ${day(r.startDate)} إلى ${day(r.endDate)}' : null;
 
     doc.addPage(pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 32),
-      textDirection: pw.TextDirection.rtl,
-      theme: pw.ThemeData.withFont(base: regular, bold: bold),
+      pageTheme: pw.PageTheme(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 32),
+        textDirection: pw.TextDirection.rtl,
+        theme: pw.ThemeData.withFont(base: regular, bold: bold),
+        // Paper is white. Without this the page has no background at all, and
+        // a picture made from it is see-through.
+        buildBackground: (_) => pw.FullPage(ignoreMargins: true, child: pw.Container(color: PdfColors.white)),
+      ),
       build: (context) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
         // ── Letterhead. The page runs right to left: the company first (right),
         //    the receipt box last (left).
@@ -147,7 +176,7 @@ class ReceiptPdf {
               pw.Divider(color: _line, height: 1, thickness: .6),
               pw.SizedBox(height: 6),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                pw.Text(number(r.number), style: text(11, font: bold)),
+                pw.Text(r.code, style: text(11, font: bold)),
                 pw.Text('رقم الإيصال', textDirection: pw.TextDirection.rtl, style: text(9.5, color: _muted)),
               ]),
               pw.SizedBox(height: 3),

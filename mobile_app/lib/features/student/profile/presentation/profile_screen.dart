@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../home/presentation/student_home_screen.dart';
+import 'profile_editor.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -25,7 +25,7 @@ class ProfileScreen extends ConsumerWidget {
           ],
         ),
         content: Text(
-          'حذف الحساب نهائي ولا يمكن التراجع عنه.\n\nلا يمكن تغيير الصورة الشخصية إلا بحذف الحساب وإعادة التسجيل.\n\nسيؤدي الحذف إلى إلغاء الاشتراك الحالي وفقدان بياناته وسجلات الرحلات المرتبطة به.\n\nهل تريد حذف الحساب والاشتراك الآن؟',
+          'حذف الحساب نهائي ولا يمكن التراجع عنه.\n\nسيؤدي الحذف إلى إلغاء الاشتراك الحالي وفقدان بياناته وسجلات الرحلات المرتبطة به.\n\nهل تريد حذف الحساب والاشتراك الآن؟',
           style: AppTextStyles.bodyMedium,
         ),
         actions: [
@@ -80,6 +80,7 @@ class ProfileScreen extends ConsumerWidget {
         '';
 
     return GlassScaffold(
+      canvas: const Color(0xFFEAF5FA),
       body: ColoredBox(
         color: const Color(0xFFEAF5FA),
         child: RefreshIndicator(
@@ -109,104 +110,40 @@ class ProfileScreen extends ConsumerWidget {
               GlassContainer(
                 padding: const EdgeInsets.all(20),
                 borderRadius: 24,
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: const Color(0xFFE2F2F9),
-                      backgroundImage: profile?['profile_image_signed_url']
-                              is String
-                          ? avatarImage(
-                              profile!['profile_image_signed_url'] as String)
-                          : null,
-                      child: profile?['profile_image_signed_url'] is String
-                          ? null
-                          : const Icon(LucideIcons.user,
-                              size: 36, color: Color(0xFF00658D)),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      fullName,
-                      style: AppTextStyles.titleLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      phone,
-                      style: AppTextStyles.bodyMedium,
-                    ),
-                    if (authState.isStudent) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        profile?['university'] as String? ??
-                            (detailsAsync.isLoading
-                                ? 'جارٍ تحميل الجامعة...'
-                                : 'الجامعة المسجلة'),
-                        style: AppTextStyles.bodyMedium
-                            .copyWith(color: AppColors.textSecondary),
-                      ),
-                      Text(
-                        profile?['college'] as String? ?? 'الكلية المسجلة',
-                        style: AppTextStyles.bodyMedium
-                            .copyWith(color: AppColors.textSecondary),
-                      ),
-                      if (subscriptionAsync?.valueOrNull != null) ...[
-                        const SizedBox(height: 15),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(13),
-                          decoration: BoxDecoration(
-                              color: const Color(0xFFF1F7FA),
-                              borderRadius: BorderRadius.circular(15)),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  const Icon(LucideIcons.busFront,
-                                      size: 18, color: Color(0xFF00658D)),
-                                  const SizedBox(width: 7),
-                                  Expanded(
-                                      child: Text(
-                                          subscriptionAsync!
-                                                  .valueOrNull!.lineName ??
-                                              'مسار النقل',
-                                          style: AppTextStyles.titleMedium))
-                                ]),
-                                const SizedBox(height: 7),
-                                Text(
-                                    'المحطة: ${subscriptionAsync.valueOrNull!.stationName ?? '—'}',
-                                    style: AppTextStyles.bodyMedium.copyWith(
-                                        color: AppColors.textSecondary)),
-                              ]),
-                        ),
-                      ],
-                    ],
-                    const Divider(height: 32),
-
-                    // Fixed Profile Notice Banner
-                    if (authState.isStudent)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(LucideIcons.lock,
-                                size: 16, color: AppColors.textSecondary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'تعديل البيانات مغلق. لتغيير خط السير أو المحطة يجب حذف الحساب وإعادة التسجيل.',
-                                style: AppTextStyles.labelSmall
-                                    .copyWith(color: AppColors.textSecondary),
+                child: authState.isStudent && user != null
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        ProfileSection(
+                            userId: user.id, profile: profile, fallbackName: fullName, fallbackPhone: phone),
+                        if (subscriptionAsync?.valueOrNull != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(13),
+                            decoration: BoxDecoration(
+                                color: const Color(0xFFF1F7FA), borderRadius: BorderRadius.circular(15)),
+                            child: Row(children: [
+                              const Icon(LucideIcons.busFront, size: 18, color: Color(0xFF00658D)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                    '${subscriptionAsync!.valueOrNull!.lineLabel} · محطة ${subscriptionAsync.valueOrNull!.stationName ?? '—'}',
+                                    style: AppTextStyles.bodyMedium
+                                        .copyWith(color: const Color(0xFF17384A), fontWeight: FontWeight.w600)),
                               ),
-                            ),
-                          ],
+                            ]),
+                          ),
+                        ],
+                      ])
+                    : Column(children: [
+                        const CircleAvatar(
+                          radius: 36,
+                          backgroundColor: Color(0xFFE2F2F9),
+                          child: Icon(LucideIcons.user, size: 36, color: Color(0xFF00658D)),
                         ),
-                      ),
-                  ],
-                ),
+                        const SizedBox(height: 12),
+                        Text(fullName, style: AppTextStyles.titleLarge),
+                        const SizedBox(height: 4),
+                        Text(phone, style: AppTextStyles.bodyMedium),
+                      ]),
               ),
               const SizedBox(height: 24),
 

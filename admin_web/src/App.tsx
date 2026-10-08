@@ -24,7 +24,8 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { supabase } from './lib/supabase';
 import { useQuery } from '@tanstack/react-query';
-import { clearCache, keys, persistOptions, queryClient } from './lib/query';
+import { clearCache, keys, persistOptions, queryClient, unwrap, usePageData } from './lib/query';
+import { useCompanyOverview } from './lib/overview';
 import { usePlatformSync, useWorkspaceSync } from './lib/sync';
 import { usePendingReceipts } from './lib/pendingReceipts';
 import { platformNav, workspaceNav } from './lib/nav';
@@ -188,7 +189,7 @@ const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ ad
   return (
     <CompanyScopeProvider company={company} key={company.id}>
       <WorkspaceSync companyId={company.id} />
-      <Shell items={workspaceNav(company.id)} areaLabel={company.name} onLogout={onLogout} banner={<WorkspaceBar />}>
+      <WorkspaceShell companyId={company.id} companyName={company.name} onLogout={onLogout}>
         <Routes>
           <Route index element={<OverviewPage />} />
           <Route path="students" element={<StudentsPage />} />
@@ -203,10 +204,34 @@ const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ ad
           <Route path="settings" element={<CompanySettingsPage />} />
           <Route path="*" element={<Navigate to={`/c/${company.id}`} replace />} />
         </Routes>
-      </Shell>
+      </WorkspaceShell>
     </CompanyScopeProvider>
   );
 };
+
+/**
+ * The workspace frame with what is waiting for the admin: receipts to review
+ * on "فحص الإيصالات" and password-reset requests on "الطلاب", as red badges.
+ * The total is in the browser tab's title too, for when the tab is in the back.
+ */
+const WorkspaceShell: React.FC<{ companyId: string; companyName: string; onLogout: () => void; children: React.ReactNode }> =
+  ({ companyId, companyName, onLogout, children }) => {
+    const receipts = useCompanyOverview(companyId).data?.pending_receipts ?? 0;
+    const requests = usePageData(keys.company(companyId, 'resetRequests'), () =>
+      unwrap<unknown[]>(supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId }))).data?.length ?? 0;
+    useEffect(() => {
+      const base = document.title.replace(/^\(\d+\+?\)\s*/, '');
+      const total = receipts + requests;
+      document.title = total > 0 ? `(${total > 99 ? '99+' : total}) ${base}` : base;
+      return () => { document.title = base; };
+    }, [receipts, requests]);
+    return (
+      <Shell items={workspaceNav(companyId)} areaLabel={companyName} onLogout={onLogout} banner={<WorkspaceBar />}
+        badges={{ receipts, requests }}>
+        {children}
+      </Shell>
+    );
+  };
 
 /** Listens to the open company's topic for as long as its workspace is mounted. */
 const WorkspaceSync: React.FC<{ companyId: string }> = ({ companyId }) => {

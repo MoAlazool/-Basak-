@@ -27,7 +27,7 @@ class ReceiptCard extends StatelessWidget {
   static const _line = Color(0xFFE3EDF3);
 
   static TextStyle _text(double size, Color color, [FontWeight weight = FontWeight.w400]) =>
-      TextStyle(fontFamily: 'ReadexPro', fontSize: size, color: color, fontWeight: weight, height: 1.35);
+      TextStyle(fontFamily: 'ReadexPro', fontSize: size, color: color, fontWeight: weight, height: 1.5);
 
   static String money(double value) {
     final grouped = value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
@@ -46,7 +46,6 @@ class ReceiptCard extends StatelessWidget {
     return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
 
-  static String number(int value) => value.toString().padLeft(5, '0');
 
   @override
   Widget build(BuildContext context) {
@@ -65,13 +64,13 @@ class ReceiptCard extends StatelessWidget {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(r.companyName, style: _text(17, _ink, FontWeight.w700)),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text('إيصال اشتراك', style: _text(12, _muted)),
                 ]),
               ),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('رقم الإيصال', style: _text(11, _muted)),
-                Text(number(r.number),
+                Text(r.code,
                     textDirection: TextDirection.ltr, style: _text(16, _brand, FontWeight.w700)),
               ]),
             ]),
@@ -131,12 +130,13 @@ class ReceiptCard extends StatelessWidget {
   }
 
   Widget _row(String label, String value, {bool ltr = false}) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(width: 104, child: Text(label, style: _text(12, _muted))),
           Expanded(
+            // A number reads left to right but still sits beside its label.
             child: Text(value,
-                textAlign: TextAlign.start,
+                textAlign: TextAlign.right,
                 textDirection: ltr ? TextDirection.ltr : null,
                 style: _text(13, _ink, FontWeight.w600)),
           ),
@@ -158,7 +158,7 @@ class ReceiptExport {
   }
 
   static String fileName(SubscriptionReceipt receipt, String extension) =>
-      'basak-receipt-${ReceiptCard.number(receipt.number)}.$extension';
+      'basak-receipt-${receipt.code}.$extension';
 
   /// Opens the system sheet: save to Files, print, or send. [origin] anchors
   /// the sheet on tablets.
