@@ -33,7 +33,7 @@ export const PaymentMethodsPage: React.FC = () => {
   const [error, setError] = useState('');
 
   const page = usePageData(keys.company(companyId, 'paymentMethods'), async () =>
-    unwrap<PaymentMethod[]>(supabase.from('company_payment_methods').select('*')
+    unwrap<PaymentMethod[]>(supabase.from('company_payment_methods').select('id, company_id, method_type, display_name, account_holder, instapay_address, wallet_phone, bank_name, bank_account_number, iban, instructions, is_active, sort_order')
       .eq('company_id', companyId).order('sort_order').order('created_at')));
   const methods = page.data ?? [];
   const loading = page.loading;
@@ -75,8 +75,13 @@ export const PaymentMethodsPage: React.FC = () => {
   const move = async (index: number, delta: number) => {
     const a = methods[index]; const b = methods[index + delta];
     if (!a || !b) return;
-    await supabase.from('company_payment_methods').update({ sort_order: b.sort_order }).eq('id', a.id);
-    await supabase.from('company_payment_methods').update({ sort_order: a.sort_order === b.sort_order ? a.sort_order + delta : a.sort_order }).eq('id', b.id);
+    // The two rows swap places: independent updates, sent together.
+    const [first, second] = await Promise.all([
+      supabase.from('company_payment_methods').update({ sort_order: b.sort_order }).eq('id', a.id),
+      supabase.from('company_payment_methods').update({ sort_order: a.sort_order === b.sort_order ? a.sort_order + delta : a.sort_order }).eq('id', b.id),
+    ]);
+    const failed = first.error ?? second.error;
+    if (failed) alert(failed.message);
     void load();
   };
   const remove = async (m: PaymentMethod) => {
@@ -104,7 +109,7 @@ export const PaymentMethodsPage: React.FC = () => {
         </div>
       </div>
 
-      {(error || page.error) && !draft && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {(error || page.error) && !draft && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error || page.error}</p>}
 
       <div className="space-y-3">
         {loading ? <SkeletonRows /> : methods.length === 0 ? (

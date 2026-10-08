@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
-import { keys, unwrap, usePageData } from '../lib/query';
+import { keys, queryClient, STALE, unwrap, usePageData } from '../lib/query';
+import {
+  settingsKey, switchesKey, useLines, useSupervisorLines, useSupervisors, useUniversities, type LineRow,
+} from '../lib/reference';
 import { SkeletonCards } from '../components/Skeleton';
 import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
 import {
@@ -11,21 +14,6 @@ import {
 
 // ── Types ───────────────────────────────────────────────────────────
 type Direction = 'departure' | 'return';
-
-interface StationRow { id: string; name: string; order_index: number; is_active: boolean }
-interface TripStopRow { station_id: string; stop_time: string }
-interface TripRow {
-  id: string; direction: Direction; label: string; start_time: string; arrival_time: string | null;
-  university_id: string | null; is_active: boolean; line_trip_stops: TripStopRow[];
-}
-interface LineRow {
-  id: string; name: string; company_id: string; origin_name: string | null; destination_university_id: string | null;
-  price_termly: number; price_yearly: number; price_daily: number; is_active: boolean;
-  stations: StationRow[];
-  line_trips: TripRow[];
-  line_universities: { university_id: string }[];
-  line_period_prices: { option: SaleOption; price: number; is_enabled: boolean }[];
-}
 type PriceDraft = Record<SaleOption, { price: string; enabled: boolean }>;
 interface Option { id: string; name: string }
 
@@ -138,42 +126,31 @@ export const LinesPage: React.FC = () => {
   const [busyLine, setBusyLine] = useState<string | null>(null);
 
   // Same cache entry as the settings page: switching a type off shows here at once.
-  const switches = usePageData(keys.company(company.id, 'switches'), () =>
+  const switches = usePageData(switchesKey(company.id), () =>
     unwrap<{ annual_effective: boolean; daily_effective: boolean }>(
-      supabase.rpc('get_subscription_switches', { p_company_id: company.id }))).data;
-  const page = usePageData(keys.company(company.id, 'lines'), async () => {
-    const [lineRes, uniRes, supRes, assignRes] = await Promise.all([
-      supabase.from('lines')
-        .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
-          is_active, stations(id, name, order_index, is_active),
-          line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
-            line_trip_stops(station_id, stop_time)), line_universities(university_id),
-          line_period_prices(option, price, is_enabled)`)
-        .eq('company_id', company.id).order('name'),
-      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
-      supabase.from('supervisors').select('id, full_name').eq('company_id', company.id).order('full_name'),
-      supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', company.id),
-    ]);
-    if (lineRes.error) throw new Error(lineRes.error.message);
-    if (uniRes.error) throw new Error(uniRes.error.message);
-    const lineSupervisors: Record<string, string[]> = {};
-    (assignRes.data || []).forEach((row) => { (lineSupervisors[row.line_id] ||= []).push(row.supervisor_id); });
-    return {
-      lines: (lineRes.data || []) as unknown as LineRow[],
-      universities: (uniRes.data || []) as Option[],
-      supervisors: (supRes.data || []) as { id: string; full_name: string }[],
-      lineSupervisors,
-    };
-  });
-  const lines = page.data?.lines ?? [];
-  const universities = page.data?.universities ?? [];
-  const supervisors = page.data?.supervisors ?? [];
-  const lineSupervisors = page.data?.lineSupervisors ?? {};
+      supabase.rpc('get_subscription_switches', { p_company_id: company.id })), { staleTime: STALE.reference }).data;
+  // Each lookup is cached once and shared with the other pages that show it.
+  const page = useLines(company.id);
+  const allUniversities = useUniversities().data;
+  const supervisors = useSupervisors(company.id).data ?? [];
+  const assignments = useSupervisorLines(company.id).data;
+  const lines = page.data ?? [];
+  const universities = useMemo(() => (allUniversities ?? []).filter((u) => u.is_active), [allUniversities]);
+  const lineSupervisors = useMemo(() => {
+    const byLine: Record<string, string[]> = {};
+    (assignments ?? []).forEach((row) => { (byLine[row.line_id] ||= []).push(row.supervisor_id); });
+    return byLine;
+  }, [assignments]);
   const loading = page.loading;
   const pageError = page.error;
-  const fetchData = page.reload;
+  // After this page's own writes: the lines, plus the light list and the payable periods derived from them.
+  const fetchData = async () => {
+    void queryClient.invalidateQueries({ queryKey: keys.company(company.id, 'lineNames') });
+    void queryClient.invalidateQueries({ queryKey: keys.company(company.id, 'periods') });
+    await page.reload();
+  };
 
-  const uniName = (id?: string | null) => universities.find((u) => u.id === id)?.name;
+  const uniName = (id?: string | null) => (allUniversities ?? []).find((u) => u.id === id)?.name;
 
   const toggleLine = async (line: LineRow) => {
     const next = !line.is_active;
@@ -381,28 +358,25 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
 
   // A subscription type the company (or the platform) has switched off: its
   // price is locked here; the saved price stays as it was.
-  const [offered, setOffered] = useState({ daily: true });
+  // Both are read through the cache the settings page fills: opening the form
+  // asks the network for neither when they are already known.
+  const switchesData = usePageData(switchesKey(d.company_id), () =>
+    unwrap<{ daily_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: d.company_id })),
+  { enabled: !!d.company_id, staleTime: STALE.reference }).data;
+  const offered = { daily: switchesData ? !!switchesData.daily_effective : true };
   // The company is the ceiling: an option it does not sell stays off for students
   // whatever the line says, so it is shown greyed here with the reason.
-  const [companySells, setCompanySells] = useState<Record<SaleOption, boolean> | null>(null);
-  useEffect(() => {
-    if (!d.company_id) return;
-    let live = true;
-    void supabase.rpc('get_subscription_switches', { p_company_id: d.company_id }).then(({ data }) => {
-      const s = data as { daily_effective?: boolean } | null;
-      if (live && s) setOffered({ daily: !!s.daily_effective });
-    });
-    void supabase.rpc('get_subscription_settings', { p_company_id: d.company_id }).then(({ data }) => {
-      const rows = ((data as { sale_periods?: SaleRow[] } | null)?.sale_periods ?? []);
-      if (live && data) {
-        setCompanySells(Object.fromEntries(SALE_OPTIONS.map((o) => {
-          const row = rows.find((r) => r.option === o);
-          return [o, !!row && row.reason !== 'company_not_selling' && row.reason !== 'company_inactive'];
-        })) as Record<SaleOption, boolean>);
-      }
-    });
-    return () => { live = false; };
-  }, [d.company_id]);
+  const settingsData = usePageData(settingsKey(d.company_id), () =>
+    unwrap<{ sale_periods?: SaleRow[] }>(supabase.rpc('get_subscription_settings', { p_company_id: d.company_id })),
+  { enabled: !!d.company_id, staleTime: STALE.reference }).data;
+  const companySells = useMemo(() => {
+    if (!settingsData) return null;
+    const rows = settingsData.sale_periods ?? [];
+    return Object.fromEntries(SALE_OPTIONS.map((o) => {
+      const row = rows.find((r) => r.option === o);
+      return [o, !!row && row.reason !== 'company_not_selling' && row.reason !== 'company_inactive'];
+    })) as Record<SaleOption, boolean>;
+  }, [settingsData]);
   const patchPrice = (o: SaleOption, p: Partial<PriceDraft[SaleOption]>) =>
     setD((cur) => ({ ...cur, prices: { ...cur.prices, [o]: { ...cur.prices[o], ...p } } }));
   const priceOf = (o: SaleOption) => Number(d.prices[o].price) || 0;

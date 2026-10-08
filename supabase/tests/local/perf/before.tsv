@@ -1,0 +1,18 @@
+case	ms
+receipt insert (student)	9.812
+receipt approve (admin)	8.768
+receipt image access check (admin, 1 image)	1.791
+pending receipts list (admin)	1.188
+company_overview (admin)	41.714
+platform_overview (super admin)	240.939
+admin_subscription_report (admin)	1063.074
+get_subscription_settings (admin)	13.196
+get_company_notifications_page (admin)	7.241
+get_subscription_catalog (student)	47.465
+get_my_notifications_page (student)	4.637
+get_my_unread_count (student)	1.435
+current subscription with trips (student)	2.562
+line trip stops visible (student)	3.313
+payment methods (student)	3.454
+get_supervisor_dashboard (supervisor)	91.888
+students page 1 (admin)	8.251

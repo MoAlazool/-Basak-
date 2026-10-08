@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SkeletonTable } from '../components/Skeleton';
 import { supabase } from '../lib/supabase';
-import { keys, usePageData } from '../lib/query';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { refreshUniversities, useUniversities } from '../lib/reference';
 import { GraduationCap, Plus, CheckCircle, XCircle, MapPin, Search } from 'lucide-react';
 
 interface University {
@@ -14,6 +15,20 @@ interface University {
 }
 interface College { id: string; university_id: string; name: string; is_active: boolean }
 
+/**
+ * Students per university name, counted by the database. If the function is not
+ * there yet (dashboard deployed before the migration) or refuses, the page
+ * still works and simply shows no numbers.
+ */
+async function loadStudentCounts(): Promise<Record<string, number> | null> {
+  const { data, error } = await supabase.rpc('university_student_counts');
+  if (error || !data || typeof data !== 'object') {
+    if (error) console.warn('university_student_counts unavailable:', error.message);
+    return null;
+  }
+  return data as Record<string, number>;
+}
+
 export const UniversitiesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -24,26 +39,21 @@ export const UniversitiesPage: React.FC = () => {
   const [collegeName, setCollegeName] = useState('');
   const [collegeUniversityId, setCollegeUniversityId] = useState('');
 
-  const page = usePageData(keys.shared('universitiesAdmin'), async () => {
-    const [uniRes, studentsRes, collegeRes] = await Promise.all([
-      supabase.from('universities').select('*').order('name', { ascending: true }),
-      supabase.from('students').select('university'),
-      supabase.from('colleges').select('id, university_id, name, is_active').order('name'),
-    ]);
-    if (uniRes.error) throw new Error(uniRes.error.message);
-    if (studentsRes.error) throw new Error(studentsRes.error.message);
-    if (collegeRes.error) throw new Error(collegeRes.error.message);
-    const countMap: Record<string, number> = {};
-    (studentsRes.data || []).forEach((s) => { if (s.university) countMap[s.university] = (countMap[s.university] || 0) + 1; });
-    return {
-      universities: (uniRes.data || []).map((u) => ({ ...u, students_count: countMap[u.name] || 0 })) as University[],
-      colleges: (collegeRes.data || []) as College[],
-    };
-  });
-  const universities = page.data?.universities ?? [];
-  const colleges = page.data?.colleges ?? [];
+  // The shared university list (the one every form reads), the colleges, and the
+  // number of students per university counted by the database: three small reads
+  // instead of downloading every student to count them here.
+  const page = useUniversities();
+  const collegesPage = usePageData(keys.shared('colleges'), () =>
+    unwrap<College[]>(supabase.from('colleges').select('id, university_id, name, is_active').order('name')));
+  const counts = usePageData(keys.platform('universityCounts'), loadStudentCounts).data;
+  const universities: University[] = useMemo(
+    () => (page.data ?? []).map((u) => ({ ...u, students_count: counts ? counts[u.name] ?? 0 : undefined })),
+    [page.data, counts]);
+  const colleges = collegesPage.data ?? [];
   const loading = page.loading;
-  const fetchUniversities = page.reload;
+  const pageError = page.error || collegesPage.error;
+  // After this page's own writes: every page that lists universities sees the change.
+  const fetchUniversities = async () => { await Promise.all([refreshUniversities(), collegesPage.reload()]); };
   useEffect(() => {
     if (!collegeUniversityId && universities.length) setCollegeUniversityId(universities[0].id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -200,6 +210,11 @@ export const UniversitiesPage: React.FC = () => {
 
         {loading ? (
           <SkeletonTable rows={6} columns={3} />
+        ) : pageError && universities.length === 0 ? (
+          <div role="alert" className="p-8 text-center text-rose-700">
+            تعذر تحميل الجامعات: {pageError}
+            <button className="mr-3 font-bold underline" onClick={() => void fetchUniversities()}>إعادة المحاولة</button>
+          </div>
         ) : filteredUniversities.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد جامعات مطابقة للبحث.</div>
         ) : (
@@ -230,7 +245,7 @@ export const UniversitiesPage: React.FC = () => {
                   </td>
                   <td className="p-4">
                     <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
-                      {u.students_count || 0} طالب
+                      {u.students_count === undefined ? '—' : `${u.students_count} طالب`}
                     </span>
                   </td>
                   <td className="p-4">

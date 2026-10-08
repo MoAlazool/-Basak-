@@ -9,10 +9,17 @@
     <meta name="theme-color" content="#3E8FBF" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>باصك - لوحة تحكم الإدارة (Basak Admin)</title>
-    <!-- Cairo Font for high quality Arabic rendering -->
+    <!--
+      Cairo (Arabic) and Inter (Latin), weights 400-800 as the pages use them.
+      One variable file per family instead of five static ones, and loaded
+      without blocking the first paint: the page renders in the system font and
+      swaps when the fonts arrive (display=swap).
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400..800&family=Inter:wght@400..800&display=swap">
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400..800&family=Inter:wght@400..800&display=swap">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400..800&family=Inter:wght@400..800&display=swap"></noscript>
   </head>
   <body class="font-['Inter','Cairo',sans-serif] antialiased">
     <div id="root"></div>

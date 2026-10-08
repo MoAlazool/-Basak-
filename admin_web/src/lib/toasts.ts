@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 /** A short notice shown on top of the dashboard when something new arrives. */
-export interface Toast { id: number; title: string; body?: string; /** Page to open when it is clicked. */ to?: string }
+export interface Toast { id: number; title: string; body?: string; /** Page to open when it is clicked. */ to?: string; /** `error` for something that failed. */ tone?: 'info' | 'error' }
 
 let toasts: Toast[] = [];
 let nextId = 1;
@@ -10,7 +10,7 @@ const emit = () => listeners.forEach((listener) => listener());
 
 /** Shows a notice for a few seconds. The same title is not stacked twice. */
 export function notify(toast: Omit<Toast, 'id'>, lifetimeMs = 9000) {
-  if (toasts.some((t) => t.title === toast.title && t.to === toast.to)) return;
+  if (toasts.some((t) => t.title === toast.title && t.to === toast.to && t.body === toast.body)) return;
   const id = nextId++;
   toasts = [...toasts, { ...toast, id }].slice(-4);
   emit();
@@ -28,3 +28,6 @@ export function useToasts(): Toast[] {
     (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     () => toasts);
 }
+
+/** A failure, in the server's own words when it gave any. */
+export const notifyError = (title: string, body?: string) => notify({ title, body, tone: 'error' });

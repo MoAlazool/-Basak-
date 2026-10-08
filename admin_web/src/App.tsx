@@ -1,39 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { SkeletonShell } from './components/Skeleton';
-import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
-import { Shell } from './components/Shell';
-import { WorkspaceBar } from './components/WorkspaceBar';
-import { PendingReceiptsTable } from './components/PendingReceiptsTable';
-import { Topbar } from './components/Topbar';
-import { OverviewPage } from './pages/OverviewPage';
-import { PlatformOverviewPage } from './pages/PlatformOverviewPage';
-import { AllCompaniesPage } from './pages/AllCompaniesPage';
-import { AllStudentsPage } from './pages/AllStudentsPage';
-import { PlatformNotificationsPage } from './pages/PlatformNotificationsPage';
-import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
-import { UniversitiesPage } from './pages/UniversitiesPage';
-import { LinesPage } from './pages/LinesPage';
-import { SupervisorsPage } from './pages/SupervisorsPage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { StudentsPage } from './pages/StudentsPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { CompanySettingsPage, PlatformDefaultsPage } from './pages/SubscriptionSettingsPage';
-import { PaymentMethodsPage } from './pages/PaymentMethodsPage';
-import { WalletCardDesignPage } from './pages/WalletCardDesignPage';
-import { TeamPage } from './pages/TeamPage';
-import { LoginPage } from './pages/LoginPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import React, { Suspense, useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { SkeletonShell } from './components/Skeleton';
 import { supabase } from './lib/supabase';
-import { useQuery } from '@tanstack/react-query';
-import { clearCache, keys, persistOptions, queryClient, unwrap, usePageData } from './lib/query';
-import { useCompanyOverview } from './lib/overview';
-import { usePlatformSync, useWorkspaceSync } from './lib/sync';
-import { usePendingReceipts } from './lib/pendingReceipts';
-import { platformNav, workspaceNav } from './lib/nav';
-import {
-  AdminProfile, AdminScopeProvider, CompanyScope, CompanyScopeProvider, companyStatusLabel, useCompany,
-} from './lib/adminScope';
+import { clearCache, persistOptions, queryClient } from './lib/query';
+import { loadAdminProfile } from './lib/adminProfile';
+import { AdminProfile, AdminScopeProvider } from './lib/adminScope';
+import { LoginPage, PlatformArea, ResetPasswordPage, Workspace } from './lib/routes';
+
+/** The code of the area this admin lands in, fetched while the session is still being checked. */
+const preloadHome = (admin: AdminProfile | null) => {
+  if (!admin) LoginPage.preload();
+  else if (admin.role === 'super_admin' && !window.location.pathname.startsWith('/c/')) PlatformArea.preload();
+  else Workspace.preload();
+};
 
 export function App() {
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
@@ -48,19 +28,31 @@ export function App() {
     // render without a session and every RLS query would silently return [].
     let generation = 0;
 
+    // The check that is under way, so the same user announced twice at once (the
+    // stored session and the library's own first event on a reload) is checked once.
+    let checking: string | null = null;
+
     const applySession = async (userId: string | null) => {
+      if (userId && checking === userId) return;
       const current = ++generation;
+      checking = userId;
       if (!userId) {
         clearCache();
+        preloadHome(null);
         if (mounted) { setAdmin(null); setAuthLoading(false); }
         return;
       }
-      const profile = await loadAdminProfile(userId);
+      // One request: the admin row with its company (which lands in the workspace's cache).
+      const profile = await loadAdminProfile(userId).catch(() => null);
+      if (current === generation) checking = null;
       if (!mounted || current !== generation) return;
+      preloadHome(profile);
       const { data: { session } } = await supabase.auth.getSession();
       if (!mounted || current !== generation) return;
       if (profile && session?.user.id === userId) {
-        setAdmin(profile);
+        // The same admin re-checked (the library re-announces the session when the tab
+        // regains focus) keeps the same object, so nothing re-renders for it.
+        setAdmin((known) => (known && sameAdmin(known, profile) ? known : profile));
       } else {
         clearCache();
         setAdmin(null);
@@ -104,9 +96,9 @@ export function App() {
 
   // While the session is checked, the frame of the dashboard, not a blank page.
   if (authLoading) return <SkeletonShell />;
-  if (recoveryMode) return <ResetPasswordPage onComplete={() => setRecoveryMode(false)} />;
+  if (recoveryMode) return <Suspense fallback={<SkeletonShell />}><ResetPasswordPage onComplete={() => setRecoveryMode(false)} /></Suspense>;
   if (!admin) {
-    return <LoginPage onLogin={setAdmin} />;
+    return <Suspense fallback={<SkeletonShell />}><LoginPage onLogin={setAdmin} /></Suspense>;
   }
 
   // A platform admin starts in the platform area; a company admin lives in their
@@ -116,6 +108,8 @@ export function App() {
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions(admin.id)}>
     <AdminScopeProvider admin={admin}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        {/* The area's code is its own file (a company admin never downloads the platform's pages). */}
+        <Suspense fallback={<SkeletonShell />}>
         <Routes>
           {admin.role === 'super_admin' && (
             <Route path="/platform/*" element={<PlatformArea onLogout={handleLogout} />} />
@@ -123,151 +117,15 @@ export function App() {
           <Route path="/c/:companyId/*" element={<Workspace admin={admin} onLogout={handleLogout} />} />
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AdminScopeProvider>
     </PersistQueryClientProvider>
   );
 }
 
-async function loadAdminProfile(userId: string): Promise<AdminProfile | null> {
-  const { data, error } = await supabase.from('admins')
-    .select('id,email,full_name,role,company_id').eq('id', userId).maybeSingle();
-  if (error || !data) return null;
-  let companyName: string | null = null;
-  if (data.company_id) {
-    const { data: company } = await supabase.from('companies').select('name').eq('id', data.company_id).maybeSingle();
-    companyName = company?.name ?? null;
-  }
-  return { ...data, role: data.role, companyName } as AdminProfile;
-}
-
-const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
-  usePlatformSync();
-  return (
-  <Shell items={platformNav} areaLabel="إدارة المنصة" onLogout={onLogout}>
-    <Routes>
-      <Route index element={<PlatformOverviewPage />} />
-      <Route path="companies" element={<AllCompaniesPage />} />
-      <Route path="students" element={<AllStudentsPage />} />
-      <Route path="notifications" element={<PlatformNotificationsPage />} />
-      <Route path="admins" element={<CompanyAdminsPage />} />
-      <Route path="universities" element={<UniversitiesPage />} />
-      <Route path="defaults" element={<PlatformDefaultsPage />} />
-      <Route path="*" element={<Navigate to="/platform" replace />} />
-    </Routes>
-  </Shell>
-  );
-};
-
-type Loaded = { state: 'loading' } | { state: 'missing' } | { state: 'ready'; company: CompanyScope };
-
-/** Opens one company. Everything rendered inside reads and writes that company only. */
-const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ admin, onLogout }) => {
-  const { companyId = '' } = useParams();
-  const allowed = admin.role === 'super_admin' || companyId === admin.company_id;
-  // The company row itself is cached too, so reopening a workspace does not wait for it.
-  const companyQuery = useQuery({
-    queryKey: keys.company(companyId, 'company'),
-    enabled: allowed,
-    queryFn: async () => (await supabase.from('companies').select('id, name, status').eq('id', companyId).maybeSingle()).data as CompanyScope | null,
-  });
-  const loaded: Loaded = companyQuery.isPending ? { state: 'loading' }
-    : companyQuery.data ? { state: 'ready', company: companyQuery.data } : { state: 'missing' };
-
-  if (!allowed) return <Navigate to={`/c/${admin.company_id}`} replace />;
-  if (loaded.state === 'loading') return <SkeletonShell />;
-  if (loaded.state === 'missing') {
-    return (
-      <Notice title="الشركة غير موجودة" onLogout={onLogout}>
-        {admin.role === 'super_admin' && <Link to="/platform/companies" className="font-bold text-[#3E8FBF] underline">العودة إلى كل الشركات</Link>}
-      </Notice>
-    );
-  }
-  const { company } = loaded;
-  if (admin.role === 'company_admin' && company.status !== 'active') {
-    return (
-      <Notice title={`حساب شركة «${company.name}» ${companyStatusLabel[company.status]} حالياً`} onLogout={onLogout}>
-        لا يمكن استخدام لوحة التحكم حتى تعيد إدارة المنصة تفعيل الشركة. بياناتكم محفوظة كما هي.
-      </Notice>
-    );
-  }
-
-  // Keyed by company: moving to another company unmounts every page, so no list,
-  // form, timer or live feed of the previous company survives the switch.
-  return (
-    <CompanyScopeProvider company={company} key={company.id}>
-      <WorkspaceSync companyId={company.id} />
-      <WorkspaceShell companyId={company.id} companyName={company.name} onLogout={onLogout}>
-        <Routes>
-          <Route index element={<OverviewPage />} />
-          <Route path="students" element={<StudentsPage />} />
-          <Route path="receipts" element={<ReceiptsPage />} />
-          <Route path="lines" element={<LinesPage />} />
-          <Route path="supervisors" element={<SupervisorsPage />} />
-          <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="payment-methods" element={<PaymentMethodsPage />} />
-          <Route path="wallet-card" element={<WalletCardDesignPage />} />
-          <Route path="team" element={<TeamPage />} />
-          <Route path="settings" element={<CompanySettingsPage />} />
-          <Route path="*" element={<Navigate to={`/c/${company.id}`} replace />} />
-        </Routes>
-      </WorkspaceShell>
-    </CompanyScopeProvider>
-  );
-};
-
-/**
- * The workspace frame with what is waiting for the admin: receipts to review
- * on "فحص الإيصالات" and password-reset requests on "الطلاب", as red badges.
- * The total is in the browser tab's title too, for when the tab is in the back.
- */
-const WorkspaceShell: React.FC<{ companyId: string; companyName: string; onLogout: () => void; children: React.ReactNode }> =
-  ({ companyId, companyName, onLogout, children }) => {
-    const receipts = useCompanyOverview(companyId).data?.pending_receipts ?? 0;
-    const requests = usePageData(keys.company(companyId, 'resetRequests'), () =>
-      unwrap<unknown[]>(supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId }))).data?.length ?? 0;
-    useEffect(() => {
-      const base = document.title.replace(/^\(\d+\+?\)\s*/, '');
-      const total = receipts + requests;
-      document.title = total > 0 ? `(${total > 99 ? '99+' : total}) ${base}` : base;
-      return () => { document.title = base; };
-    }, [receipts, requests]);
-    return (
-      <Shell items={workspaceNav(companyId)} areaLabel={companyName} onLogout={onLogout} banner={<WorkspaceBar />}
-        badges={{ receipts, requests }}>
-        {children}
-      </Shell>
-    );
-  };
-
-/** Listens to the open company's topic for as long as its workspace is mounted. */
-const WorkspaceSync: React.FC<{ companyId: string }> = ({ companyId }) => {
-  useWorkspaceSync(companyId);
-  return null;
-};
-
-const Notice: React.FC<{ title: string; onLogout: () => void; children?: React.ReactNode }> = ({ title, onLogout, children }) => (
-  <div className="min-h-screen grid place-items-center p-6" dir="rtl">
-    <div className="glass-panel max-w-md p-8 text-center space-y-4">
-      <h1 className="text-xl font-extrabold text-[#1F2937]">{title}</h1>
-      <div className="text-sm leading-7 text-[#5B6B7A]">{children}</div>
-      <button onClick={onLogout} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200">تسجيل الخروج</button>
-    </div>
-  </div>
-);
-
-const ReceiptsPage: React.FC = () => {
-  const company = useCompany();
-  const { receipts, loading, error, refresh, review } = usePendingReceipts(company.id);
-  return (
-    <div className="space-y-6">
-      <Topbar title="فحص واعتماد الإيصالات" subtitle="تصل الإيصالات الجديدة هنا فور رفعها" />
-      {error
-        ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر تحميل الإيصالات: {error} <button className="mr-3 font-bold underline" onClick={() => void refresh()}>إعادة المحاولة</button></div>
-        : <PendingReceiptsTable receipts={receipts} loading={loading} onReview={review} />}
-    </div>
-  );
-};
+const sameAdmin = (a: AdminProfile, b: AdminProfile) =>
+  a.id === b.id && a.email === b.email && a.full_name === b.full_name && a.role === b.role
+  && a.company_id === b.company_id && a.companyName === b.companyName;
 
 export default App;

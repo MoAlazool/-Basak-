@@ -3,7 +3,7 @@ import { CalendarRange, Save, ToggleLeft, ToggleRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Topbar } from '../components/Topbar';
 import { useAdminScope, useCompany } from '../lib/adminScope';
-import { keys, unwrap, usePageData } from '../lib/query';
+import { keys, STALE, unwrap, usePageData } from '../lib/query';
 import { SkeletonForm } from '../components/Skeleton';
 import { VoteSettingsCard } from '../components/VoteSettingsCard';
 import { optionName, reasonText, type SaleRow } from '../lib/saleOptions';
@@ -68,10 +68,10 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   const [savingInfo, setSavingInfo] = useState(false);
 
   const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
-    unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })));
+    unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })), { staleTime: STALE.reference });
   const settings = page.data ?? null;
   const switchesPage = usePageData(companyId ? keys.company(companyId, 'switches') : keys.platform('switches'), () =>
-    unwrap<Switches>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })));
+    unwrap<Switches>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })), { staleTime: STALE.reference });
   const switches = switchesPage.data ?? null;
   const error = page.error;
   const load = page.reload;
