@@ -5,9 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
-/// The bus supervisor's contact: call now, save to the phone's contacts, or
-/// copy the number. Calling and saving hand over to the system (the dialer and
-/// the "new contact" screen), on iPhone and Android alike, so the app needs no
+/// The bus supervisor's contact: call now, chat on WhatsApp, save to the
+/// phone's contacts, or copy the number. Calling and saving hand over to the
+/// system (the dialer and the "new contact" screen), on iPhone and Android alike, so the app needs no
 /// permission for either.
 class SupervisorContactSheet extends StatelessWidget {
   final String name;
@@ -41,6 +41,28 @@ class SupervisorContactSheet extends StatelessWidget {
 
   /// Digits (and a leading +) only: what the dialer expects.
   static String dialable(String phone) => phone.replaceAll(RegExp(r'[^0-9+]'), '');
+
+  /// The number as WhatsApp wants it: country code first, digits only. An
+  /// Egyptian mobile written locally (010…) gets Egypt's code.
+  static String whatsappNumber(String phone) {
+    var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('00')) digits = digits.substring(2);
+    if (digits.length == 11 && digits.startsWith('01')) digits = '2$digits';
+    return digits;
+  }
+
+  Future<void> _whatsapp(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    try {
+      // Opens the chat in WhatsApp when it is installed, otherwise its web page.
+      final opened = await launchUrl(Uri.parse('https://wa.me/${whatsappNumber(phone)}'),
+          mode: LaunchMode.externalApplication);
+      if (!opened) messenger.showSnackBar(const SnackBar(content: Text('تعذر فتح واتساب على هذا الجهاز.')));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('تعذر فتح واتساب على هذا الجهاز.')));
+    }
+  }
 
   void _say(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -106,6 +128,18 @@ class SupervisorContactSheet extends StatelessWidget {
               onPressed: () => _call(context),
               icon: const Icon(LucideIcons.phone, size: 18),
               label: const Text('اتصال'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const Key('supervisor-whatsapp'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1FA855), foregroundColor: Colors.white),
+              onPressed: () => _whatsapp(context),
+              icon: const Icon(LucideIcons.send, size: 18),
+              label: const Text('محادثة واتساب'),
             ),
           ),
           const SizedBox(height: 8),

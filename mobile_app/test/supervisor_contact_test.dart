@@ -9,6 +9,10 @@ void main() {
     expect(SupervisorContactSheet.contactName('', null), 'مشرف الباص');
     expect(SupervisorContactSheet.dialable('010 1234-5678'), '01012345678');
     expect(SupervisorContactSheet.dialable('+20 10 1234 5678'), '+201012345678');
+    // WhatsApp needs the country code.
+    expect(SupervisorContactSheet.whatsappNumber('010 1234-5678'), '201012345678');
+    expect(SupervisorContactSheet.whatsappNumber('+20 10 1234 5678'), '201012345678');
+    expect(SupervisorContactSheet.whatsappNumber('00201012345678'), '201012345678');
   });
 
   testWidgets('tapping the supervisor opens a sheet to call, save or copy', (tester) async {
@@ -33,6 +37,7 @@ void main() {
     expect(find.text('01012345678'), findsOneWidget);
     expect(find.byKey(const Key('supervisor-call')), findsOneWidget);
     expect(find.byKey(const Key('supervisor-save')), findsOneWidget);
+    expect(find.byKey(const Key('supervisor-whatsapp')), findsOneWidget);
     expect(find.byKey(const Key('supervisor-copy')), findsOneWidget);
   });
 }
