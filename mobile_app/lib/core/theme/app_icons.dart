@@ -14,6 +14,8 @@ abstract final class LucideIcons {
   static const IconData badgeHelp = IconData(58491, fontFamily: 'Lucide');
   static const IconData ban = IconData(57425, fontFamily: 'Lucide');
   static const IconData bell = IconData(57433, fontFamily: 'Lucide');
+  static const IconData bellOff = IconData(57434, fontFamily: 'Lucide');
+  static const IconData bellRing = IconData(57892, fontFamily: 'Lucide');
   static const IconData briefcaseBusiness = IconData(58837, fontFamily: 'Lucide');
   static const IconData building = IconData(57804, fontFamily: 'Lucide');
   static const IconData building2 = IconData(58000, fontFamily: 'Lucide');
@@ -28,6 +30,7 @@ abstract final class LucideIcons {
   static const IconData cameraOff = IconData(57445, fontFamily: 'Lucide');
   static const IconData chartColumn = IconData(58019, fontFamily: 'Lucide');
   static const IconData check = IconData(57452, fontFamily: 'Lucide');
+  static const IconData checkCheck = IconData(58254, fontFamily: 'Lucide');
   static const IconData chevronDown = IconData(57453, fontFamily: 'Lucide');
   static const IconData chevronLeft = IconData(57454, fontFamily: 'Lucide');
   static const IconData chevronRight = IconData(57455, fontFamily: 'Lucide');

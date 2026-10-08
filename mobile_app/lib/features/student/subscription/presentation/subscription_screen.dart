@@ -361,8 +361,12 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _progressHeader(4),
-          const SizedBox(height: 18),
+          // The steps belong to buying: gone once the subscription is approved,
+          // back when it ends (the purchase flow shows them again).
+          if (!active) ...[
+            _progressHeader(4),
+            const SizedBox(height: 18),
+          ],
           Text(active ? 'اشتراكك الجامعي' : 'إتمام الاشتراك',
               style: AppTextStyles.displayMedium),
           if (open.length > 1) ...[

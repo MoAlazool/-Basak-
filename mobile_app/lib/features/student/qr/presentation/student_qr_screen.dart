@@ -75,18 +75,20 @@ class StudentQrScreen extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 105),
                 child: Column(
                   children: [
-                    Row(children: [
-                      Expanded(
-                          child: Text('بطاقة الطالب',
-                              style: AppTextStyles.displayMedium
-                                  .copyWith(color: _ink))),
-                      const Icon(LucideIcons.scanLine, color: _teal)
-                    ]),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text('بطاقة الطالب',
+                          style: AppTextStyles.displayMedium
+                              .copyWith(color: _ink)),
+                    ),
                     const SizedBox(height: 6),
-                    Text('أظهر الرمز للمشرف للتحقق من اشتراكك وبيانات الرحلة.',
-                        style: AppTextStyles.bodyMedium
-                            .copyWith(color: const Color(0xFF718695)),
-                        textAlign: TextAlign.center),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                          'أظهر الرمز للمشرف للتحقق من اشتراكك وبيانات الرحلة.',
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: const Color(0xFF718695))),
+                    ),
                     const SizedBox(height: 18),
                     if (pass.isOfflineCache)
                       Container(
@@ -270,21 +272,26 @@ class StudentQrScreen extends ConsumerWidget {
   );
 }
 
+  /// The value takes the rest of the row and wraps, so a long route shows whole.
   static Widget _detailRow(String label, String value, IconData icon) =>
-      Row(children: [
-        Icon(icon, size: 17, color: _teal),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 17, color: _teal),
+        ),
         const SizedBox(width: 9),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(label,
+              style: AppTextStyles.labelSmall
+                  .copyWith(color: const Color(0xFF718695))),
+        ),
+        const SizedBox(width: 14),
         Expanded(
-            child: Text(label,
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: const Color(0xFF718695)))),
-        Flexible(
             child: Text(value,
                 style: AppTextStyles.bodyMedium
                     .copyWith(color: _ink, fontWeight: FontWeight.w600),
-                textAlign: TextAlign.end,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis))
+                textAlign: TextAlign.end))
       ]);
 
   static String _typeLabel(String? type) => switch (type) {
