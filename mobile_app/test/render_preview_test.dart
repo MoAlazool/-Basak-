@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/theme/app_theme.dart';
+import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
+import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
 import 'package:basak_mobile/features/student/home/presentation/supervisor_contact_sheet.dart';
 import 'package:basak_mobile/features/student/subscription/models/payment_method_model.dart';
 import 'package:basak_mobile/features/student/subscription/models/sale_catalog.dart';
@@ -125,6 +127,37 @@ void main() {
     tester.view.physicalSize = const Size(402 * 2, 1500 * 2);
     await _shot(tester, '8-expanded');
   }, skip: _dir == null);
+
+  for (final size in const [Size(402, 874), Size(375, 667)]) {
+    testWidgets('draw the student card at ${size.width.toInt()}x${size.height.toInt()}', (tester) async {
+      await tester.runAsync(_fonts);
+      tester.view.physicalSize = size * 2;
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          studentQrProvider.overrideWith((ref) async => const StudentPassDetails(
+              qrValue: 'BASAK-STUDENT-QR-0001-EXAMPLE', fullName: 'محمد عادل إبراهيم', phone: '01055512301',
+              university: 'جامعة الدلتا للعلوم والتكنولوجيا', college: 'الهندسة', lineName: 'منيه النصر',
+              stationName: 'البجلات', subscriptionType: 'termly', subscriptionStatus: 'active')),
+        ],
+        child: RepaintBoundary(
+          key: _key,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            locale: const Locale('ar'),
+            supportedLocales: const [Locale('ar')],
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: const StudentQrScreen(),
+          ),
+        ),
+      ));
+      await _shot(tester, 'card-${size.height.toInt()}');
+      expect(find.byType(Scrollable), findsNothing, reason: 'the card page is fixed');
+      expect(find.text('الكلية'), findsNothing);
+    }, skip: _dir == null);
+  }
 
   testWidgets('draw the supervisor sheet', (tester) async {
     await tester.runAsync(_fonts);

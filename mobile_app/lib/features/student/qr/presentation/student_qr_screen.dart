@@ -68,12 +68,18 @@ class StudentQrScreen extends ConsumerWidget {
                   );
                 }
                 final active = pass.subscriptionStatus == 'active';
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 105),
+                // A fixed page: nothing scrolls. The card is laid out at the
+                // screen's width and, on a short screen, scaled down to fit above
+                // the navigation bar, so the QR is always fully in view.
+                return LayoutBuilder(builder: (context, box) => Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: box.maxWidth - 36,
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     SizedBox(
                       width: double.infinity,
@@ -81,15 +87,14 @@ class StudentQrScreen extends ConsumerWidget {
                           style: AppTextStyles.displayMedium
                               .copyWith(color: _ink)),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                     SizedBox(
                       width: double.infinity,
-                      child: Text(
-                          'أظهر الرمز للمشرف للتحقق من اشتراكك وبيانات الرحلة.',
+                      child: Text('أظهر الرمز للمشرف عند الصعود.',
                           style: AppTextStyles.bodyMedium
                               .copyWith(color: const Color(0xFF718695))),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 12),
                     if (pass.isOfflineCache)
                       Container(
                         width: double.infinity,
@@ -110,7 +115,7 @@ class StudentQrScreen extends ConsumerWidget {
                       ),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
+                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                       decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(26),
@@ -151,9 +156,9 @@ class StudentQrScreen extends ConsumerWidget {
                                                 color: const Color(0xFF718695)))
                                   ])),
                             ]),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 14),
                         Container(
-                          padding: const EdgeInsets.all(13),
+                          padding: const EdgeInsets.all(11),
                           decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(18),
@@ -162,9 +167,7 @@ class StudentQrScreen extends ConsumerWidget {
                           child: QrImageView(
                             data: pass.qrValue!,
                             version: QrVersions.auto,
-                            size:
-                                MediaQuery.sizeOf(context).width.clamp(0, 340) -
-                                    76,
+                            size: (MediaQuery.sizeOf(context).width - 150).clamp(150.0, 220.0),
                             backgroundColor: Colors.white,
                             eyeStyle: const QrEyeStyle(
                                 eyeShape: QrEyeShape.square,
@@ -206,45 +209,40 @@ class StudentQrScreen extends ConsumerWidget {
                                           : const Color(0xFFB56900),
                                       fontWeight: FontWeight.bold))
                             ])),
-                        const SizedBox(height: 18),
-                        const Divider(height: 1),
                         const SizedBox(height: 14),
+                        const Divider(height: 1),
+                        const SizedBox(height: 12),
                         _detailRow(
-                            'المسار',
+                            'الخط',
                             pass.lineName ?? 'لا يوجد اشتراك',
                             LucideIcons.busFront),
-                        const SizedBox(height: 11),
+                        const SizedBox(height: 9),
                         _detailRow(
                             'محطة الصعود',
                             pass.stationName ?? '—',
                             LucideIcons.mapPin),
-                        if ((pass.college ?? '').isNotEmpty) ...[
-                          const SizedBox(height: 11),
-                          _detailRow(
-                              'الكلية', pass.college!, LucideIcons.school),
-                        ],
-                        const SizedBox(height: 11),
+                        const SizedBox(height: 9),
                         _detailRow(
                             'نوع الاشتراك',
                             _typeLabel(pass.subscriptionType),
                             LucideIcons.ticket),
                         if ((pass.phone ?? '').isNotEmpty) ...[
-                          const SizedBox(height: 11),
+                          const SizedBox(height: 9),
                           _detailRow(
                               'رقم الهاتف', pass.phone!, LucideIcons.phone),
                         ],
                       ]),
                     ),
-                    const SizedBox(height: 13),
+                    const SizedBox(height: 10),
                     if (AddToWalletButton.canOffer(
                         pass,
                         WalletPassRepository.platformFor(
                             defaultTargetPlatform))) ...[
                       AddToWalletButton(pass: pass),
-                      const SizedBox(height: 13),
+                      const SizedBox(height: 10),
                     ],
                     Container(
-                        padding: const EdgeInsets.all(13),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                         decoration: BoxDecoration(
                             color: const Color(0xFFE3F2FA),
                             borderRadius: BorderRadius.circular(16)),
@@ -256,14 +254,16 @@ class StudentQrScreen extends ConsumerWidget {
                               const SizedBox(width: 9),
                               Expanded(
                                   child: Text(
-                                      'رمز QR للتعريف والتحقق فقط. مسحه لا يسجل الحضور تلقائياً؛ أكد رحلتك من الصفحة الرئيسية.',
+                                      'الرمز للتحقق فقط. أكّد رحلتك من الصفحة الرئيسية.',
                                       style: AppTextStyles.labelSmall.copyWith(
                                           color: const Color(0xFF315F75),
                                           height: 1.5)))
                             ])),
                   ],
                 ),
-              );
+                    ),
+                  ),
+                ));
             },
           ),
         ),
@@ -272,31 +272,31 @@ class StudentQrScreen extends ConsumerWidget {
   );
 }
 
-  /// The value takes the rest of the row and wraps, so a long route shows whole.
+  /// The value sits right beside its label and wraps when it is long.
   static Widget _detailRow(String label, String value, IconData icon) =>
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 17, color: _teal),
+          padding: const EdgeInsets.only(top: 3),
+          child: Icon(icon, size: 16, color: _teal),
         ),
-        const SizedBox(width: 9),
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 96,
           child: Text(label,
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: const Color(0xFF718695))),
+              style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695), height: 1.6)),
         ),
-        const SizedBox(width: 14),
         Expanded(
             child: Text(value,
+                // A phone number reads left to right but stays beside its label.
+                textAlign: TextAlign.right,
+                textDirection: RegExp(r'^[0-9+ ]+$').hasMatch(value) ? TextDirection.ltr : null,
                 style: AppTextStyles.bodyMedium
-                    .copyWith(color: _ink, fontWeight: FontWeight.w600),
-                textAlign: TextAlign.end))
+                    .copyWith(color: _ink, fontWeight: FontWeight.w600, height: 1.45)))
       ]);
 
   static String _typeLabel(String? type) => switch (type) {
-        'yearly' => 'سنوي',
-        'termly' => 'فصلي',
+        'yearly' => 'الفصلان معاً',
+        'termly' => 'فصل دراسي',
         'daily' => 'يومي نقدي',
         _ => '—',
       };
