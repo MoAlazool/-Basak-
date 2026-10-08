@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../core/media/picker_errors.dart';
 import '../../../core/widgets/photo_adjust_screen.dart';
 import '../data/auth_repository.dart';
 import 'auth_form_styles.dart';
@@ -56,7 +57,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   Future<void> _choosePhoto(ImageSource source) async {
     // Cancelling at any step keeps the photo chosen before, if any.
-    final framed = await ProfilePhoto.pickAndAdjust(context, source);
+    final Uint8List? framed;
+    try {
+      framed = await ProfilePhoto.pickAndAdjust(context, source);
+    } on PlatformException catch (e) {
+      if (mounted) _fail(pickerErrorMessage(e), reveal: _photoKey);
+      return;
+    }
     if (framed != null && mounted) {
       HapticFeedback.selectionClick();
       setState(() {

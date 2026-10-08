@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,8 +30,13 @@ class SupervisorQrScannerScreen extends ConsumerStatefulWidget {
   ConsumerState<SupervisorQrScannerScreen> createState() => _SupervisorQrScannerScreenState();
 }
 
-class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen> {
-  final MobileScannerController _cameraController = MobileScannerController();
+class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerScreen>
+    with WidgetsBindingObserver {
+  // Started and stopped here rather than by the MobileScanner widget: with a
+  // controller of our own the widget ignores app lifecycle, and on Android the
+  // camera preview stays black after the app returns from the background (or
+  // from the permission dialog) unless the camera is restarted.
+  final MobileScannerController _cameraController = MobileScannerController(autoStart: false);
   bool _isProcessing = false;
   late String _direction = widget.direction ?? (DateTime.now().hour < 12 ? 'departure' : 'return');
   bool get _pinned => widget.direction != null;
@@ -73,9 +80,42 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
       );
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_startCamera());
+  }
+
+  Future<void> _startCamera() async {
+    try {
+      await _cameraController.start();
+    } on MobileScannerException {
+      // Shown by the scanner's errorBuilder.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The permission dialog itself changes the lifecycle state; leave the
+    // camera alone until access has been granted.
+    if (!_cameraController.value.hasCameraPermission) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_startCamera());
+      case AppLifecycleState.inactive:
+        unawaited(_cameraController.stop());
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        break;
+    }
+  }
+
+  @override
   void dispose() {
-    _cameraController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+    unawaited(_cameraController.dispose());
   }
 
   @override
@@ -225,7 +265,7 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
                     backgroundColor: BasakUi.teal,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () => _cameraController.start(),
+                  onPressed: _startCamera,
                   icon: const Icon(LucideIcons.refreshCw, size: 18),
                   label: const Text('إعادة المحاولة'),
                 ),

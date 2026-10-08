@@ -12,10 +12,12 @@ import '../../../../core/sync/sync_hub.dart';
 import '../../invites/invites.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
+import '../../daily_ride/data/reminder_days_off.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../subscription/data/subscription_repository.dart';
 import '../../subscription/models/subscription_model.dart';
+import 'notifications_screen.dart';
 
 final subscriptionRepoProvider = Provider((ref) => SubscriptionRepository());
 final dailyRideRepoProvider = Provider((ref) => DailyRideRepository());
@@ -57,6 +59,10 @@ class StudentHomeScreen extends ConsumerStatefulWidget {
     required this.onNavigateToQr,
   });
 
+  /// صباح الخير in the morning, مساء الخير the rest of the day.
+  static String greetingFor(DateTime now) =>
+      now.hour >= 5 && now.hour < 12 ? 'صباح الخير' : 'مساء الخير';
+
   @override
   ConsumerState<StudentHomeScreen> createState() => _StudentHomeScreenState();
 }
@@ -67,6 +73,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   bool _isSavingRide = false;
   String? _selectedDepartureTime;
   String? _selectedReturnTime;
+
+  /// Departure time of the confirmed ride (null when not riding): the bus
+  /// arrival shown on the subscription card. Unlike [_selectedDepartureTime]
+  /// it only changes when a confirmation is saved.
+  String? _confirmedDepartureTime;
   DateTime? _loadedRideDate;
   Timer? _votingWindowTimer;
   Map<DateTime, bool> _weeklyRideStatuses = const {};
@@ -123,6 +134,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           _isReturningToday = details.isReturning;
           _selectedDepartureTime = details.departureTime;
           _selectedReturnTime = details.returnTime;
+          _confirmedDepartureTime = details.isRiding ? details.departureTime : null;
           _weeklyRideStatuses = statuses;
         });
       }
@@ -148,11 +160,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       final first = settings.rideDateFor(DateTime.now());
       final voted = await ref.read(dailyRideRepoProvider).getRideStatusesForRange(
           first, DateTime(first.year, first.month, first.day + 6));
+      final daysOff = await ref.read(reminderDaysOffProvider.future);
       await VoteReminders.plan(
         settings: settings,
         validFrom: DateTime.tryParse(sub.startDate ?? ''),
         validUntil: DateTime.tryParse(sub.endDate ?? ''),
         votedDays: {...voted.keys, if (justVoted != null) justVoted},
+        daysOff: daysOff,
       );
     } catch (_) {
       // Offline with nothing saved: the previous plan stays.
@@ -204,6 +218,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       riding: _isRidingToday,
       departure: _selectedDepartureTime,
       returning: _selectedReturnTime,
+      confirmed: _confirmedDepartureTime,
       week: _weeklyRideStatuses,
     );
     final rideDate = vote.rideDateFor(now);
@@ -213,6 +228,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       _isRidingToday = isRiding;
       _selectedDepartureTime = departureTime;
       _selectedReturnTime = returnTime;
+      _confirmedDepartureTime = isRiding ? departureTime : null;
       _weeklyRideStatuses = {..._weeklyRideStatuses, rideDay: isRiding};
     });
     try {
@@ -229,6 +245,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _isReturningToday = result.isReturning;
         _selectedDepartureTime = result.departureTime;
         _selectedReturnTime = result.returnTime;
+        _confirmedDepartureTime = result.isRiding ? result.departureTime : null;
         _isSavingRide = false;
       });
       // Voted (riding or not): no more reminders for this ride.
@@ -243,6 +260,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _isRidingToday = before.riding;
         _selectedDepartureTime = before.departure;
         _selectedReturnTime = before.returning;
+        _confirmedDepartureTime = before.confirmed;
         _weeklyRideStatuses = before.week;
       });
       _showRideMessage(errorMessage(e), isError: true);
@@ -316,6 +334,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _loadTodayRideStatus();
       }
     });
+    // Days switched on or off on the notifications page.
+    ref.listen(reminderDaysOffProvider, (previous, next) {
+      if (previous?.hasValue == true && next.hasValue) _planReminders();
+    });
     ref.listen(currentSubscriptionProvider, (previous, next) {
       final before = previous?.valueOrNull, after = next.valueOrNull;
       if (next.hasValue &&
@@ -332,9 +354,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ? const AsyncValue<Map<String, dynamic>?>.data(null)
         : ref.watch(studentProfileSummaryProvider(user.id));
     final name = (user?.userMetadata?['full_name'] as String?)?.trim();
-    final firstName = (name == null || name.isEmpty)
-        ? 'طالبنا'
-        : name.split(RegExp(r'\s+')).first;
     final now = DateTime.now();
 
     return GlassScaffold(
@@ -353,7 +372,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               sliver: SliverList.list(
                 children: [
                   _header(
-                      firstName,
+                      (name == null || name.isEmpty) ? 'طالبنا' : name,
                       now,
                       profileAsync.valueOrNull?['profile_image_signed_url']
                           as String?),
@@ -382,10 +401,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                       : _lockedRideCard(),
                   if (subAsync.valueOrNull?.isActive == true) ...[
                     const SizedBox(height: 22),
-                    _sectionTitle('مواعيد خطك'),
-                    const SizedBox(height: 10),
-                    _timesCard(subAsync.valueOrNull!),
-                    const SizedBox(height: 22),
                     _sectionTitle('متابعة رحلات الأسبوع'),
                     const SizedBox(height: 10),
                     _weeklyRideCard(),
@@ -410,35 +425,73 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   );
 }
 
-  Widget _header(String firstName, DateTime now, String? avatarUrl) => Row(
+  /// Photo, greeting and name on the start side; notifications on the other.
+  Widget _header(String name, DateTime now, String? avatarUrl) => Row(
         children: [
+          Container(
+            padding: const EdgeInsets.all(2.5),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                    color: Color(0x1A16384A), blurRadius: 12, offset: Offset(0, 4))
+              ],
+            ),
+            child: CircleAvatar(
+              radius: 25,
+              backgroundColor: const Color(0xFFE4F2F9),
+              backgroundImage: avatarUrl == null ? null : avatarImage(avatarUrl),
+              child: avatarUrl == null
+                  ? const Icon(LucideIcons.userRound, color: _teal, size: 23)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('صباح الخير، $firstName',
+                Text(StudentHomeScreen.greetingFor(now),
+                    style: AppTextStyles.bodyMedium.copyWith(color: _teal)),
+                const SizedBox(height: 2),
+                Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.displayMedium
-                        .copyWith(color: _ink, fontSize: 23)),
-                const SizedBox(height: 4),
-                Text(_dateLabel(now),
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(color: const Color(0xFF718695))),
+                        .copyWith(color: _ink, fontSize: 21)),
               ],
             ),
           ),
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.white,
-            backgroundImage: avatarUrl == null ? null : avatarImage(avatarUrl),
-            child: avatarUrl == null
-                ? const Icon(LucideIcons.userRound, color: _teal, size: 21)
-                : null,
+          const SizedBox(width: 12),
+          Semantics(
+            button: true,
+            label: 'الإشعارات',
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFFE3EDF3)),
+              ),
+              child: InkWell(
+                customBorder: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                onTap: () => NotificationsScreen.open(context),
+                child: const SizedBox(
+                  width: 50,
+                  height: 50,
+                  child: Icon(LucideIcons.bell, color: _ink, size: 22),
+                ),
+              ),
+            ),
           ),
         ],
       );
 
   Widget _subscriptionCard(SubscriptionModel sub) {
     final active = sub.isActive;
+    // The bus comes at the time the student confirmed for the ride day.
+    final arrival = active ? _confirmedDepartureTime : null;
     final statusText = active && sub.isUpcoming
         ? 'مدفوع · يبدأ ${sub.startDate ?? ''}'
         : active
@@ -471,27 +524,21 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The route first, the subscription's state on the other side.
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _pill('●  $statusText', const Color(0x3325D69B), statusColor),
-              Text('باصك',
-                  style: AppTextStyles.labelSmall
-                      .copyWith(color: Colors.white70, letterSpacing: 1.2)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text('المسار المخصص',
-              style: AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(LucideIcons.busFront, size: 22, color: Colors.white),
-              const SizedBox(width: 9),
+              const Padding(
+                padding: EdgeInsets.only(top: 3),
+                child: Icon(LucideIcons.busFront, size: 19, color: Colors.white),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                   child: Text(sub.lineName ?? 'خط الجامعة',
-                      style: AppTextStyles.titleLarge
-                          .copyWith(color: Colors.white, fontSize: 19))),
+                      style: AppTextStyles.titleMedium
+                          .copyWith(color: Colors.white))),
+              const SizedBox(width: 10),
+              _pill('●  $statusText', const Color(0x3325D69B), statusColor),
             ],
           ),
           const SizedBox(height: 9),
@@ -515,40 +562,27 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                           style: AppTextStyles.labelSmall
                               .copyWith(color: Colors.white70)),
                       const SizedBox(height: 3),
-                      Text(
-                          sub.departureTime == null
-                              ? 'يُحدد مع المشرف'
-                              : _timeLabel(sub.departureTime!),
-                          style: AppTextStyles.titleLarge
-                              .copyWith(color: Colors.white, fontSize: 21)),
+                      if (arrival != null)
+                        Text(_timeLabel(arrival),
+                            style: AppTextStyles.titleLarge
+                                .copyWith(color: Colors.white, fontSize: 21))
+                      else
+                        Text(
+                            active
+                                ? 'أكّد حضورك لتحديد الموعد'
+                                : 'بعد تفعيل الاشتراك',
+                            style: AppTextStyles.bodyLarge.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
-                _pill(active ? 'في الموعد' : statusText,
-                    Colors.white.withOpacity(.14), statusColor),
+                if (!active || arrival != null)
+                  _pill(active ? 'في الموعد' : statusText,
+                      Colors.white.withOpacity(.14), statusColor),
               ],
             ),
           ),
-          if (active && sub.endDate != null) ...[
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                const Icon(LucideIcons.circleCheck,
-                    color: Colors.white70, size: 15),
-                const SizedBox(width: 7),
-                Expanded(
-                    child: Text(
-                        sub.isUpcoming
-                            ? 'من ${sub.startDate} حتى ${sub.endDate}'
-                            : 'صالح حتى ${sub.endDate}',
-                        style: AppTextStyles.labelSmall
-                            .copyWith(color: Colors.white70))),
-                Text(sub.periodLabel ?? _subscriptionType(sub.type),
-                    style:
-                        AppTextStyles.labelSmall.copyWith(color: Colors.white)),
-              ],
-            ),
-          ],
           if (!active) ...[
             const SizedBox(height: 13),
             Text('حالة الاشتراك ستتحدث بعد مراجعة الإيصال.',
@@ -642,69 +676,83 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         if (departureTimes.isEmpty)
           _emptyTimeMessage('لم يضف المشرف مواعيد ذهاب لهذا الخط بعد.')
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: List.generate(departureTimes.length, (index) {
-              final time = departureTimes[index];
-              final selected = time == selectedDeparture;
-              final label = index == 0
-                  ? 'نزول مبكر'
-                  : index == 1
-                      ? 'نزول متأخر'
-                      : 'موعد الذهاب ${index + 1}';
-              return SizedBox(
-                width: (MediaQuery.sizeOf(context).width - 72) / 2,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: isLocked
-                      ? null
-                      : () => setState(() => _selectedDepartureTime = time),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    padding: const EdgeInsets.all(11),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? const Color(0xFFF0FDF4)
-                          : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color: selected
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFFE5EDF2)),
+          // Side by side: up to three in a row.
+          LayoutBuilder(builder: (context, constraints) {
+            final columns = departureTimes.length.clamp(1, 3);
+            final width =
+                ((constraints.maxWidth - 8 * (columns - 1)) / columns).floorToDouble();
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: List.generate(departureTimes.length, (index) {
+                final time = departureTimes[index];
+                final selected = time == selectedDeparture;
+                final label = index == 0
+                    ? 'نزول مبكر'
+                    : index == 1
+                        ? 'نزول متأخر'
+                        : 'موعد الذهاب ${index + 1}';
+                return SizedBox(
+                  width: width,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: isLocked
+                        ? null
+                        : () => setState(() => _selectedDepartureTime = time),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFFF0FDF4)
+                            : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: selected
+                                ? const Color(0xFF22C55E)
+                                : const Color(0xFFE5EDF2)),
+                      ),
+                      child: Column(children: [
+                        Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                  selected
+                                      ? LucideIcons.circleCheck
+                                      : LucideIcons.circle,
+                                  color: selected
+                                      ? const Color(0xFF16A34A)
+                                      : const Color(0xFFB6C3CB),
+                                  size: 16),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(label,
+                                      maxLines: 1,
+                                      style: AppTextStyles.labelSmall.copyWith(
+                                          color: _ink,
+                                          fontWeight: FontWeight.w700)),
+                                ),
+                              ),
+                            ]),
+                        const SizedBox(height: 4),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(_timeLabel(time),
+                              style: AppTextStyles.titleMedium.copyWith(
+                                  color: selected
+                                      ? const Color(0xFF16834A)
+                                      : _ink)),
+                        ),
+                      ]),
                     ),
-                    child: Row(children: [
-                      Icon(
-                          selected
-                              ? LucideIcons.circleCheck
-                              : LucideIcons.circle,
-                          color: selected
-                              ? const Color(0xFF16A34A)
-                              : const Color(0xFFB6C3CB),
-                          size: 19),
-                      const SizedBox(width: 7),
-                      Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                            Text(label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTextStyles.labelSmall.copyWith(
-                                    color: _ink, fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 3),
-                            Text(_timeLabel(time),
-                                style: AppTextStyles.titleMedium.copyWith(
-                                    color: selected
-                                        ? const Color(0xFF16834A)
-                                        : _ink)),
-                          ])),
-                    ]),
                   ),
-                ),
-              );
-            }),
-          ),
+                );
+              }),
+            );
+          }),
         const SizedBox(height: 16),
         Text('موعد العودة',
             style: AppTextStyles.titleMedium.copyWith(color: _ink)),
@@ -847,22 +895,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ),
       );
 
-  Widget _timesCard(SubscriptionModel sub) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _cardDecoration(),
-        child: Row(
-          children: [
-            Expanded(
-                child: _timeTile('موعد الذهاب', sub.departureTime ?? 'غير محدد',
-                    LucideIcons.sunrise)),
-            const SizedBox(width: 10),
-            Expanded(
-                child: _timeTile('موعد العودة', sub.returnTimeShown ?? 'غير محدد',
-                    LucideIcons.sunset)),
-          ],
-        ),
-      );
-
   Widget _weeklyRideCard() {
     final today = DateTime.now();
     final saturdayOffset = (today.weekday + 1) % 7;
@@ -928,23 +960,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     );
   }
 
-  Widget _timeTile(String label, String time, IconData icon) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: const Color(0xFFF4F8FB),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE7EEF3))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: _teal, size: 19),
-          const SizedBox(height: 9),
-          Text(label,
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: const Color(0xFF718695))),
-          const SizedBox(height: 3),
-          Text(time, style: AppTextStyles.titleMedium.copyWith(color: _ink))
-        ]),
-      );
-
   Widget _supervisorCard(SubscriptionModel sub) => Container(
         padding: const EdgeInsets.all(14),
         decoration: _cardDecoration(),
@@ -1003,12 +1018,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               color: Color(0x0A16384A), blurRadius: 14, offset: Offset(0, 5))
         ],
       );
-
-  String _subscriptionType(String type) => switch (type) {
-        'yearly' => 'اشتراك سنوي',
-        'daily' => 'اشتراك يومي',
-        _ => 'اشتراك فصلي',
-      };
 }
 
 class _LoadingCard extends StatelessWidget {

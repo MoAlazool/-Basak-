@@ -4,6 +4,11 @@ import '../qr_scanner/models/scanned_student_details.dart';
 int _int(dynamic value) => (value as num?)?.toInt() ?? 0;
 List<Map<String, dynamic>> _list(dynamic value) =>
     (value as List<dynamic>? ?? const []).cast<Map<String, dynamic>>();
+/// Trimmed text, or null when missing or blank.
+String? _text(dynamic value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? null : text;
+}
 List<String> _times(dynamic value) => (value as List<dynamic>? ?? const [])
     .map((time) => time.toString())
     .where((time) => time.isNotEmpty)
@@ -37,9 +42,21 @@ class SupervisorDashboard {
         lines: _list(json['lines']).map(SupervisorLine.fromJson).toList(),
         tripTimes: _list(json['trip_times']).map(SupervisorTripTime.fromJson).toList(),
       );
+
+  /// Riders on [tripId] on [day] by the time each student chose; null when
+  /// unknown ([tripId] null, or a server that does not group by trip yet).
+  int? ridersOnTrip(String? tripId, DateTime day) {
+    final rows = tripTimes.where((t) =>
+        t.rideDate.year == day.year && t.rideDate.month == day.month && t.rideDate.day == day.day);
+    if (tripId == null || rows.any((t) => t.tripId == null && !t.hasBreakdown)) return null;
+    return rows.where((t) => t.tripId == tripId).fold<int>(0, (sum, t) => sum + t.students);
+  }
 }
 
-/// One row of get_supervisor_dashboard().trip_times: e.g. return 17:00 -> 5 students.
+/// One row of get_supervisor_dashboard().trip_times: the riders of one trip on
+/// one ride day, grouped by the time each student chose that day (e.g. the
+/// 6:55 departure -> 5 students). An older server sends only the first six
+/// fields; the breakdown lists are then empty.
 class SupervisorTripTime {
   final DateTime rideDate;
   final String lineId;
@@ -47,8 +64,25 @@ class SupervisorTripTime {
 
   /// 'departure' | 'return'
   final String direction;
+
+  /// Trip start (bus leaves the origin / the university); the chosen stop time
+  /// when the riders' time matches no trip.
   final String time;
   final int students;
+  final String? tripId;
+  final String label;
+
+  /// The university the trip is reserved for; null = every university.
+  final String? university;
+
+  /// Stations in travel order with their riders (0 riders allowed).
+  final List<TripTimeStation> stations;
+
+  /// Riders per university, most riders first (shown for the return).
+  final List<TripTimeUniversity> universities;
+
+  /// Riders in station travel order, then by name.
+  final List<TripTimeRider> riders;
 
   SupervisorTripTime({
     required this.rideDate,
@@ -57,9 +91,28 @@ class SupervisorTripTime {
     required this.direction,
     required this.time,
     required this.students,
+    this.tripId,
+    this.label = '',
+    this.university,
+    this.stations = const [],
+    this.universities = const [],
+    this.riders = const [],
   });
 
   bool get isReturn => direction == 'return';
+
+  /// Whether the server sent the per-station / per-university breakdown.
+  bool get hasBreakdown => isReturn ? universities.isNotEmpty : stations.isNotEmpty;
+
+  /// The trip label and university, e.g. "الرحلة الأولى · جامعة المنصورة".
+  String get subtitle =>
+      [label, if (university != null) university!].where((x) => x.isNotEmpty).join(' · ');
+
+  List<TripTimeRider> ridersAt(String stationId) =>
+      riders.where((r) => r.stationId == stationId).toList();
+
+  List<TripTimeRider> ridersOf(String university) =>
+      riders.where((r) => r.universityName == university).toList();
 
   factory SupervisorTripTime.fromJson(Map<String, dynamic> json) => SupervisorTripTime(
         rideDate: DateTime.tryParse(json['ride_date'] as String? ?? '') ?? DateTime.now(),
@@ -68,6 +121,88 @@ class SupervisorTripTime {
         direction: json['direction'] as String? ?? 'departure',
         time: json['time'] as String? ?? '',
         students: _int(json['students']),
+        tripId: json['trip_id'] as String?,
+        label: (json['label'] as String? ?? '').trim(),
+        university: _text(json['university']),
+        stations: _list(json['stations']).map(TripTimeStation.fromJson).toList(),
+        universities: _list(json['universities']).map(TripTimeUniversity.fromJson).toList(),
+        riders: _list(json['riders']).map(TripTimeRider.fromJson).toList(),
+      );
+}
+
+class TripTimeStation {
+  final String id;
+  final String name;
+  final int orderIndex;
+
+  /// Null when the trip does not stop here (a rider still boards here).
+  final String? stopTime;
+  final int students;
+
+  TripTimeStation({
+    required this.id,
+    required this.name,
+    required this.orderIndex,
+    required this.stopTime,
+    required this.students,
+  });
+
+  factory TripTimeStation.fromJson(Map<String, dynamic> json) => TripTimeStation(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        orderIndex: _int(json['order_index']),
+        stopTime: _text(json['stop_time']),
+        students: _int(json['students']),
+      );
+}
+
+class TripTimeUniversity {
+  final String name;
+  final int students;
+
+  TripTimeUniversity({required this.name, required this.students});
+
+  factory TripTimeUniversity.fromJson(Map<String, dynamic> json) => TripTimeUniversity(
+        name: _text(json['name']) ?? unknownUniversity,
+        students: _int(json['students']),
+      );
+}
+
+/// What the server calls a student without a university.
+const unknownUniversity = 'غير محددة';
+
+class TripTimeRider {
+  final String id;
+  final String fullName;
+  final String phone;
+  final String? stationId;
+  final String? station;
+  final String? university;
+
+  /// The stop time the student chose at their station for this direction.
+  final String? time;
+
+  TripTimeRider({
+    required this.id,
+    required this.fullName,
+    required this.phone,
+    this.stationId,
+    this.station,
+    this.university,
+    this.time,
+  });
+
+  /// The university group this rider is counted in.
+  String get universityName => university ?? unknownUniversity;
+
+  factory TripTimeRider.fromJson(Map<String, dynamic> json) => TripTimeRider(
+        id: json['id'] as String? ?? '',
+        fullName: json['full_name'] as String? ?? '',
+        phone: json['phone'] as String? ?? '',
+        stationId: json['station_id'] as String?,
+        station: _text(json['station']),
+        university: _text(json['university']),
+        time: _text(json['time']),
       );
 }
 
@@ -191,12 +326,15 @@ class SupervisorLine {
 }
 
 class LineUniversityTrip {
+  /// The trip (line_trips.id); null from an older server.
+  final String? id;
   final String university;
   final String departureTime;
   final String returnTime;
   final int registeredStudents;
 
   LineUniversityTrip({
+    this.id,
     required this.university,
     required this.departureTime,
     required this.returnTime,
@@ -204,6 +342,7 @@ class LineUniversityTrip {
   });
 
   factory LineUniversityTrip.fromJson(Map<String, dynamic> json) => LineUniversityTrip(
+        id: json['id'] as String?,
         university: json['university'] as String? ?? '',
         departureTime: json['departure_time'] as String? ?? '',
         returnTime: json['return_time'] as String? ?? '',
@@ -402,6 +541,10 @@ class TripManifest {
   final ManifestTripOption? trip;
   final List<ManifestStation> stations;
 
+  /// Students subscribed to the line who have not answered today's ride vote
+  /// (and are not checked in for this direction).
+  final List<ManifestStudent> unconfirmed;
+
   TripManifest({
     required this.lineId,
     required this.lineName,
@@ -411,6 +554,7 @@ class TripManifest {
     required this.trips,
     required this.trip,
     required this.stations,
+    this.unconfirmed = const [],
   });
 
   bool get isReturn => direction == 'return';
@@ -451,6 +595,7 @@ class TripManifest {
           ? ManifestTripOption.fromJson(Map<String, dynamic>.from(json['trip'] as Map))
           : null,
       stations: _list(json['stations']).map(ManifestStation.fromJson).toList(),
+      unconfirmed: _list(json['unconfirmed']).map(ManifestStudent.fromJson).toList(),
     );
   }
 }
@@ -509,6 +654,13 @@ class ManifestStudent {
   final bool confirmed;
   final DateTime? checkedInAt;
 
+  /// The stop time the student chose today for this direction; null when they
+  /// did not confirm.
+  final String? chosenTime;
+
+  /// The student's boarding station (sent for the unconfirmed list).
+  final String? station;
+
   ManifestStudent({
     required this.id,
     required this.fullName,
@@ -516,6 +668,8 @@ class ManifestStudent {
     required this.university,
     required this.confirmed,
     required this.checkedInAt,
+    this.chosenTime,
+    this.station,
   });
 
   bool get isCheckedIn => checkedInAt != null;
@@ -527,5 +681,7 @@ class ManifestStudent {
         university: json['university'] as String?,
         confirmed: json['confirmed'] as bool? ?? false,
         checkedInAt: DateTime.tryParse(json['checked_in_at'] as String? ?? '')?.toLocal(),
+        chosenTime: _text(json['chosen_time']),
+        station: _text(json['station']),
       );
 }

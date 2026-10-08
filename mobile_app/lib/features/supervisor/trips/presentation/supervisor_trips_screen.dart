@@ -35,6 +35,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
   bool _going = DateTime.now().hour < 12;
   final Map<bool, String?> _tripByDirection = {true: null, false: null};
   final Set<String> _openStations = {};
+  bool _unconfirmedOpen = false;
 
   ManifestKey? _key(List<SupervisorLine> lines) {
     if (lines.isEmpty) return null;
@@ -214,6 +215,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
                 icon: LucideIcons.mapPin)),
         for (final station in m.stations.where((s) => s.stopTime != null || s.students.isNotEmpty))
           _station(station, timesUnset: m.stopTimesUnset),
+        if (m.unconfirmed.isNotEmpty) _unconfirmed(m.unconfirmed),
         const SizedBox(height: 8),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
@@ -248,7 +250,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
           ]),
           const SizedBox(height: 12),
           Text(BasakUi.time12(trip.startTime),
-              style: AppTextStyles.displayMedium.copyWith(color: Colors.white, fontSize: 32)),
+              style: AppTextStyles.displayMedium.copyWith(color: Colors.white, fontSize: 32, height: 1.55)),
           if (trip.label.isNotEmpty || trip.university != null)
             Text([trip.label, if (trip.university != null) trip.university!].where((x) => x.isNotEmpty).join(' · '),
                 style: AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
@@ -364,9 +366,86 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
                   color: s.isCheckedIn ? const Color(0xFF07865A) : const Color(0xFFB97812),
                   fontWeight: FontWeight.w700),
             ),
-            if (s.confirmed)
-              Text('أكد في التطبيق', style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted, fontSize: 10)),
+            Text(
+                s.confirmed
+                    ? 'أكد في التطبيق'
+                    // Checked in here although they chose another time today.
+                    : s.chosenTime != null
+                        ? 'اختار ${BasakUi.time12(s.chosenTime)}'
+                        : 'لم يؤكد',
+                style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted, fontSize: 10)),
           ]),
+        ]),
+      );
+
+  /// Subscribers who have not answered today's ride vote: may still turn up.
+  Widget _unconfirmed(List<ManifestStudent> students) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BasakUi.card(),
+        child: Column(children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => setState(() => _unconfirmedOpen = !_unconfirmedOpen),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: const BoxDecoration(color: Color(0xFFFFF4E5), shape: BoxShape.circle),
+                  child: const Icon(LucideIcons.userX, size: 18, color: Color(0xFFB97812)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('لم يؤكدوا الركوب بعد (${students.length})',
+                        style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
+                    Text('مشتركون على الخط لم يحددوا موعدهم اليوم',
+                        style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
+                  ]),
+                ),
+                Icon(_unconfirmedOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                    size: 18, color: BasakUi.muted),
+              ]),
+            ),
+          ),
+          if (_unconfirmedOpen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: Column(children: [
+                for (final s in students)
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    decoration:
+                        BoxDecoration(color: const Color(0xFFF7F9FB), borderRadius: BorderRadius.circular(14)),
+                    child: Row(children: [
+                      const Icon(LucideIcons.user, size: 16, color: BasakUi.muted),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(s.fullName,
+                              style: AppTextStyles.bodyMedium
+                                  .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
+                          Text(s.phone,
+                              textDirection: TextDirection.ltr,
+                              style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
+                          if (s.station != null)
+                            Row(children: [
+                              const Icon(LucideIcons.mapPin, size: 12, color: BasakUi.teal),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(s.station!,
+                                    style: AppTextStyles.labelSmall
+                                        .copyWith(color: BasakUi.teal, fontWeight: FontWeight.w600)),
+                              ),
+                            ]),
+                        ]),
+                      ),
+                    ]),
+                  ),
+              ]),
+            ),
         ]),
       );
 }
