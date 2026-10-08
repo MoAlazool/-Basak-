@@ -135,8 +135,9 @@ class ReceiptCard extends StatelessWidget {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(width: 104, child: Text(label, style: _text(12, _muted))),
           Expanded(
+            // A number reads left to right but still sits beside its label.
             child: Text(value,
-                textAlign: TextAlign.start,
+                textAlign: TextAlign.right,
                 textDirection: ltr ? TextDirection.ltr : null,
                 style: _text(13, _ink, FontWeight.w600)),
           ),
