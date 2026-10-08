@@ -26,11 +26,13 @@ const apple = {
 const google = { issuerId: '3388000000012345678', publicBaseUrl: 'https://example.supabase.co', photoUrl: null as string | null };
 const modules = (c: CardContent, photoUrl: string | null = null) => buildGoogleObject(c, { ...google, photoUrl });
 
-Deno.test('the barcode is exactly the bare QR uuid on both platforms', () => {
+Deno.test('the barcode is exactly the bare QR uuid on both platforms, with the Basak credit under it', () => {
   assertEquals(buildApplePassJson(sara, apple).barcodes, [{
     format: 'PKBarcodeFormatQR', message: sara.student.qr_code_value, messageEncoding: 'iso-8859-1',
+    altText: 'Powered by Basak',
   }]);
-  assertEquals(modules(sara).barcode, { type: 'QR_CODE', value: sara.student.qr_code_value });
+  assertEquals(modules(sara).barcode,
+    { type: 'QR_CODE', value: sara.student.qr_code_value, alternateText: 'Powered by Basak' });
 });
 
 Deno.test('a QR value that is not a uuid is refused instead of issued', () => {
