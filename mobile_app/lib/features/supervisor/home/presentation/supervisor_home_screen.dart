@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../../core/widgets/greeting_header.dart';
-import '../../../notifications/data/notifications_repository.dart';
+import '../../../notifications/data/notification_feed.dart';
 import '../../notifications/supervisor_notifications_screen.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
@@ -51,7 +52,7 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
     final dashboard = ref.watch(supervisorDashboardProvider);
     return GlassScaffold(
       body: dashboard.when(
-        loading: () => const BasakPage(children: [BasakLoadingCard(height: 420)]),
+        loading: () => const BasakPage(children: [SupervisorHomeSkeleton()]),
         error: (error, _) => BasakPage(onRefresh: _refresh, children: [
           const SizedBox(height: 40),
           BasakMessageCard(

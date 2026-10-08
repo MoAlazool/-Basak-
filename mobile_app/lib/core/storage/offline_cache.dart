@@ -41,6 +41,17 @@ class OfflineCache {
   /// the fresh value from memory, without a second request).
   static final ValueNotifier<int> refreshed = ValueNotifier(0);
 
+  /// Which saved reads turned out to be out of date since the listener last
+  /// looked (their names, as passed to [readThrough]). The listener takes them
+  /// with [takeRefreshedKeys] and re-reads only what shows them.
+  static final Set<String> _refreshedKeys = {};
+
+  static Set<String> takeRefreshedKeys() {
+    final keys = Set<String>.from(_refreshedKeys);
+    _refreshedKeys.clear();
+    return keys;
+  }
+
   /// How long a request may take before the saved copy is used instead. A phone
   /// "connected" to a network with no internet would otherwise wait for ever.
   static Duration requestTimeout = const Duration(seconds: 12);
@@ -77,7 +88,7 @@ class OfflineCache {
     if (_readOnce.add(storageKey)) {
       final saved = _decode(await _safeRead(storageKey));
       if (saved != null) {
-        unawaited(_revalidate(storageKey, fetch, saved));
+        unawaited(_revalidate(key, storageKey, fetch, saved));
         return saved['v'];
       }
     }
@@ -98,7 +109,7 @@ class OfflineCache {
   }
 
   /// Asks the server for what was just shown from the saved copy.
-  static Future<void> _revalidate(String storageKey, Future<dynamic> Function() fetch,
+  static Future<void> _revalidate(String key, String storageKey, Future<dynamic> Function() fetch,
       Map<String, dynamic> saved) async {
     try {
       final value = await fetch().timeout(requestTimeout);
@@ -106,6 +117,7 @@ class OfflineCache {
       await _save(storageKey, value);
       if (jsonEncode(value) != jsonEncode(saved['v'])) {
         _fresh[storageKey] = (value: value, at: DateTime.now());
+        _refreshedKeys.add(key);
         refreshed.value++;
       }
     } catch (error) {
@@ -118,6 +130,7 @@ class OfflineCache {
       try {
         await _storage.delete(key: storageKey);
       } catch (_) {}
+      _refreshedKeys.add(key);
       refreshed.value++;
     }
   }
@@ -132,11 +145,19 @@ class OfflineCache {
     }
   }
 
+  /// Replaces the saved copy of [key] with what a write just returned, so the
+  /// screen that shows it opens with the new value next time.
+  static Future<void> put(String key, Object? value) async {
+    final userId = _currentUserId();
+    if (userId != null) await _save('$_dataPrefix$userId.$key', value);
+  }
+
   /// A new run of the app (tests), or another account: nothing counts as read yet.
   @visibleForTesting
   static void resetSession() {
     _readOnce.clear();
     _fresh.clear();
+    _refreshedKeys.clear();
     offlineSince.value = null;
   }
 
@@ -180,7 +201,7 @@ class OfflineCache {
     _fresh.clear();
     try {
       final all = await _storage.readAll();
-      for (final key in all.keys.where((k) => k.startsWith(_prefix))) {
+      for (final key in all.keys.where((k) => k.startsWith(_prefix)).toList()) {
         await _storage.delete(key: key);
       }
     } catch (_) {
@@ -210,7 +231,7 @@ class OfflineCache {
   static Future<void> clearStudentLookups() async {
     try {
       final all = await _storage.readAll();
-      for (final key in all.keys.where((k) => k.startsWith(_studentLookupPrefix))) {
+      for (final key in all.keys.where((k) => k.startsWith(_studentLookupPrefix)).toList()) {
         await _storage.delete(key: key);
       }
     } catch (_) {

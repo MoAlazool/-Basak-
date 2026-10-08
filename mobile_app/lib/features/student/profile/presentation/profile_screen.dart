@@ -6,8 +6,10 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../notifications/presentation/notification_preferences_screen.dart';
 import '../../home/presentation/student_home_screen.dart';
 import 'profile_editor.dart';
+import '../../../../core/widgets/skeleton.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -110,7 +112,10 @@ class ProfileScreen extends ConsumerWidget {
               GlassContainer(
                 padding: const EdgeInsets.all(20),
                 borderRadius: 24,
-                child: authState.isStudent && user != null
+                child: authState.isStudent && user != null && detailsAsync.isLoading && !detailsAsync.hasValue
+                    // First load on this phone only; afterwards the saved profile shows at once.
+                    ? const ProfileSkeleton()
+                    : authState.isStudent && user != null
                     ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         ProfileSection(
                             userId: user.id, profile: profile, fallbackName: fullName, fallbackPhone: phone),
@@ -161,6 +166,18 @@ class ProfileScreen extends ConsumerWidget {
                   type: MaterialType.transparency,
                   child: Column(
                     children: [
+                      ListTile(
+                        leading: const Icon(LucideIcons.bell,
+                            color: AppColors.textSecondary),
+                        title: Text('إعدادات الإشعارات',
+                            style: AppTextStyles.bodyLarge),
+                        subtitle: Text('ما يصلك كإشعار على الهاتف، وتذكير تأكيد الرحلة',
+                            style: AppTextStyles.labelSmall),
+                        trailing: const Icon(LucideIcons.chevronLeft,
+                            size: 18, color: AppColors.textMuted),
+                        onTap: () => NotificationPreferencesScreen.open(context),
+                      ),
+                      const Divider(height: 1),
                       ListTile(
                         leading: const Icon(LucideIcons.logOut,
                             color: AppColors.textSecondary),

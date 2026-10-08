@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -48,7 +49,7 @@ class _SupervisorMonthlyScreenState extends ConsumerState<SupervisorMonthlyScree
           _monthSwitcher(),
           const SizedBox(height: 14),
           summary.when(
-            loading: () => const BasakLoadingCard(height: 360),
+            loading: () => const MonthlySkeleton(),
             error: (_, __) => BasakMessageCard(
               icon: LucideIcons.wifiOff,
               title: 'تعذر تحميل الملخص',

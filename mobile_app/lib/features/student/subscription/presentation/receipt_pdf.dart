@@ -292,7 +292,7 @@ class ReceiptPdf {
         pw.Text('هذا الإيصال صادر إلكترونياً ولا يحتاج إلى توقيع أو ختم.',
             textAlign: pw.TextAlign.center, textDirection: pw.TextDirection.rtl, style: text(9, color: _muted)),
         pw.SizedBox(height: 4),
-        pw.Text('Powered by Basak',
+        pw.Text('Powered by Basak.app',
             textAlign: pw.TextAlign.center, style: text(7.5, color: const PdfColor.fromInt(0xFF9AAAB7))),
       ]),
     ));

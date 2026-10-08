@@ -7,6 +7,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/models/user_role.dart';
 import 'features/auth/presentation/login_register_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/notifications/presentation/notifications_host.dart';
 import 'features/onboarding/onboarding_controller.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/auth/presentation/force_password_change_screen.dart';
@@ -50,6 +51,8 @@ class BasakApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // Above every route: the banner of a push that arrives while the app is open.
+      builder: (context, child) => NotificationsHost(child: child ?? const SizedBox.shrink()),
       home: const SplashGate(child: AuthGate()),
     );
   }
@@ -70,9 +73,11 @@ class AuthGate extends ConsumerWidget {
     }
 
     if (authState.isInitialLoading || onboardingDone == null) {
+      // A moment only: the session and role are read from the device.
       return const Scaffold(
+        backgroundColor: Color(0xFFEAF5FA),
         body: Center(
-          child: CircularProgressIndicator(),
+          child: Image(image: AssetImage('assets/images/basak_icon.webp'), width: 96, height: 96),
         ),
       );
     }

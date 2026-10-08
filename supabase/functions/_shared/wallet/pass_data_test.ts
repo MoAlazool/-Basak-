@@ -29,10 +29,10 @@ const modules = (c: CardContent, photoUrl: string | null = null) => buildGoogleO
 Deno.test('the barcode is exactly the bare QR uuid on both platforms, with the Basak credit under it', () => {
   assertEquals(buildApplePassJson(sara, apple).barcodes, [{
     format: 'PKBarcodeFormatQR', message: sara.student.qr_code_value, messageEncoding: 'iso-8859-1',
-    altText: 'Powered by Basak',
+    altText: 'Powered by Basak.app',
   }]);
   assertEquals(modules(sara).barcode,
-    { type: 'QR_CODE', value: sara.student.qr_code_value, alternateText: 'Powered by Basak' });
+    { type: 'QR_CODE', value: sara.student.qr_code_value, alternateText: 'Powered by Basak.app' });
 });
 
 Deno.test('a QR value that is not a uuid is refused instead of issued', () => {
@@ -55,8 +55,8 @@ Deno.test('the company is the brand; the platform is only attribution', () => {
   assertEquals(modules(sara).cardTitle.defaultValue.value, 'المستقبل');
   const front = JSON.stringify({ ...pass.eventTicket, backFields: [] }) + pass.logoText;
   assert(!front.includes('باصك') && !front.includes('Basak'), 'the platform must not appear on the front');
-  assert(pass.eventTicket.backFields.some((f) => f.value.includes('Powered by Basak')));
-  assert(buildGoogleClass(google.issuerId).textModulesData.some((m) => m.body.includes('Powered by Basak')));
+  assert(pass.eventTicket.backFields.some((f) => f.value.includes('Powered by Basak.app')));
+  assert(buildGoogleClass(google.issuerId).textModulesData.some((m) => m.body.includes('Powered by Basak.app')));
 });
 
 Deno.test('a company title override replaces the company name', () => {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/sync/session.dart';
@@ -75,7 +76,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     final dashboard = ref.watch(supervisorDashboardProvider);
     return GlassScaffold(
       body: dashboard.when(
-        loading: () => const BasakPage(children: [BasakLoadingCard(height: 420)]),
+        loading: () => const BasakPage(children: [StationRowsSkeleton(rows: 6)]),
         error: (_, __) => BasakPage(children: [
           const SizedBox(height: 40),
           BasakMessageCard(
@@ -120,7 +121,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
               ),
               const SizedBox(height: 14),
               manifest.when(
-                loading: () => const BasakLoadingCard(height: 300),
+                loading: () => const StationRowsSkeleton(rows: 4),
                 error: (e, _) => BasakMessageCard(
                   icon: LucideIcons.triangleAlert,
                   title: 'تعذر تحميل الرحلة',

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../notifications/data/notification_preferences.dart';
 import '../../../notifications/presentation/notifications_page.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import 'student_home_screen.dart';
@@ -91,11 +92,15 @@ class _ReminderDays extends ConsumerWidget {
       validUntil: DateTime.tryParse(sub?.endDate ?? ''),
       voted: ref.watch(_votedDaysProvider).valueOrNull ?? const {},
     );
+    // The student's own switch (notification settings); the days are the company's.
+    final wanted = ref.watch(voteRemindersEnabledProvider);
     final note = !subscribed
         ? 'التذكيرات تعمل بعد تفعيل اشتراكك.'
         : vote.reminderMinutes <= 0
             ? 'التذكيرات متوقفة من شركتك حالياً.'
-            : 'نذكّرك بتأكيد حضورك قبل قفل التصويت في الأيام المفعّلة.';
+            : !wanted
+                ? 'أوقفت التذكيرات من إعدادات الإشعارات.'
+                : 'نذكّرك بتأكيد حضورك قبل قفل التصويت في الأيام المفعّلة.';
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
@@ -125,7 +130,7 @@ class _ReminderDays extends ConsumerWidget {
           ]),
         ),
       ),
-      if (subscribed) ...[
+      if (subscribed && wanted) ...[
         const SizedBox(height: 12),
         SizedBox(
           height: 70,

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { SkeletonForm } from './Skeleton';
 import { BellRing, CalendarOff, Clock3, Plus, RotateCcw, Save, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { keys, unwrap, usePageData } from '../lib/query';
@@ -103,7 +104,8 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
     setOffDates([...(vote.off_dates ?? [])].sort());
   }, [vote]);
 
-  if (page.loading || !vote) return null;
+  // The card's place is held while it loads, so the page does not jump when it arrives.
+  if (page.loading || !vote) return <SkeletonForm fields={3} />;
   const editable = companyId ? true : vote.can_edit_platform;
   const changed = opens !== vote.opens_at || closes !== vote.closes_at || every !== vote.reminder_minutes
     || !sameList(offWeekdays, sorted(vote.off_weekdays ?? [])) || !sameList(offDates, [...(vote.off_dates ?? [])].sort());

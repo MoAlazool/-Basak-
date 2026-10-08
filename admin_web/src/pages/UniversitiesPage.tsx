@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { SkeletonTable } from '../components/Skeleton';
 import { supabase } from '../lib/supabase';
 import { keys, usePageData } from '../lib/query';
 import { GraduationCap, Plus, CheckCircle, XCircle, MapPin, Search } from 'lucide-react';
@@ -198,9 +199,7 @@ export const UniversitiesPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-          </div>
+          <SkeletonTable rows={6} columns={3} />
         ) : filteredUniversities.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد جامعات مطابقة للبحث.</div>
         ) : (

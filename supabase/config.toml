@@ -52,3 +52,8 @@ verify_jwt = false
 # Fetched by Google Wallet: the unguessable link is the only credential.
 [functions.wallet-photo]
 verify_jwt = false
+
+# Called by the database (pg_net) and the minute tick with x-dispatch-secret,
+# never with a Supabase JWT.
+[functions.push-dispatch]
+verify_jwt = false

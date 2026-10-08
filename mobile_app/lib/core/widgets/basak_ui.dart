@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'skeleton.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -258,7 +259,18 @@ class BasakLoadingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      SizedBox(height: height, child: const Center(child: CircularProgressIndicator()));
+      // A card-shaped placeholder of the asked height, never a bare spinner.
+      Skeleton(
+          child: SizedBox(
+              height: height,
+              child: const SkeletonCard(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Bone(width: 140, height: 16),
+                SizedBox(height: 14),
+                Bone(height: 12),
+                SizedBox(height: 10),
+                Bone(width: 220, height: 12),
+              ]))));
 }
 
 class BasakMessageCard extends StatelessWidget {

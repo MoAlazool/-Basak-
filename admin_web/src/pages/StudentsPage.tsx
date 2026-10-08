@@ -3,8 +3,9 @@ import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { useQueryClient } from '@tanstack/react-query';
-import { keys, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { loadLineOptions, type LineOption, type StationOption, type TripOption, type UniversityOption } from '../lib/lineOptions';
+import { SkeletonTable } from '../components/Skeleton';
 import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
@@ -68,28 +69,7 @@ type LineRef = { name: string };
 
 const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
 
-interface University {
-  id: string;
-  name: string;
-}
-
-interface StationOption {
-  id: string; name: string; is_active: boolean; order_index: number;
-}
-
-interface TripOption {
-  id: string; direction: 'departure' | 'return'; label: string; start_time: string;
-  university_id: string | null; is_active: boolean;
-  line_trip_stops: { station_id: string; stop_time: string }[];
-}
-
-interface LineOption {
-  id: string; name: string; company_id: string; price_termly: number; price_yearly: number; price_daily: number;
-  line_period_prices?: { option: string; price: number }[];
-  stations: StationOption[];
-  line_trips: TripOption[];
-}
-
+type University = UniversityOption;
 
 const activeStations = (line?: LineOption) =>
   (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
@@ -169,17 +149,7 @@ export const StudentsPage: React.FC = () => {
     { enabled: photoPaths.length > 0, keepPrevious: true }).data ?? {};
 
   // What the add-student form chooses from.
-  const options = usePageData(keys.company(company.id, 'lineOptions'), async () => {
-    const [uniRes, lineRes] = await Promise.all([
-      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
-      supabase.from('lines')
-        .select('id,name,company_id,price_termly,price_yearly,price_daily,line_period_prices(option,price),stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
-        .eq('company_id', company.id).eq('is_active', true).order('name'),
-    ]);
-    if (uniRes.error) throw new Error(uniRes.error.message);
-    if (lineRes.error) throw new Error(lineRes.error.message);
-    return { universities: (uniRes.data || []) as University[], lines: (lineRes.data || []) as unknown as LineOption[] };
-  });
+  const options = usePageData(keys.company(company.id, 'lineOptions'), () => loadLineOptions(company.id));
   const universities = options.data?.universities ?? [];
   const lines = options.data?.lines ?? [];
 
@@ -247,28 +217,17 @@ export const StudentsPage: React.FC = () => {
   const departureOptions = stopOptions(selectedLine, 'departure', selectedStationId, selectedUniversityId);
   const returnOptions = stopOptions(selectedLine, 'return', selectedStationId, selectedUniversityId);
 
-  // Payable periods come from the database (academic_terms + annual switch).
-  useEffect(() => {
-    let active = true;
-    if (!selectedLineId) { setPeriods([]); return; }
-    void supabase.rpc('get_purchasable_periods', { p_line_id: selectedLineId }).then(({ data, error }) => {
-      if (!active) return;
-      if (error) { console.warn('Could not load periods:', error.message); setPeriods([]); return; }
-      setPeriods((data || []) as PurchasablePeriod[]);
-    });
-    return () => { active = false; };
-  }, [selectedLineId]);
-
-  // The daily switch of the line's company (platform AND company).
-  const [dailyAvailable, setDailyAvailable] = useState(true);
-  useEffect(() => {
-    let active = true;
-    if (!selectedLine?.company_id) return;
-    void supabase.rpc('get_subscription_switches', { p_company_id: selectedLine.company_id }).then(({ data }) => {
-      if (active && data) setDailyAvailable(!!(data as { daily_effective?: boolean }).daily_effective);
-    });
-    return () => { active = false; };
-  }, [selectedLine?.company_id]);
+  // Payable periods and the daily switch come from the database. Both are
+  // cached like every other read of the workspace (and shared with the lines
+  // page), so reopening this page asks for neither again.
+  const periodsQuery = usePageData(keys.company(company.id, 'lineOptions', 'periods', selectedLineId || 'none'), async () =>
+    selectedLineId
+      ? unwrap<PurchasablePeriod[]>(supabase.rpc('get_purchasable_periods', { p_line_id: selectedLineId }))
+      : []);
+  useEffect(() => { setPeriods(periodsQuery.data ?? []); }, [periodsQuery.data]);
+  const switchesQuery = usePageData(keys.company(company.id, 'switches'), () =>
+    unwrap<{ daily_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: company.id })));
+  const dailyAvailable = switchesQuery.data ? !!switchesQuery.data.daily_effective : true;
 
   const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
   const annualAvailable = periods.some((p) => p.subscription_type === 'yearly');
@@ -564,7 +523,7 @@ export const StudentsPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <SkeletonRows rows={5} />
+          <SkeletonTable rows={5} columns={5} />
         ) : studentsPage.error ? (
           <div role="alert" className="p-8 text-center text-rose-700">تعذر تحميل الطلاب: {studentsPage.error}</div>
         ) : filteredStudents.length === 0 ? (

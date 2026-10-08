@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Plus, X } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonCards } from '../components/Skeleton';
 import { count, egp } from '../components/StatsRow';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
@@ -60,7 +60,7 @@ export const AllCompaniesPage: React.FC = () => {
       {(error || actionError) && <div role="alert" className="glass-panel p-4 text-sm text-rose-700">{error || actionError}</div>}
 
       {loading ? (
-        <div className="glass-panel"><SkeletonRows rows={3} /></div>
+        <SkeletonCards count={3} columns={3} />
       ) : companies.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500">لا توجد شركات في هذا التصنيف.</div>
       ) : (

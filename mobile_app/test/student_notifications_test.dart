@@ -16,6 +16,8 @@ import 'package:basak_mobile/features/supervisor/data/supervisor_repository.dart
 import 'package:basak_mobile/features/supervisor/models/supervisor_models.dart';
 import 'package:basak_mobile/features/supervisor/notifications/supervisor_notifications_screen.dart';
 
+import 'support/notification_fakes.dart';
+
 class _FakeDailyRideRepo implements DailyRideRepository {
   @override
   Future<VoteSettings> getVoteSettings(String? companyId) async => _reminding;
@@ -39,27 +41,6 @@ class _FakeDailyRideRepo implements DailyRideRepository {
       DailyRideDetails(isRiding: isRiding, isReturning: isReturning);
 }
 
-class _FakeNotificationsRepo implements NotificationsRepository {
-  final List<List<String>?> marked = [];
-  final List<Map<String, String?>> sent = [];
-
-  @override
-  Future<List<AppNotification>> mine() async => const [];
-  @override
-  Future<void> markRead([List<String>? ids]) async => marked.add(ids);
-  @override
-  Future<int> send({
-    required String title,
-    required String body,
-    required String lineId,
-    String? tripId,
-    String? rideDate,
-  }) async {
-    sent.add({'title': title, 'body': body, 'line': lineId, 'trip': tripId, 'date': rideDate});
-    return 4;
-  }
-}
-
 const _reminding = VoteSettings(opensAt: 16 * 60, closesAt: 6 * 60, reminderMinutes: 30);
 
 class _Subscription extends CurrentSubscriptionNotifier {
@@ -76,29 +57,19 @@ class _Subscription extends CurrentSubscriptionNotifier {
 }
 
 AppNotification _note(String id, String title, {bool read = false, String role = 'admin'}) =>
-    AppNotification(
-      id: id,
-      title: title,
-      body: 'نص $title',
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-      senderRole: role,
-      senderName: 'أحمد',
-      audience: 'خط المنصورة',
-      read: read,
-    );
+    note(id, title, read: read, role: role);
 
 Widget _app(Widget home,
         {String? status = 'active',
         List<AppNotification> notes = const [],
-        _FakeNotificationsRepo? repo}) =>
+        FakeNotificationsRepo? repo}) =>
     ProviderScope(
       overrides: [
         sessionUserIdProvider.overrideWithValue('student-1'),
         currentSubscriptionProvider.overrideWith(() => _Subscription(status)),
         voteSettingsProvider.overrideWith((ref) async => _reminding),
         dailyRideRepoProvider.overrideWithValue(_FakeDailyRideRepo()),
-        myNotificationsProvider.overrideWith((ref) async => notes),
-        notificationsRepoProvider.overrideWithValue(repo ?? _FakeNotificationsRepo()),
+        notificationsRepoProvider.overrideWithValue((repo ?? FakeNotificationsRepo())..inbox.addAll(notes)),
       ],
       child: MaterialApp(
         home: Directionality(textDirection: TextDirection.rtl, child: home),
@@ -236,15 +207,15 @@ void main() {
     expect(tester.widgetList(find.text('تذكير مفعّل')).length, reminded);
   });
 
-  testWidgets('search narrows the list; clear all marks everything read', (tester) async {
-    final repo = _FakeNotificationsRepo();
+  testWidgets('search narrows the list; "read all" marks everything read', (tester) async {
+    final repo = FakeNotificationsRepo();
     await tester.pumpWidget(_app(
       const NotificationsScreen(),
       notes: [_note('a', 'إجازة رسمية'), _note('b', 'تأخير الباص', role: 'supervisor'), _note('c', 'قديم', read: true)],
       repo: repo,
     ));
     await tester.pumpAndSettle();
-    expect(find.text('2 إشعارات غير مقروءة'), findsOneWidget);
+    expect(find.text('غير المقروءة (2)'), findsOneWidget);
     expect(find.text('المشرف أحمد · خط المنصورة'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'تأخير');
@@ -256,14 +227,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('لا توجد نتائج'), findsOneWidget);
 
-    await tester.tap(find.text('مسح الكل'));
+    await tester.tap(find.text('قراءة الكل'));
     await tester.pumpAndSettle();
     expect(repo.marked, [null]);
-    expect(find.text('0 إشعارات غير مقروءة'), findsOneWidget);
+    expect(find.text('غير المقروءة'), findsOneWidget);
   });
 
   testWidgets('opening one notification marks it read', (tester) async {
-    final repo = _FakeNotificationsRepo();
+    final repo = FakeNotificationsRepo();
     await tester.pumpWidget(_app(const NotificationsScreen(),
         notes: [_note('a', 'إجازة رسمية'), _note('b', 'تأخير الباص')], repo: repo));
     await tester.pumpAndSettle();
@@ -272,7 +243,7 @@ void main() {
     expect(repo.marked, [
       ['a']
     ]);
-    expect(find.text('1 إشعارات غير مقروءة'), findsOneWidget);
+    expect(find.text('غير المقروءة (1)'), findsOneWidget);
   });
 
   testWidgets('the home bell shows the unread count and opens the notifications', (tester) async {
@@ -289,31 +260,35 @@ void main() {
     expect(find.text('التذكيرات تعمل بعد تفعيل اشتراكك.'), findsOneWidget);
   });
 
-  testWidgets('a supervisor writes to the riders of one trip with a ready-made message',
-      (tester) async {
-    final repo = _FakeNotificationsRepo();
-    final dashboard = SupervisorDashboard.fromJson(_dashboardJson);
-    int? popped;
-    await tester.pumpWidget(ProviderScope(
-      overrides: [notificationsRepoProvider.overrideWithValue(repo)],
-      child: MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Builder(
-            builder: (context) => Scaffold(
-              body: TextButton(
-                onPressed: () async => popped = await showModalBottomSheet<int>(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (_) => SendNotificationSheet(dashboard: dashboard),
+  Widget sheetHost(FakeNotificationsRepo repo, Widget Function() sheet, void Function(SendResult?) popped) =>
+      ProviderScope(
+        overrides: [notificationsRepoProvider.overrideWithValue(repo)],
+        child: MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () async => popped(await showModalBottomSheet<SendResult>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => sheet(),
+                  )),
+                  child: const Text('open'),
                 ),
-                child: const Text('open'),
               ),
             ),
           ),
         ),
-      ),
-    ));
+      );
+
+  testWidgets('a supervisor writes to the riders of one trip with a ready-made message',
+      (tester) async {
+    final repo = FakeNotificationsRepo();
+    final dashboard = SupervisorDashboard.fromJson(_dashboardJson);
+    SendResult? popped;
+    await tester.pumpWidget(
+        sheetHost(repo, () => SendNotificationSheet(dashboard: dashboard), (result) => popped = result));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -328,20 +303,140 @@ void main() {
     await tester.tap(find.text('إرسال الإشعار'));
     await tester.pumpAndSettle();
 
-    expect(repo.sent, [
-      {'title': 'تأخير الباص', 'body': 'سيتأخر الباص نحو 10 دقائق عن موعده. شكراً لتفهمكم.',
-       'line': 'line-1', 'trip': 'trip-1', 'date': '2026-10-08'}
-    ]);
-    expect(popped, 4);
+    expect(repo.sent.single..remove('key'), {
+      'title': 'تأخير الباص', 'body': 'سيتأخر الباص نحو 10 دقائق عن موعده. شكراً لتفهمكم.',
+      'line': 'line-1', 'trip': 'trip-1', 'date': '2026-10-08',
+    });
+    expect(popped, (students: 4, duplicate: false));
+  });
+
+  testWidgets('a free-text send keeps its key when retried, and takes a new one when the text changes',
+      (tester) async {
+    final repo = FakeNotificationsRepo()..refusal = 'أرسلت إشعارات كثيرة، انتظر قليلاً ثم حاول مرة أخرى.';
+    final dashboard = SupervisorDashboard.fromJson(_dashboardJson);
+    final keys = <Object?>[];
+    await tester.pumpWidget(sheetHost(repo, () => _KeyProbe(dashboard: dashboard, keys: keys), (_) {}));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الباص سيتأخر'));
+    await tester.pumpAndSettle();
+
+    Future<void> send() async {
+      await tester.ensureVisible(find.text('إرسال الإشعار'));
+      await tester.tap(find.text('إرسال الإشعار'));
+      await tester.pumpAndSettle();
+    }
+
+    // The server refuses (its own words are shown); the supervisor tries again.
+    await send();
+    expect(find.text('أرسلت إشعارات كثيرة، انتظر قليلاً ثم حاول مرة أخرى.'), findsOneWidget);
+    expect(repo.sent, isEmpty);
+    await send();
+    expect(keys.length, 2);
+    expect(keys[0], keys[1], reason: 'the same send, tried twice, is one send to the server');
+
+    // Another message is another send.
+    await tester.tap(find.text('الباص تحرك'));
+    await tester.pumpAndSettle();
+    await send();
+    expect(keys[2], isNot(keys[0]));
+  });
+
+  testWidgets('a quick message: pick the trip and the minutes, see who gets it, confirm',
+      (tester) async {
+    final repo = FakeNotificationsRepo();
+    final dashboard = SupervisorDashboard.fromJson(_dashboardJson);
+    const delay = QuickNotificationTemplate(
+        key: 'delay', title: 'تأخير الباص', body: 'سيتأخر الباص نحو {minutes} دقيقة.', needsMinutes: true);
+    SendResult? popped;
+    await tester.pumpWidget(sheetHost(
+        repo, () => QuickNotificationSheet(dashboard: dashboard, template: delay), (r) => popped = r));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // The text as the students will read it, and who receives it by default.
+    expect(find.text('سيتأخر الباص نحو 10 دقيقة.'), findsOneWidget);
+    expect(find.text('سيصل إلى: كل طلاب خط المنصورة (0 طالب)'), findsOneWidget);
+
+    await tester.tap(find.text('اليوم · ذهاب 7:00 ص · 4 طالب'));
+    await tester.tap(find.text('20'));
+    await tester.pumpAndSettle();
+    expect(find.text('سيتأخر الباص نحو 20 دقيقة.'), findsOneWidget);
+    expect(find.text('سيصل إلى: ركاب رحلة اليوم · ذهاب 7:00 ص · 4 طالب على خط المنصورة'), findsOneWidget);
+
+    // The server limits how often: its message is shown as it is, and the
+    // retry of this same send carries the same key.
+    repo.refusal = 'أرسلت هذا الإشعار قبل قليل. انتظر دقيقة ثم حاول مرة أخرى.';
+    await tester.ensureVisible(find.text('تأكيد الإرسال'));
+    await tester.tap(find.text('تأكيد الإرسال'));
+    await tester.pumpAndSettle();
+    expect(find.text('أرسلت هذا الإشعار قبل قليل. انتظر دقيقة ثم حاول مرة أخرى.'), findsOneWidget);
+    expect(popped, isNull);
+
+    repo.refusal = null;
+    await tester.tap(find.text('تأكيد الإرسال'));
+    await tester.pumpAndSettle();
+    expect(repo.quickSent.length, 2);
+    expect(repo.quickSent[1]['key'], repo.quickSent[0]['key']);
+    expect(repo.quickSent[1]..remove('key'),
+        {'template': 'delay', 'line': 'line-1', 'trip': 'trip-1', 'date': '2026-10-08', 'minutes': 20});
+    expect(popped?.students, 4);
+  });
+
+  testWidgets('a return message offers only return trips, worded "from the university"', (tester) async {
+    final dashboard = SupervisorDashboard.fromJson({
+      ..._dashboardJson,
+      'trip_times': [
+        ...(_dashboardJson['trip_times'] as List),
+        {'ride_date': '2026-10-08', 'line_id': 'line-1', 'line_name': 'خط المنصورة',
+         'direction': 'return', 'time': '15:00:00', 'students': 3, 'trip_id': 'trip-2'},
+      ],
+    });
+    const leaving = QuickNotificationTemplate(
+        key: 'return_departing', title: 'العودة تتحرك', body: 'يتحرك باص العودة من الجامعة الآن.',
+        direction: 'return');
+    final repo = FakeNotificationsRepo();
+    await tester.pumpWidget(sheetHost(
+        repo, () => QuickNotificationSheet(dashboard: dashboard, template: leaving), (_) {}));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اليوم · عودة من الجامعة 3:00 م · 3 طالب'), findsOneWidget);
+    expect(find.textContaining('ذهاب'), findsNothing);
+    expect(find.text('المدة بالدقائق'), findsNothing, reason: 'this message needs no minutes');
+    await tester.tap(find.text('اليوم · عودة من الجامعة 3:00 م · 3 طالب'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('تأكيد الإرسال'));
+    await tester.tap(find.text('تأكيد الإرسال'));
+    await tester.pumpAndSettle();
+    expect(repo.quickSent.single..remove('key'),
+        {'template': 'return_departing', 'line': 'line-1', 'trip': 'trip-2', 'date': '2026-10-08', 'minutes': null});
+  });
+
+  test('a quick template is read from the server and knows which trips it fits', () {
+    final template = QuickNotificationTemplate.fromJson({
+      'key': 'delay', 'title': 'تأخير الباص', 'body': 'سيتأخر {minutes} دقيقة', 'needs_minutes': true,
+      'direction': null,
+    });
+    expect(template.preview(15), 'سيتأخر 15 دقيقة');
+    expect(template.fits('return'), isTrue);
+    final back = QuickNotificationTemplate.fromJson({'key': 'r', 'title': 'ع', 'body': 'ب', 'direction': 'return'});
+    expect(back.needsMinutes, isFalse);
+    expect(back.fits('departure'), isFalse);
+    expect(back.fits(null), isTrue, reason: 'the whole line');
+    expect(newUuid(), isNot(newUuid()));
   });
 
   testWidgets('the supervisor notifications page lays out with the app theme', (tester) async {
+    final repo = FakeNotificationsRepo([_note('a', 'إجازة رسمية')])
+      ..templates = const [
+        QuickNotificationTemplate(key: 'arrived', title: 'وصل الباص', body: 'وصل الباص إلى المحطة.'),
+      ];
     await tester.pumpWidget(ProviderScope(
       overrides: [
         sessionUserIdProvider.overrideWithValue('sup'),
         supervisorDashboardProvider.overrideWith(_Dashboard.new),
-        myNotificationsProvider.overrideWith((ref) async => [_note('a', 'إجازة رسمية')]),
-        notificationsRepoProvider.overrideWithValue(_FakeNotificationsRepo()),
+        notificationsRepoProvider.overrideWithValue(repo),
       ],
       child: MaterialApp(
         theme: AppTheme.lightTheme,
@@ -353,8 +448,54 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('أرسل إشعاراً لطلابك'), findsOneWidget);
     expect(find.text('إجازة رسمية'), findsOneWidget);
+
+    // A quick message, start to finish, from the screen itself.
+    expect(find.text('إشعارات سريعة'), findsOneWidget);
+    await tester.tap(find.text('وصل الباص'));
+    await tester.pumpAndSettle();
+    expect(find.text('وصل الباص إلى المحطة.'), findsOneWidget);
+    await tester.tap(find.text('تأكيد الإرسال'));
+    await tester.pumpAndSettle();
+    expect(repo.quickSent.single['template'], 'arrived');
+    expect(find.text('تم إرسال الإشعار إلى 4 طالب.'), findsOneWidget);
+
     await tester.tap(find.text('إرسال'));
     await tester.pumpAndSettle();
     expect(find.text('إشعار جديد للطلاب'), findsOneWidget);
   });
+}
+
+/// The free-text sheet, with the key of every attempt recorded (also the
+/// refused ones, which never reach the fake's list of sent messages).
+class _KeyProbe extends ConsumerWidget {
+  final SupervisorDashboard dashboard;
+  final List<Object?> keys;
+  const _KeyProbe({required this.dashboard, required this.keys});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ProviderScope(
+        overrides: [notificationsRepoProvider.overrideWithValue(_RecordingRepo(keys))],
+        child: SendNotificationSheet(dashboard: dashboard),
+      );
+}
+
+class _RecordingRepo extends FakeNotificationsRepo {
+  final List<Object?> keys;
+  _RecordingRepo(this.keys) {
+    refusal = 'أرسلت إشعارات كثيرة، انتظر قليلاً ثم حاول مرة أخرى.';
+  }
+
+  @override
+  Future<SendResult> send({
+    required String title,
+    required String body,
+    required String lineId,
+    String? tripId,
+    String? rideDate,
+    required String idempotencyKey,
+  }) {
+    keys.add(idempotencyKey);
+    return super.send(
+        title: title, body: body, lineId: lineId, tripId: tripId, rideDate: rideDate, idempotencyKey: idempotencyKey);
+  }
 }

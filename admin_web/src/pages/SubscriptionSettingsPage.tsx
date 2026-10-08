@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Topbar } from '../components/Topbar';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonForm } from '../components/Skeleton';
 import { VoteSettingsCard } from '../components/VoteSettingsCard';
 import { optionName, reasonText, type SaleRow } from '../lib/saleOptions';
 
@@ -174,7 +174,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
       )}
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر التحميل: {error}</div>}
 
-      {page.loading && <div className="rounded-2xl border border-slate-100 bg-white"><SkeletonRows /></div>}
+      {page.loading && <div className="space-y-6"><SkeletonForm fields={3} /><SkeletonForm fields={1} /><SkeletonForm fields={2} /></div>}
       {settings && (
         <>
           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">

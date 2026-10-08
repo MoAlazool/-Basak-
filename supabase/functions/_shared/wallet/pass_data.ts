@@ -49,12 +49,12 @@ export const GOOGLE_ASSET_FILE = 'google.png';
 export const PLATFORM_NAME = 'باصك';
 const CARD_KIND = 'بطاقة نقل طلاب';
 const VALIDITY_NOTE = 'هذه البطاقة للتعريف بالطالب. صلاحية الاشتراك يتحقق منها المشرف عند مسح الرمز.';
-const POWERED_BY = 'تشغيل منصة باصك · Powered by Basak';
+const POWERED_BY = 'تشغيل منصة باصك · Powered by Basak.app';
 /**
  * The credit printed under the QR code on both wallets. Latin only: Apple
  * draws this line in the barcode's own encoding (ISO-8859-1).
  */
-export const BARCODE_CREDIT = 'Powered by Basak';
+export const BARCODE_CREDIT = 'Powered by Basak.app';
 const DEFAULT_CONTACT_LABEL = 'للتواصل';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

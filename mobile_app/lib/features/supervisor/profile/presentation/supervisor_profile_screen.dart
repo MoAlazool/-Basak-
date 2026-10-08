@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -7,6 +8,7 @@ import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../notifications/presentation/notification_preferences_screen.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
 
@@ -30,7 +32,7 @@ class SupervisorProfileScreen extends ConsumerWidget {
           const BasakPageHeader(title: 'حسابي', subtitle: 'بيانات حساب المشرف'),
           const SizedBox(height: 18),
           dashboard.when(
-            loading: () => const BasakLoadingCard(height: 300),
+            loading: () => const SkeletonCard(radius: 24, child: ProfileSkeleton()),
             error: (_, __) => BasakMessageCard(
               icon: LucideIcons.wifiOff,
               title: 'تعذر تحميل بيانات الحساب',
@@ -66,6 +68,19 @@ class SupervisorProfileScreen extends ConsumerWidget {
             child: Material(
               type: MaterialType.transparency,
               child: Column(children: [
+                ListTile(
+                  leading: const Icon(LucideIcons.bell, color: BasakUi.muted),
+                  title: Text('إعدادات الإشعارات',
+                      style:
+                          AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink)),
+                  subtitle: Text('ما يصلك كإشعار على الهاتف',
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: BasakUi.muted)),
+                  trailing: const Icon(LucideIcons.chevronLeft,
+                      size: 18, color: BasakUi.muted),
+                  onTap: () => NotificationPreferencesScreen.open(context),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(LucideIcons.lock, color: BasakUi.muted),
                   title: Text('تغيير كلمة المرور أو البيانات',

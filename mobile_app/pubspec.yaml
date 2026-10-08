@@ -1,7 +1,7 @@
 name: basak_mobile
 description: "University Bus Subscription System (باصك - Basak) - Flutter Mobile Client for Students and Supervisors"
 publish_to: "none"
-version: 1.0.6+32
+version: 1.0.6+35
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -15,6 +15,11 @@ dependencies:
 
   # Backend & Network
   supabase_flutter: ^2.8.0
+
+  # Push notifications (FCM; APNs through FCM on iOS). Configured with
+  # --dart-define, see lib/core/constants/firebase_config.dart.
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
 
   # State Management
   flutter_riverpod: ^2.6.1
