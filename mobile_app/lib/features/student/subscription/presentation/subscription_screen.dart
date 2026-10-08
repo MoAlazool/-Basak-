@@ -549,10 +549,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     ];
   }
 
-  /// Every payment instruction in one place, including the company's own note
-  /// for the chosen method.
+  /// The payment instructions, in one short numbered block.
   Widget _paymentNotes(List<PaymentMethodModel> methods, int attempts) {
-    final chosen = methods.where((m) => m.id == _paymentMethodId).firstOrNull;
     final notes = [
       if (methods.isEmpty)
         'تواصل مع إدارة الشركة للحصول على بيانات التحويل.'
@@ -560,7 +558,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         'حوّل المبلغ كاملاً بالوسيلة التي اخترتها.',
       'ارفع صورة واضحة للإيصال فيها رقم العملية والتاريخ.',
       'تُراجع الإدارة الإيصال وسيصلك إشعار عند الاعتماد.',
-      if ((chosen?.instructions ?? '').trim().isNotEmpty) chosen!.instructions!.trim(),
       if (attempts > 0 && attempts < 5) 'المتبقي ${5 - attempts} من 5 محاولات لرفع الإيصال.',
     ];
 

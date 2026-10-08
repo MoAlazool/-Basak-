@@ -320,8 +320,10 @@ void main() {
       expect(find.byKey(const Key('next-period')), findsNothing);
       await tester.tap(find.text('InstaPay').first);
       await tester.pumpAndSettle();
-      expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsOneWidget);
       expect(find.text('almostaqbal@instapay'), findsOneWidget);
+      // Three short notes, nothing more.
+      expect(find.text('3.'), findsOneWidget);
+      expect(find.text('4.'), findsNothing);
       expect(find.text('8,000 ج.م'), findsOneWidget);
       // The selection is fixed once the request exists.
       expect(find.byKey(const Key('flow-back')), findsNothing);
