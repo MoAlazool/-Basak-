@@ -2,6 +2,7 @@ import React from 'react';
 import { BasakLogo } from './BasakLogo';
 import { MobileNav, Sidebar } from './Sidebar';
 import type { NavItem } from '../lib/nav';
+import { Toasts } from './Toasts';
 
 interface ShellProps {
   items: NavItem[];
@@ -9,14 +10,16 @@ interface ShellProps {
   onLogout: () => void;
   /** Sits above every page of the area (the workspace's company bar). */
   banner?: React.ReactNode;
+  /** Counts shown as red badges on the navigation. */
+  badges?: Partial<Record<NonNullable<NavItem['badge']>, number>>;
   children: React.ReactNode;
 }
 
 /** The frame shared by the platform area and every company workspace. */
-export const Shell: React.FC<ShellProps> = ({ items, areaLabel, onLogout, banner, children }) => (
+export const Shell: React.FC<ShellProps> = ({ items, areaLabel, onLogout, banner, badges, children }) => (
   <div className="flex min-h-screen" dir="rtl">
     <div className="hidden md:flex">
-      <Sidebar items={items} areaLabel={areaLabel} onLogout={onLogout} />
+      <Sidebar items={items} areaLabel={areaLabel} onLogout={onLogout} badges={badges} />
     </div>
     <main
       className="flex-1 min-w-0 overflow-x-hidden pb-24 md:pb-8"
@@ -37,6 +40,7 @@ export const Shell: React.FC<ShellProps> = ({ items, areaLabel, onLogout, banner
         {children}
       </div>
     </main>
-    <MobileNav items={items} areaLabel={areaLabel} onLogout={onLogout} />
+    <MobileNav items={items} areaLabel={areaLabel} onLogout={onLogout} badges={badges} />
+    <Toasts />
   </div>
 );

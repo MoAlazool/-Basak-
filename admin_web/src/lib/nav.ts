@@ -12,6 +12,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Match the path exactly (for an area's first page). */
   end?: boolean;
+  /** Which count, if any, is shown on this item as a red badge. */
+  badge?: 'receipts' | 'requests';
 }
 
 /** The platform admin's area: everything that spans companies. */
@@ -29,8 +31,8 @@ export const workspaceNav = (companyId: string): NavItem[] => {
   const base = `/c/${companyId}`;
   return [
     { to: base, name: 'نظرة عامة', short: 'الرئيسية', icon: LayoutDashboard, end: true },
-    { to: `${base}/students`, name: 'الطلاب', short: 'الطلاب', icon: Users },
-    { to: `${base}/receipts`, name: 'فحص الإيصالات', short: 'الإيصالات', icon: FileCheck2 },
+    { to: `${base}/students`, name: 'الطلاب', short: 'الطلاب', icon: Users, badge: 'requests' },
+    { to: `${base}/receipts`, name: 'فحص الإيصالات', short: 'الإيصالات', icon: FileCheck2, badge: 'receipts' },
     { to: `${base}/lines`, name: 'الخطوط والمحطات', short: 'الخطوط', icon: Bus },
     { to: `${base}/supervisors`, name: 'المشرفون', short: 'المشرفون', icon: UserCheck },
     { to: `${base}/notifications`, name: 'الإشعارات', short: 'الإشعارات', icon: Bell },

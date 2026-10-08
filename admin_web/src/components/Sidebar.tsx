@@ -9,9 +9,20 @@ interface NavProps {
   /** Shown under the brand: which area or company these pages belong to. */
   areaLabel: string;
   onLogout: () => void;
+  /** Things waiting for the admin, by badge name (see NavItem.badge). */
+  badges?: Partial<Record<NonNullable<NavItem['badge']>, number>>;
 }
 
-export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout }) => (
+/** The small red circle with a number: something here needs attention. */
+const Badge: React.FC<{ count?: number; className?: string }> = ({ count, className = '' }) =>
+  !count ? null : (
+    <span aria-label={`${count} جديد`}
+      className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-extrabold leading-none text-white shadow-sm ring-2 ring-white ${className}`}>
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+
+export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout, badges = {} }) => (
   <aside
     className="sticky top-0 h-screen w-[72px] lg:w-[230px] flex flex-col justify-between py-5 px-3 z-30 flex-shrink-0 overflow-y-auto"
     style={{
@@ -32,18 +43,19 @@ export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout }) => (
       </div>
 
       <nav className="space-y-1">
-        {items.map(({ to, name, icon: Icon, end }) => (
+        {items.map(({ to, name, icon: Icon, end, badge }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             title={name}
-            className={({ isActive }) => `flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-semibold transition-all duration-150 ${
+            className={({ isActive }) => `relative flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-semibold transition-all duration-150 ${
               isActive ? 'bg-[#D6EEF9]/80 text-[#3E8FBF] shadow-sm' : 'text-[#5B6B7A] hover:bg-white/60 hover:text-[#1F2937]'
             }`}
           >
             <Icon className="h-5 w-5 min-w-[20px]" />
-            <span className="hidden lg:inline">{name}</span>
+            <span className="hidden flex-1 lg:inline">{name}</span>
+            {badge && <Badge count={badges[badge]} className="absolute left-1.5 top-1 lg:static" />}
           </NavLink>
         ))}
       </nav>
@@ -67,7 +79,7 @@ export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout }) => (
 );
 
 /** The same pages as the sidebar, as a bottom bar on phones. */
-export const MobileNav: React.FC<NavProps> = ({ items, onLogout }) => (
+export const MobileNav: React.FC<NavProps> = ({ items, onLogout, badges = {} }) => (
   <nav
     className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between overflow-x-auto px-2 py-2"
     style={{
@@ -78,11 +90,12 @@ export const MobileNav: React.FC<NavProps> = ({ items, onLogout }) => (
       boxShadow: '0 -4px 24px rgba(126,200,227,0.15)',
     }}
   >
-    {items.map(({ to, short, icon: Icon, end }) => (
-      <NavLink key={to} to={to} end={end} className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all flex-shrink-0">
+    {items.map(({ to, short, icon: Icon, end, badge }) => (
+      <NavLink key={to} to={to} end={end} className="relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all flex-shrink-0">
         {({ isActive }) => (
           <>
             <Icon className={`h-5 w-5 transition-colors ${isActive ? 'text-[#3E8FBF]' : 'text-slate-400'}`} />
+            {badge && <Badge count={badges[badge]} className="absolute -top-0.5 left-0" />}
             <span className={`text-[9.5px] font-bold transition-colors ${isActive ? 'text-[#3E8FBF]' : 'text-slate-400'}`}>{short}</span>
             {isActive && <div className="h-1 w-4 rounded-full bg-[#7EC8E3] mt-0.5" />}
           </>
