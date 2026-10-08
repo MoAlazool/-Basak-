@@ -5,7 +5,7 @@ import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
 import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
 import {
-  ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
+  ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, GraduationCap, MapPin, Pencil,
   Plus, Power, Save, Trash2, UserCheck, Wand2, X,
 } from 'lucide-react';
 
@@ -201,7 +201,7 @@ export const LinesPage: React.FC = () => {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">إدارة خطوط السير</h1>
-          <p className="text-sm text-slate-500">كل خط = نقطة بداية ← محطات بالترتيب ← الجامعة، وله رحلات ذهاب وعودة بموعد لكل محطة</p>
+          <p className="text-sm text-slate-500">كل خط له اسم قصير، الجامعات التي يخدمها، محطات الصعود، ورحلات الذهاب ومواعيد العودة من الجامعة</p>
         </div>
         <button
           onClick={() => setDraft(emptyDraft(defaultCompany))}
@@ -242,20 +242,15 @@ export const LinesPage: React.FC = () => {
                         {line.is_active ? 'نشط' : 'معطّل'}
                       </span>
                     </div>
-                    {/* Route: origin → stations → destination */}
+                    {/* Boarding stations in order; each student ends at their own university */}
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 font-bold text-blue-700"><Flag className="h-3 w-3" />{line.origin_name || line.name}</span>
-                      {stations.map((s) => (
-                        <React.Fragment key={s.id}>
-                          <span className="text-slate-300">←</span>
-                          <span className="rounded-lg bg-slate-50 px-2 py-1 text-slate-600">{s.name}</span>
-                        </React.Fragment>
+                      <span className="text-slate-400">المحطات:</span>
+                      {stations.map((st) => (
+                        <span key={st.id} className="rounded-lg bg-slate-50 px-2 py-1 text-slate-600">{st.name}</span>
                       ))}
-                      <span className="text-slate-300">←</span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 font-bold text-indigo-700"><GraduationCap className="h-3 w-3" />{uniName(line.destination_university_id) || 'الوجهة غير محددة'}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                      <span className="text-slate-400">الجامعات:</span>
+                      <span className="text-slate-400">الوجهة (الجامعات):</span>
                       {(line.line_universities ?? []).length === 0
                         ? <span className="rounded-lg bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">غير محددة — عدّل الخط واختر الجامعات</span>
                         : (line.line_universities ?? []).map((u) => (
@@ -420,7 +415,6 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const patchTrip = (key: string, p: Partial<TripDraft>) =>
     setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
   const routeFor = (direction: Direction) => (direction === 'departure' ? d.stations : [...d.stations].reverse());
-  const destName = universities.find((u) => u.id === (d.destination_university_id || d.university_ids[0]))?.name || 'الجامعة (الوجهة)';
 
   // Stations
   const moveStation = (i: number, delta: number) => setD((cur) => {
@@ -479,9 +473,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
       id: d.id ?? null,
       company_id: d.company_id,
       // The short name defaults to where the line starts.
-      name: d.name.trim() || d.origin_name.trim(),
-      origin_name: d.origin_name.trim(),
-      destination_university_id: d.destination_university_id || d.university_ids[0] || null,
+      // Empty: the server names it after the first station. The start point
+      // and the destination are not entered: the student's station and university are.
+      name: d.name.trim(),
+      origin_name: '',
+      destination_university_id: null,
       university_ids: d.university_ids,
       // Older clients read these two; the per-option prices below are what is sold.
       price_termly: priceOf('first'), price_yearly: priceOf('both'), price_daily: Number(d.price_daily),
@@ -524,21 +520,15 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-slate-700">١. بيانات الخط</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="text-xs font-semibold text-slate-500">اسم الخط المختصر
-                <input value={d.name} onChange={(e) => patch({ name: e.target.value })} placeholder={d.origin_name || 'مثال: منية النصر'} className={`mt-1 ${input}`} />
-                <span className="mt-1 block text-[11px] font-normal text-slate-400">بدون أسماء الجامعات: كل طالب يرى جامعته ومحطته تلقائياً.</span>
-              </label>
-              <label className="text-xs font-semibold text-slate-500">نقطة البداية
-                <input value={d.origin_name} onChange={(e) => patch({ origin_name: e.target.value })} placeholder="مثال: منية النصر" className={`mt-1 ${input}`} />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">الوجهة (نهاية المسار)
-                <select value={d.destination_university_id} onChange={(e) => patch({ destination_university_id: e.target.value })} className={`mt-1 ${input}`}>
-                  <option value="">أول جامعة مختارة</option>
-                  {universities.filter((u) => d.university_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
+              <label className="text-xs font-semibold text-slate-500 sm:col-span-2">اسم الخط (قصير)
+                <input value={d.name} maxLength={40} onChange={(e) => patch({ name: e.target.value.replace(/[←→]/g, '') })}
+                  placeholder={d.stations[0]?.name.trim() || 'مثال: منية النصر'} className={`mt-1 ${input}`} />
+                <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                  اسم المنطقة يكفي. إذا تركته فارغاً يأخذ اسم أول محطة. لا تكتب فيه الجامعات: وجهة كل طالب هي جامعته، وبدايته هي المحطة التي يختارها.
+                </span>
               </label>
               <fieldset className="sm:col-span-2 lg:col-span-4">
-                <legend className="text-xs font-semibold text-slate-500">الجامعات التي يخدمها الخط ({d.university_ids.length} مختارة)</legend>
+                <legend className="text-xs font-semibold text-slate-500">وجهة الخط: الجامعات التي يخدمها ({d.university_ids.length} مختارة)</legend>
                 <div className="mt-1 flex flex-wrap gap-2 rounded-xl border border-slate-200 p-2">
                   {universities.map((u) => {
                     const on = d.university_ids.includes(u.id);
@@ -596,9 +586,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
 
           {/* 2. Route */}
           <section className="space-y-3">
-            <h3 className="text-sm font-bold text-slate-700">٢. المسار والمحطات (بالترتيب)</h3>
+            <h3 className="text-sm font-bold text-slate-700">٢. محطات الصعود (بترتيب المسار)</h3>
             <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
-              <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700"><Flag className="h-4 w-4" /> البداية: {d.origin_name || '—'}</div>
               {d.stations.map((s, i) => (
                 <div key={s.key} className="flex items-center gap-2">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-500 shadow-sm">{i + 1}</span>
@@ -615,7 +604,7 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 className="flex items-center gap-1 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-white">
                 <Plus className="h-3.5 w-3.5" /> إضافة محطة
               </button>
-              <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700"><GraduationCap className="h-4 w-4" /> الوجهة: {destName}</div>
+              <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700"><GraduationCap className="h-4 w-4" /> الوجهة: {d.university_ids.map((id) => universities.find((u) => u.id === id)?.name).filter(Boolean).join('، ') || 'اختر الجامعات أعلاه'}</div>
             </div>
           </section>
 
@@ -665,7 +654,7 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 ) : (
                 <div key={trip.key} className="space-y-3 rounded-2xl border border-slate-200 p-4">
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق من {d.origin_name || 'البداية'}
+                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق
                       <input type="time" value={trip.start_time} onChange={(e) => patchTrip(trip.key, { start_time: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">موعد الوصول (اختياري)

@@ -196,7 +196,7 @@ void main() {
 
       // Line card: name, own university, stations, range of times, lowest price. Nothing repeated.
       expect(find.text('منية النصر'), findsOneWidget);
-      expect(find.text('جامعة الدلتا'), findsNWidgets(2));
+      expect(find.text('إلى جامعة الدلتا'), findsNWidgets(2));
       expect(find.text('من 8,000 ج.م'), findsOneWidget);
       expect(find.text('أول ذهاب 6:30 ص'), findsOneWidget);
       expect(find.text('آخر عودة 5:30 م'), findsOneWidget);
@@ -226,6 +226,8 @@ void main() {
       expect(find.text('8,500 ج.م'), findsOneWidget);
       expect(find.text('البجلات'), findsOneWidget);
       expect(find.text('المستقبل'), findsOneWidget);
+      // Going back is said in words: one step, and which one.
+      expect(find.text('الخطوة السابقة: الفترة'), findsOneWidget);
 
       // Back to the station, change it: the period is kept.
       await tap(tester, 'review-edit-station');

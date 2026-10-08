@@ -23,7 +23,7 @@ q() { psql "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
 
 # The demo rows the first migrations seed are not part of the live data.
 q -c "DO \$\$ DECLARE t text; BEGIN
-        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'subscription_receipts' LOOP
           EXECUTE format('TRUNCATE public.%I CASCADE', t);
         END LOOP; END \$\$;"
 grep -v '^\\\(un\)\?restrict' "$LIVE_DATA" | q -f - >/dev/null

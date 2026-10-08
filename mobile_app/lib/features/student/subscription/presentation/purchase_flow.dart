@@ -173,6 +173,27 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
                 ),
               ),
             _progress(draft, step),
+            if (step != DraftStep.company)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: OutlinedButton.icon(
+                    key: const Key('flow-back'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _brand,
+                      side: const BorderSide(color: Color(0xFFCFE0EA)),
+                      backgroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      minimumSize: const Size(0, 40),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _submitting ? null : _back,
+                    icon: const Icon(LucideIcons.arrowRight, size: 17),
+                    label: Text('الخطوة السابقة: ${_stepNames[step.index - 1]}'),
+                  ),
+                ),
+              ),
             const SizedBox(height: 18),
             Text('اشتراكي الجامعي',
                 style: AppTextStyles.displayMedium.copyWith(color: _ink)),
@@ -289,22 +310,17 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
     );
   }
 
-  /// "٢. اختر الخط" with, on the other side, what was chosen before and a way back to it.
+  /// "٢. اختر الخط", with what was chosen in the step before as a reminder.
   Widget _stepTitle(DraftStep step, String title, {String? previous}) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Row(children: [
-          Expanded(
-              child: Text('${_numerals[step.index]}. $title',
-                  style: AppTextStyles.titleMedium.copyWith(color: _ink))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${_numerals[step.index]}. $title',
+              style: AppTextStyles.titleMedium.copyWith(color: _ink)),
           if (previous != null)
-            Flexible(
-              child: TextButton.icon(
-                key: const Key('flow-back'),
-                onPressed: _submitting ? null : _back,
-                icon: const Icon(LucideIcons.arrowRight, size: 16),
-                label: Text('$previous · تغيير', maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            ),
+            Text(previous,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
         ]),
       );
 
@@ -401,7 +417,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
               const Icon(LucideIcons.graduationCap, size: 15, color: Color(0xFF3F51B5)),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(line.university ?? 'جامعتك',
+                child: Text('إلى ${line.university ?? 'جامعتك'}',
                     style: AppTextStyles.labelSmall.copyWith(
                         color: const Color(0xFF3F51B5), fontWeight: FontWeight.w700)),
               ),
@@ -409,8 +425,8 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
             const SizedBox(height: 4),
             Text(
                 line.stations.length == 1
-                    ? 'محطة واحدة: ${line.stations.first.name}'
-                    : '${line.stations.length} محطات: ${line.stations.map((s) => s.name).join(' · ')}',
+                    ? 'محطة صعود واحدة: ${line.stations.first.name}'
+                    : '${line.stations.length} محطات صعود: ${line.stations.map((s) => s.name).join(' · ')}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),

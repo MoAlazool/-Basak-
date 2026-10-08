@@ -382,7 +382,27 @@ BEGIN
   PERFORM pg_temp.ok('another company''s admin reads none of this company''s prices',
     (SELECT count(*) = 0 FROM public.line_period_prices WHERE line_id = v_line));
 
+  -- A line is a short name, the universities it serves and its stations.
   PERFORM pg_temp.act('admin_x');
+  DECLARE v_new uuid; v_payload jsonb := jsonb_build_object('company_id', pg_temp.id('co_x'), 'name', '',
+      'university_ids', jsonb_build_array(pg_temp.id('u1')), 'price_termly', 900, 'price_yearly', 1700, 'price_daily', 40,
+      'stations', '[{"name": "ميت غمر"}, {"name": "زفتى"}]'::jsonb,
+      'trips', '[{"direction": "departure", "start_time": "07:00", "stops": [{"station_index": 0, "time": "07:05"}]},
+                 {"direction": "return", "start_time": "15:00"}]'::jsonb);
+  BEGIN
+    v_new := public.save_line(v_payload);
+    PERFORM pg_temp.ok('a line saved without a name, a start point or a destination is named after its first station',
+      (SELECT name = 'ميت غمر' AND origin_name = 'ميت غمر' AND destination_university_id = pg_temp.id('u1')
+       FROM public.lines WHERE id = v_new), (SELECT name FROM public.lines WHERE id = v_new));
+    PERFORM pg_temp.ok('its return needed no stations: one time from the university, listed at both stations',
+      (SELECT count(*) = 2 AND bool_and(x.stop_time = '15:00') FROM public.line_trip_stops x
+       JOIN public.line_trips t ON t.id = x.trip_id WHERE t.line_id = v_new AND t.direction = 'return'));
+    PERFORM pg_temp.ok('a name built from a start and university names is refused',
+      pg_temp.err(format('SELECT public.save_line(%L::jsonb)', v_payload || '{"name": "ميت غمر ← جامعة الدلتا - الأهلية"}'::jsonb)) LIKE '%قصيراً%');
+    PERFORM pg_temp.ok('a very long name is refused',
+      pg_temp.err(format('SELECT public.save_line(%L::jsonb)', v_payload || jsonb_build_object('name', repeat('خط طويل ', 8)))) LIKE '%قصيراً%');
+    PERFORM public.delete_line(v_new);
+  END;
   PERFORM public.set_company_sale_settings(pg_temp.id('co_x'), true, '{"summer": true}');
   UPDATE public.line_period_prices SET is_enabled = true WHERE line_id = v_line AND option = 'both';
   PERFORM pg_temp.ok('the company''s own admin saves sale settings and prices',
