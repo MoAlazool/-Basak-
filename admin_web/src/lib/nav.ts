@@ -21,6 +21,7 @@ export const platformNav: NavItem[] = [
   { to: '/platform', name: 'نظرة عامة على المنصة', short: 'المنصة', icon: LayoutDashboard, end: true },
   { to: '/platform/companies', name: 'كل الشركات', short: 'الشركات', icon: Building2 },
   { to: '/platform/students', name: 'كل الطلاب', short: 'الطلاب', icon: Users },
+  { to: '/platform/notifications', name: 'إشعارات المنصة', short: 'الإشعارات', icon: Bell },
   { to: '/platform/admins', name: 'مديرو الشركات', short: 'المديرون', icon: ShieldCheck },
   { to: '/platform/universities', name: 'الجامعات والوجهات', short: 'الجامعات', icon: GraduationCap },
   { to: '/platform/defaults', name: 'الإعدادات الافتراضية', short: 'الافتراضي', icon: CalendarRange },

@@ -5,6 +5,7 @@ import { Topbar } from '../components/Topbar';
 import { SkeletonTable } from '../components/Skeleton';
 import { supabase } from '../lib/supabase';
 import { keys, unwrap, usePageData } from '../lib/query';
+import { usePlatformCompanies } from '../lib/notificationsData';
 
 interface Membership { company_id: string; company: string; status: 'active' | 'removed'; joined_at: string; }
 interface PlatformStudent {
@@ -36,8 +37,7 @@ export const AllStudentsPage: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [typed]);
 
-  const companies = usePageData(keys.platform('companyNames'), () =>
-    unwrap<{ id: string; name: string }[]>(supabase.from('companies').select('id, name').order('name'))).data ?? [];
+  const companies = usePlatformCompanies().data ?? [];
 
   const page = usePageData(keys.platform('students', filters, pageIndex), () =>
     unwrap<{ total: number; rows: PlatformStudent[] }>(supabase.rpc('platform_students', {

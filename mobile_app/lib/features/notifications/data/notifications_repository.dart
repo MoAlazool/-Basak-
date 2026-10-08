@@ -109,7 +109,8 @@ class AppNotification {
   String get senderLabel => switch (senderRole) {
         'supervisor' => senderName.isEmpty ? 'المشرف' : 'المشرف $senderName',
         'system' => 'باصك',
-        _ => 'إدارة الشركة',
+        // Sent by the platform to every company (announcement.platform).
+        _ => type == 'announcement.platform' ? 'منصة باصك' : 'إدارة الشركة',
       };
 
   /// The title and text in the app's language: English only when the app runs

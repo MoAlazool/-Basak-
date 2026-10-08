@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Info } from 'lucide-react';
 import { useCompany } from '../lib/adminScope';
 import type { StatusFilter } from '../lib/notifications';
-import { useNotificationHistory } from '../lib/notificationsData';
+import { useNotificationActions, useNotificationHistory } from '../lib/notificationsData';
 import { Composer } from '../components/notifications/Composer';
 import { History } from '../components/notifications/History';
 
@@ -18,6 +18,7 @@ export const NotificationsPage: React.FC = () => {
   const [filter, setFilter] = useState<StatusFilter>('all');
   // One query feeds the list and tells whether push is connected.
   const history = useNotificationHistory(companyId, filter);
+  const actions = useNotificationActions(companyId);
 
   return (
     <div className="space-y-6">
@@ -39,7 +40,7 @@ export const NotificationsPage: React.FC = () => {
       )}
 
       <Composer companyId={companyId} />
-      <History companyId={companyId} filter={filter} onFilter={setFilter} history={history} />
+      <History companyId={companyId} filter={filter} onFilter={setFilter} history={history} actions={actions} />
     </div>
   );
 };

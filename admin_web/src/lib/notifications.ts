@@ -70,11 +70,43 @@ export interface HistoryRow {
   read: number;
   opened: number;
   push: PushStats | null;
+  /** Only in the platform's history, which spans companies. */
+  company_id?: string;
+  company_name?: string | null;
 }
 
 export interface HistoryPage { items: HistoryRow[]; next_before: string | null; push_configured: boolean | null; }
 
 export interface ComposeResult { id: string; status: 'sent' | 'scheduled'; students: number; duplicate: boolean; }
+
+// --------------------------------------------------------------- platform ----
+
+/** What the platform admin writes to every company at once. */
+export const PLATFORM_ANNOUNCEMENT = 'announcement.platform';
+export const PLATFORM_SENDER = 'منصة باصك';
+
+/** Who a platform notification would reach. `companies` counts those with at least one student to receive it. */
+export interface PlatformPreview { companies: number; students: number; supervisors: number; devices: number; }
+
+export interface PlatformComposeResult { status: 'sent' | 'scheduled'; companies: number; students: number; duplicate: boolean; }
+
+/** Push across the whole platform: what is registered and waiting now, and the last 24 hours. */
+export interface PlatformPush {
+  configured: boolean | null; devices: number; ios: number; android: number; queued: number; accepted_24h: number; failed_24h: number;
+}
+
+export interface PlatformHistoryPage { items: HistoryRow[]; next_before: string | null; push: PlatformPush | null; }
+
+/** `null` = every active company; otherwise the chosen ones, in a stable order. */
+export const platformCompanyIds = (all: boolean, selected: string[]): string[] | null => (all ? null : [...selected].sort());
+
+/** The preview as the shared audience card reads it. */
+export function platformAudience(preview: PlatformPreview, all: boolean, chosen: number): AudiencePreview {
+  const label = all
+    ? `كل الشركات المفعّلة · ${preview.companies} شركة بها مستلمون`
+    : `${preview.companies} من ${chosen} شركة مختارة بها مستلمون`;
+  return { label, students: preview.students, supervisors: preview.supervisors, devices: preview.devices };
+}
 
 // -------------------------------------------------------------- audience ----
 
@@ -210,6 +242,7 @@ const TYPE: Record<string, string> = {
   'transport.return_departing': 'العودة من الجامعة',
   'announcement.admin': 'إعلان من الإدارة',
   'announcement.supervisor': 'إعلان من المشرف',
+  [PLATFORM_ANNOUNCEMENT]: 'إعلان من المنصة',
 };
 
 /** The chip of a row. An unknown type falls back to its category, then to a plain word. */
@@ -219,7 +252,9 @@ export function typeLabel(type: string | null | undefined, category?: string | n
   return fromCategory ?? 'إشعار';
 }
 
-export function senderLabel(role: string | null | undefined, name?: string | null): string {
+export function senderLabel(role: string | null | undefined, name?: string | null, type?: string | null): string {
+  // Written by the platform for every company: no company's admin sent it.
+  if (type === PLATFORM_ANNOUNCEMENT) return PLATFORM_SENDER;
   if (role === 'system') return 'النظام';
   if (role === 'supervisor') return name ? `المشرف ${name}` : 'مشرف';
   return name ? `الإدارة · ${name}` : 'الإدارة';

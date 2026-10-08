@@ -11,9 +11,11 @@ import { fieldClass, labelClass } from './parts';
 interface Props {
   draft: NotificationDraft;
   onChange: (next: NotificationDraft) => void;
-  lines: LineOption[];
-  universities: UniversityOption[];
+  lines?: LineOption[];
+  universities?: UniversityOption[];
   optionsLoading?: boolean;
+  /** Another way to choose who gets it (the platform's companies), in place of the company's own audience picker. */
+  audience?: React.ReactNode;
   today: string;
   /** Editing a scheduled notification: it stays scheduled, and its priority is not part of the edit. */
   scheduledOnly?: boolean;
@@ -21,7 +23,7 @@ interface Props {
 }
 
 /** The fields of a notification, shared by the composer and by the edit of a scheduled one. */
-export const NotificationForm: React.FC<Props> = ({ draft, onChange, lines, universities, optionsLoading, today, scheduledOnly, disabled }) => {
+export const NotificationForm: React.FC<Props> = ({ draft, onChange, lines = [], universities = [], optionsLoading, audience, today, scheduledOnly, disabled }) => {
   const set = (patch: Partial<NotificationDraft>) => onChange({ ...draft, ...patch });
   const later = scheduledOnly || draft.when === 'later';
   const nowLocal = isoToCairoLocal(new Date());
@@ -30,8 +32,10 @@ export const NotificationForm: React.FC<Props> = ({ draft, onChange, lines, univ
 
   return (
     <div className="space-y-4">
-      <AudiencePicker value={draft.audience} onChange={(audience) => set({ audience })} lines={lines} universities={universities}
-        today={today} loading={optionsLoading} disabled={disabled} />
+      {audience ?? (
+        <AudiencePicker value={draft.audience} onChange={(next) => set({ audience: next })} lines={lines} universities={universities}
+          today={today} loading={optionsLoading} disabled={disabled} />
+      )}
 
       <label className="block">
         <span className={labelClass}>العنوان ({draft.title.length}/{TITLE_MAX})</span>
