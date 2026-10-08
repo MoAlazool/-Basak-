@@ -70,12 +70,23 @@ class StudentQrScreen extends ConsumerWidget {
                   );
                 }
                 final active = pass.subscriptionStatus == 'active';
-                // A fixed page that fills the screen down to the navigation
-                // bar: nothing scrolls, and the QR code takes whatever height
-                // is left, so it is as large as the phone allows.
+                // A fixed page, laid out as before: the card hugs its content
+                // with even, tight spacing; the wallet button and the note sit
+                // at the bottom, just above the navigation bar. The QR code is
+                // as large as the card's width allows, and only shrinks when
+                // the phone is too short to show everything.
                 return LayoutBuilder(builder: (context, box) {
-                  // Short screens drop the two lines of help to keep the code large.
-                  final compact = box.maxHeight < 640;
+                  final compact = box.maxHeight < 620;
+                  final wallet = AddToWalletButton.canOffer(
+                      pass, WalletPassRepository.platformFor(defaultTargetPlatform));
+                  final showPhone = (pass.phone ?? '').isNotEmpty && !compact;
+                  // Height of everything except the QR itself.
+                  final fixed = 20 + (compact ? 40 : 64) + (pass.isOfflineCache ? 44 : 0) +
+                      32 + 52 + 14 + 22 + 12 + 30 + 14 + 11 +
+                      (showPhone ? 4 : 3) * 22 + (showPhone ? 3 : 2) * 9 +
+                      (wallet ? 66 : 0) + (compact ? 0 : 34);
+                  final qrSide = (box.maxHeight - fixed)
+                      .clamp(150.0, (box.maxWidth - 36 - 36 - 22).clamp(150.0, 280.0));
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
                     child: Column(children: [
@@ -102,43 +113,38 @@ class StudentQrScreen extends ConsumerWidget {
                               style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF8A5A00)),
                               textAlign: TextAlign.center),
                         ),
+                      // The card takes what it needs; anything left stays below it.
                       Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-                          decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(26),
-                              boxShadow: const [
-                                BoxShadow(color: Color(0x1117384A), blurRadius: 18, offset: Offset(0, 7))
-                              ]),
-                          // Everything on the card grows and shrinks together: the
-                          // design is drawn for a card 500 high and scaled to the
-                          // height this phone gives it, so the code keeps its
-                          // proportion to the name, the status and the details.
-                          child: LayoutBuilder(builder: (context, card) {
-                            final rows = compact ? 3 : 4;
-                            final k = (card.maxHeight / (410 + rows * 28)).clamp(0.72, 1.22);
-                            final qrSide = (230 * k).clamp(150.0, card.maxWidth);
-                            return MediaQuery(
-                              data: MediaQuery.of(context).copyWith(
-                                  textScaler: TextScaler.linear(
-                                      (MediaQuery.textScalerOf(context).scale(1) * k).clamp(0.8, 1.3))),
-                              child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          // A last resort on very small screens: never overflow.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.topCenter,
+                            child: Container(
+                              width: box.maxWidth - 36,
+                              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                              decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(26),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x1117384A), blurRadius: 18, offset: Offset(0, 7))
+                                  ]),
+                              child: Column(mainAxisSize: MainAxisSize.min, children: [
                                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                                   CircleAvatar(
-                                      radius: 24 * k,
+                                      radius: 25,
                                       backgroundColor: const Color(0xFFE4F2F9),
                                       backgroundImage:
                                           pass.profileImageUrl == null ? null : avatarImage(pass.profileImageUrl!),
                                       child: pass.profileImageUrl == null
-                                          ? Icon(LucideIcons.userRound, color: _teal, size: 24 * k)
+                                          ? const Icon(LucideIcons.userRound, color: _teal)
                                           : null),
-                                  SizedBox(width: 11 * k),
+                                  const SizedBox(width: 11),
                                   Flexible(
                                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text(pass.fullName ?? 'الطالب',
-                                        style: AppTextStyles.titleLarge.copyWith(color: _ink),
+                                        style: AppTextStyles.titleLarge.copyWith(color: _ink, height: 1.25),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis),
                                     Text(pass.university ?? 'الجامعة المسجلة',
@@ -147,10 +153,9 @@ class StudentQrScreen extends ConsumerWidget {
                                         style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695)))
                                   ])),
                                 ]),
+                                const SizedBox(height: 14),
                                 Container(
-                                  width: qrSide,
-                                  height: qrSide,
-                                  padding: EdgeInsets.all(11 * k),
+                                  padding: const EdgeInsets.all(11),
                                   decoration: BoxDecoration(
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(18),
@@ -159,6 +164,7 @@ class StudentQrScreen extends ConsumerWidget {
                                     key: const Key('student-qr'),
                                     data: pass.qrValue!,
                                     version: QrVersions.auto,
+                                    size: qrSide,
                                     padding: EdgeInsets.zero,
                                     backgroundColor: Colors.white,
                                     eyeStyle: const QrEyeStyle(
@@ -167,14 +173,15 @@ class StudentQrScreen extends ConsumerWidget {
                                         dataModuleShape: QrDataModuleShape.square, color: Color(0xFF102A3A)),
                                   ),
                                 ),
+                                const SizedBox(height: 12),
                                 Container(
-                                    padding: EdgeInsets.symmetric(horizontal: 13 * k, vertical: 6 * k),
+                                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
                                     decoration: BoxDecoration(
                                         color: active ? const Color(0xFFE7F8F0) : const Color(0xFFFFF4E5),
                                         borderRadius: BorderRadius.circular(18)),
                                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                                       Icon(active ? LucideIcons.circleCheck : LucideIcons.clock3,
-                                          size: 16 * k,
+                                          size: 16,
                                           color: active ? const Color(0xFF07865A) : const Color(0xFFB56900)),
                                       const SizedBox(width: 6),
                                       Text(
@@ -187,31 +194,29 @@ class StudentQrScreen extends ConsumerWidget {
                                               color: active ? const Color(0xFF07865A) : const Color(0xFFB56900),
                                               fontWeight: FontWeight.bold))
                                     ])),
-                                Column(mainAxisSize: MainAxisSize.min, children: [
-                                  const Divider(height: 1),
-                                  SizedBox(height: 10 * k),
-                                  _detailRow(
-                                      'الخط',
-                                      pass.lineName == null
-                                          ? 'لا يوجد اشتراك'
-                                          : SubscriptionModel.routeLabel(pass.lineName, pass.university),
-                                      LucideIcons.busFront, k),
-                                  SizedBox(height: 7 * k),
-                                  _detailRow('محطة الصعود', pass.stationName ?? '—', LucideIcons.mapPin, k),
-                                  SizedBox(height: 7 * k),
-                                  _detailRow('نوع الاشتراك', _typeLabel(pass.subscriptionType), LucideIcons.ticket, k),
-                                  if ((pass.phone ?? '').isNotEmpty && !compact) ...[
-                                    SizedBox(height: 7 * k),
-                                    _detailRow('رقم الهاتف', pass.phone!, LucideIcons.phone, k),
-                                  ],
-                                ]),
+                                const SizedBox(height: 14),
+                                const Divider(height: 1),
+                                const SizedBox(height: 10),
+                                _detailRow(
+                                    'الخط',
+                                    pass.lineName == null
+                                        ? 'لا يوجد اشتراك'
+                                        : SubscriptionModel.routeLabel(pass.lineName, pass.university),
+                                    LucideIcons.busFront),
+                                const SizedBox(height: 9),
+                                _detailRow('محطة الصعود', pass.stationName ?? '—', LucideIcons.mapPin),
+                                const SizedBox(height: 9),
+                                _detailRow('نوع الاشتراك', _typeLabel(pass.subscriptionType), LucideIcons.ticket),
+                                if (showPhone) ...[
+                                  const SizedBox(height: 9),
+                                  _detailRow('رقم الهاتف', pass.phone!, LucideIcons.phone),
+                                ],
                               ]),
-                            );
-                          }),
+                            ),
+                          ),
                         ),
                       ),
-                      if (AddToWalletButton.canOffer(
-                          pass, WalletPassRepository.platformFor(defaultTargetPlatform))) ...[
+                      if (wallet) ...[
                         const SizedBox(height: 10),
                         AddToWalletButton(pass: pass),
                       ],
