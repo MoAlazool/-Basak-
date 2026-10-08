@@ -21,7 +21,6 @@ class SupabaseRpcs {
   static const String getSupervisorMonthlySummary = 'get_supervisor_monthly_summary';
   static const String getSupervisorTripManifest = 'get_supervisor_trip_manifest';
   static const String getSubscriptionCatalog = 'get_subscription_catalog';
-  static const String companiesForUniversity = 'companies_for_university';
   static const String getSubscriptionSwitches = 'get_subscription_switches';
   static const String getVoteSettings = 'get_vote_settings';
   static const String requestStudentPasswordReset = 'request_student_password_reset';

@@ -45,15 +45,6 @@ class AuthRepository {
         .toList();
   }
 
-  /// Names of the transport companies serving a university, with how many
-  /// lines each runs to it. Readable before an account exists.
-  Future<List<({String name, int lines})>> getCompaniesForUniversity(String universityId) async {
-    final rows = await _client.rpc('companies_for_university', params: {'p_university_id': universityId});
-    return (rows as List<dynamic>? ?? const [])
-        .map((row) => (name: row['name'] as String? ?? '', lines: (row['lines'] as num?)?.toInt() ?? 0))
-        .toList();
-  }
-
   Future<List<String>> getActiveColleges(String universityId) async {
     final rows = await _client
         .from('colleges')

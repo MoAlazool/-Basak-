@@ -154,61 +154,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     super.dispose();
   }
 
-  /// Which transport companies serve the chosen university. Information only:
-  /// the company and line are chosen later, when subscribing.
-  Widget _companiesPanel(String universityId) {
-    final companies = ref.watch(universityCompaniesProvider(universityId));
-    final names = companies.valueOrNull;
-    // Quiet while loading or offline: this never blocks signing up.
-    if (names == null) return const SizedBox.shrink();
-    return Container(
-      key: const Key('university-companies'),
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-          color: names.isEmpty ? const Color(0xFFFFF9EC) : const Color(0xFFEFF7FA),
-          borderRadius: BorderRadius.circular(14)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(LucideIcons.busFront, size: 17, color: names.isEmpty ? const Color(0xFFB97812) : _teal),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Text(
-                names.isEmpty ? 'لا توجد شركة نقل تخدم جامعتك حتى الآن' : 'شركات النقل التي تخدم جامعتك',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: names.isEmpty ? const Color(0xFF8A5A0B) : _ink)),
-          ),
-        ]),
-        if (names.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text('يمكنك إنشاء الحساب الآن والاشتراك عند توفر خط لجامعتك.',
-                style: TextStyle(fontSize: 12, color: _muted)),
-          )
-        else ...[
-          for (final company in names)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Row(children: [
-                Expanded(
-                    child: Text(company.name,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _ink))),
-                Text(company.lines == 1 ? 'خط واحد' : '${company.lines} خطوط',
-                    style: const TextStyle(fontSize: 12, color: _muted)),
-              ]),
-            ),
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
-            child: Text('تختار الشركة والخط عند الاشتراك بعد إنشاء الحساب.',
-                style: TextStyle(fontSize: 12, color: _muted)),
-          ),
-        ],
-      ]),
-    );
-  }
-
   static const _teal = Color(0xFF1F6F8B);
   static const _ink = Color(0xFF17384A);
   static const _muted = Color(0xFF6B8494);
@@ -383,7 +328,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           error: (error, _) => _retryMessage(
                               'تعذر تحميل الجامعات', () => ref.invalidate(activeUniversitiesProvider)),
                         ),
-                        if (_universityId != null) _companiesPanel(_universityId!),
                       ]),
                     ),
                     const SizedBox(height: 14),

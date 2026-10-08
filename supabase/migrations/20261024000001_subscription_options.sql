@@ -7,7 +7,6 @@
 --     the dashboard preview and the insert check all read it.
 --   * get_subscription_catalog(): lines for the signed-in student, described by
 --     their own university, stations and the trips that stop at each station
---   * companies_for_university(): company names for the sign-up screen
 --   * subscription_receipts: proof of payment, written once and never changed
 -- The released app keeps working: type 'yearly', lines.price_termly/price_yearly,
 -- get_student_catalog() and get_purchasable_periods() (which still says 'annual')
@@ -613,25 +612,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   FROM public.companies c
   WHERE EXISTS (SELECT 1 FROM my_lines l WHERE l.company_id = c.id)
 $$;
-
--- Sign-up screen, before an account exists: company names only.
-CREATE OR REPLACE FUNCTION public.companies_for_university(p_university_id uuid) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT COALESCE(jsonb_agg(jsonb_build_object('name', x.name, 'lines', x.n) ORDER BY x.name), '[]'::jsonb)
-  FROM (
-    SELECT c.name, count(*) AS n
-    FROM public.companies c JOIN public.lines l ON l.company_id = c.id AND l.is_active
-    WHERE c.is_active AND c.status = 'active' AND p_university_id IS NOT NULL
-      AND EXISTS (SELECT 1 FROM public.line_trips t
-                  WHERE t.line_id = l.id AND t.direction = 'departure' AND t.is_active
-                    AND (t.university_id IS NULL OR t.university_id = p_university_id))
-      AND (NOT EXISTS (SELECT 1 FROM public.line_universities lu WHERE lu.line_id = l.id)
-           OR EXISTS (SELECT 1 FROM public.line_universities lu
-                      WHERE lu.line_id = l.id AND lu.university_id = p_university_id))
-    GROUP BY c.id, c.name) x
-$$;
-REVOKE ALL ON FUNCTION public.companies_for_university(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.companies_for_university(uuid) TO anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 8. Proof of payment that never changes

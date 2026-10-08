@@ -15,11 +15,6 @@ final activeUniversitiesProvider =
     FutureProvider<List<Map<String, String>>>((ref) {
   return ref.watch(authRepositoryProvider).getActiveUniversities();
 });
-/// Companies serving a university (sign-up screen, information only).
-final universityCompaniesProvider = FutureProvider.autoDispose
-    .family<List<({String name, int lines})>, String>((ref, universityId) {
-  return ref.watch(authRepositoryProvider).getCompaniesForUniversity(universityId);
-});
 final activeCollegesProvider =
     FutureProvider.family<List<String>, String>((ref, universityId) {
   return ref.watch(authRepositoryProvider).getActiveColleges(universityId);

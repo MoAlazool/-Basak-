@@ -1,5 +1,5 @@
--- Subscription options: the sale rule, prices per line, the student catalog,
--- company names for sign-up and the receipt that never changes. Everything is
+-- Subscription options: the sale rule, prices per line, the student catalog
+-- and the receipt that never changes. Everything is
 -- built in ONE transaction that is rolled back. Run against a local stack only:
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/local/tenancy/subscription_options.sql
 \set QUIET on
@@ -398,26 +398,10 @@ BEGIN
     AND jsonb_array_length(public.admin_subscription_report('{"period": "annual"}')->'rows') = 2);
 END $$;
 
--- ------------------------------------------- company names before an account
 SET LOCAL ROLE anon;
 SELECT set_config('request.jwt.claims', '{"role": "anon"}', true);
 DO $$
-DECLARE j jsonb;
 BEGIN
-  -- Lines of other local demo companies that serve every university are left out.
-  SELECT jsonb_agg(x) INTO j FROM jsonb_array_elements(public.companies_for_university(pg_temp.id('u1'))) x
-  WHERE x->>'name' LIKE 'Opt company%';
-  PERFORM pg_temp.ok('without an account: the companies serving a university, by name',
-    (SELECT string_agg(x->>'name', ',' ORDER BY x->>'name') FROM jsonb_array_elements(j) x) = 'Opt company x,Opt company y', j::text);
-  PERFORM pg_temp.ok('nothing but a name and a line count is given away',
-    (SELECT bool_and((SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(x) k) = ARRAY['lines', 'name']) FROM jsonb_array_elements(j) x));
-  PERFORM pg_temp.ok('a university only one company serves lists only that company',
-    (SELECT jsonb_agg(x) FROM jsonb_array_elements(public.companies_for_university(pg_temp.id('u2'))) x
-     WHERE x->>'name' LIKE 'Opt company%') = '[{"name": "Opt company x", "lines": 1}]'::jsonb);
-  PERFORM pg_temp.ok('a university nobody serves gets an empty list',
-    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.companies_for_university(pg_temp.id('u3'))) x
-                WHERE x->>'name' LIKE 'Opt company%')
-    AND public.companies_for_university(NULL) = '[]'::jsonb);
   PERFORM pg_temp.denied('without an account the sale options cannot be read',
     format('SELECT * FROM public.line_sale_options(%L)', pg_temp.id('line')));
   PERFORM pg_temp.denied('without an account the catalog cannot be read', 'SELECT public.get_subscription_catalog()');

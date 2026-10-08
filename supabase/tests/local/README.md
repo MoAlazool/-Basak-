@@ -70,8 +70,7 @@ runtime mounts `supabase/functions` from it.
   combination of the company's sale switches, the line's switches and prices, the
   advance switch and the calendar; that the catalog, the older picker and the
   insert check agree; "both" (first + second only) and the older "annual"/"yearly"
-  spelling; trip times per station and university; company names before an
-  account exists; and the receipt that cannot be edited, deleted or altered by
+  spelling; trip times per station and university; and the receipt that cannot be edited, deleted or altered by
   later renames.
   `psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/local/tenancy/subscription_options.sql`
 - `tenancy/http_e2e.mjs`: the same model through the real API: creating a company
