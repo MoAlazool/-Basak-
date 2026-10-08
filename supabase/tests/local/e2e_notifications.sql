@@ -209,13 +209,14 @@ END $$;
 -- =============================================================================
 RESET ROLE;
 DO $$ BEGIN
+  -- (The platform's dashboard hears of every notification: 20261101000001.)
   PERFORM nt.ok('R1 a company notification is announced to the company and every line',
     (SELECT string_agg(DISTINCT m.topic, ',' ORDER BY m.topic) FROM realtime.messages m
-     WHERE m.payload->>'id' = nt.sent_id('company')::text)
+     WHERE m.payload->>'id' = nt.sent_id('company')::text AND m.topic <> 'platform')
       = format('company:%s,line:%s,line:%s', nt.id('co_a'), nt.id('L1'), nt.id('L2')));
   PERFORM nt.ok('R2 a trip notification only to the company and its line',
     (SELECT string_agg(DISTINCT m.topic, ',' ORDER BY m.topic) FROM realtime.messages m
-     WHERE m.payload->>'id' = nt.sent_id('trip')::text)
+     WHERE m.payload->>'id' = nt.sent_id('trip')::text AND m.topic <> 'platform')
       = format('company:%s,line:%s', nt.id('co_a'), nt.id('L1')));
 END $$;
 

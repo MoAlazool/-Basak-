@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the google-services plugin would generate from google-services.json
+     (client identifiers of the Firebase project, not secrets). With these the
+     Firebase service starts by itself, so a notification is shown even when the
+     app is not running. Keep in step with firebase.defines.json. -->
+<resources>
+    <string name="google_app_id" translatable="false">1:1011211335071:android:3c774ba1b426bf1e1a79aa</string>
+    <string name="gcm_defaultSenderId" translatable="false">1011211335071</string>
+    <string name="google_api_key" translatable="false">AIzaSyBi5Noqe4TwRM4HMnECR9gLKzsiQBoXGAc</string>
+    <string name="project_id" translatable="false">basak-app-dbcef0</string>
+</resources>

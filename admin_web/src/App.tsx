@@ -9,6 +9,7 @@ import { OverviewPage } from './pages/OverviewPage';
 import { PlatformOverviewPage } from './pages/PlatformOverviewPage';
 import { AllCompaniesPage } from './pages/AllCompaniesPage';
 import { AllStudentsPage } from './pages/AllStudentsPage';
+import { PlatformNotificationsPage } from './pages/PlatformNotificationsPage';
 import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 import { LinesPage } from './pages/LinesPage';
@@ -148,6 +149,7 @@ const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       <Route index element={<PlatformOverviewPage />} />
       <Route path="companies" element={<AllCompaniesPage />} />
       <Route path="students" element={<AllStudentsPage />} />
+      <Route path="notifications" element={<PlatformNotificationsPage />} />
       <Route path="admins" element={<CompanyAdminsPage />} />
       <Route path="universities" element={<UniversitiesPage />} />
       <Route path="defaults" element={<PlatformDefaultsPage />} />

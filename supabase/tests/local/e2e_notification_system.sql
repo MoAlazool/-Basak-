@@ -503,8 +503,74 @@ BEGIN
 END $$;
 
 -- =============================================================================
+-- The platform (20261101000001)
+-- =============================================================================
+SET LOCAL ROLE authenticated;
+SELECT nt.login('AA');
+DO $$
+BEGIN
+  PERFORM nt.ok('X1 a company admin has no platform page',
+    nt.err('SELECT public.platform_preview_notification()') LIKE '%المنصة فقط%'
+    AND nt.err($q$SELECT public.platform_compose_notification('x', 'y')$q$) LIKE '%المنصة فقط%'
+    AND nt.err('SELECT public.get_platform_notifications_page()') LIKE '%المنصة فقط%');
+END $$;
+SELECT nt.login('s1');
+DO $$
+BEGIN
+  PERFORM nt.ok('X2 nor a student',
+    nt.err('SELECT public.platform_preview_notification()') LIKE '%المنصة فقط%'
+    AND nt.err($q$SELECT public.platform_compose_notification('x', 'y')$q$) LIKE '%المنصة فقط%'
+    AND nt.err('SELECT public.get_platform_notifications_page()') LIKE '%المنصة فقط%');
+END $$;
+SELECT nt.login('AS');
+DO $$
+DECLARE r jsonb; r2 jsonb; p jsonb;
+BEGIN
+  r := public.platform_preview_notification(ARRAY[nt.id('co_a'), nt.id('co_b')]);
+  PERFORM nt.ok('X3 the platform previews across companies', (r->>'companies')::int = 2 AND (r->>'students')::int = 6
+    AND (r->>'supervisors')::int = 3, r::text);
+  r := public.platform_compose_notification('من المنصة', 'تحديث مهم.', ARRAY[nt.id('co_a'), nt.id('co_b')], p_idempotency_key := 'plat-1');
+  r2 := public.platform_compose_notification('من المنصة', 'تحديث مهم.', ARRAY[nt.id('co_a'), nt.id('co_b')], p_idempotency_key := 'plat-1');
+  PERFORM nt.ok('X4 one notification per company; the same key again adds none',
+    (r->>'companies')::int = 2 AND (r->>'students')::int = 6 AND NOT (r->>'duplicate')::boolean AND (r2->>'duplicate')::boolean, r::text || r2::text);
+  r := public.platform_compose_notification('لشركة واحدة', 'نص.', ARRAY[nt.id('co_b')]);
+  PERFORM nt.ok('X5 to the companies picked only', (r->>'companies')::int = 1 AND (r->>'students')::int = 1, r::text);
+  p := public.get_platform_notifications_page(p_company_id := nt.id('co_b'));
+  PERFORM nt.ok('X6 the platform sees every company''s history, by company, with the state of push',
+    jsonb_array_length(p->'items') = 2 AND (SELECT bool_and(x->>'company_name' = 'E2E Notify B' AND x->>'type' = 'announcement.platform'
+                                                             AND x->>'sender_name' = 'منصة باصك' AND (x->>'students')::int = 1)
+                                            FROM jsonb_array_elements(p->'items') x)
+    AND p->'push' ?& ARRAY['configured', 'devices', 'ios', 'android', 'queued', 'accepted_24h', 'failed_24h']
+    AND jsonb_array_length(public.get_platform_notifications_page(p_limit := 100)->'items') > 10, p::text);
+END $$;
+SELECT nt.login('AB');
+DO $$
+DECLARE p jsonb;
+BEGIN
+  p := public.get_company_notifications_page(nt.id('co_b'));
+  PERFORM nt.ok('X7 each company''s admin sees its own copy and nothing of the others',
+    jsonb_array_length(p->'items') = 2 AND nt.err(format('SELECT public.get_company_notifications_page(%L)', nt.id('co_a'))) LIKE '%لا يمكنك%', p::text);
+END $$;
+SELECT nt.login('s6');
+DO $$
+BEGIN
+  PERFORM nt.ok('X8 the other company''s student receives the platform''s two, unread',
+    jsonb_array_length(public.get_my_notifications_page()->'items') = 2 AND public.get_my_unread_count() = 2);
+END $$;
+RESET ROLE;
+DO $$
+BEGIN
+  PERFORM nt.ok('X9 the platform dashboard hears of every notification, and each is filed under one company',
+    (SELECT count(*) > 0 FROM realtime.messages m WHERE m.topic = 'platform' AND m.payload->>'table' = 'notifications')
+    AND (SELECT count(*) = 3 AND count(DISTINCT company_id) = 2 FROM public.notifications WHERE type = 'announcement.platform')
+    AND (SELECT count(*) = 3 FROM public.notification_audit WHERE actor_role = 'platform' AND actor_id = nt.id('AS')));
+END $$;
+
+-- =============================================================================
 -- Automatic: subscriptions
 -- =============================================================================
+-- The company's admin changes the subscriptions (the guard reads the signed-in user).
+SELECT nt.login('AA');
 DELETE FROM realtime.messages;
 UPDATE public.subscriptions SET status = 'pending_review' WHERE student_id = nt.id('s3');
 UPDATE public.subscriptions SET status = 'active' WHERE student_id = nt.id('s3');
@@ -521,9 +587,9 @@ BEGIN
     AND n.data = jsonb_build_object('route', 'subscription', 'subscription_id',
           (SELECT s.id FROM public.subscriptions s WHERE s.student_id = nt.id('s3')))
     AND (SELECT count(*) = 1 FROM public.notification_recipients r WHERE r.notification_id = n.id), n.data::text);
-  PERFORM nt.ok('S3 announced to that student and the company''s staff, to no line',
+  PERFORM nt.ok('S3 announced to that student, the company''s staff and the platform, to no line',
     (SELECT string_agg(DISTINCT m.topic, ',' ORDER BY m.topic) FROM realtime.messages m
-     WHERE (m.payload->>'id')::uuid = n.id) = 'company:' || nt.id('co_a') || ',user:' || nt.id('s3'));
+     WHERE (m.payload->>'id')::uuid = n.id) = 'company:' || nt.id('co_a') || ',platform,user:' || nt.id('s3'));
   PERFORM nt.ok('S4 ended: told once', nt.system_for('s7') = 'subscription.expired', nt.system_for('s7'));
 
   UPDATE public.subscriptions SET end_date = public.cairo_today() + 3 WHERE student_id = nt.id('s2');

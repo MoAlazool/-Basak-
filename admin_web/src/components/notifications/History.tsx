@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Bell, Bus, CalendarClock, Cog, Eye, PencilLine, RefreshCw, Search, Trash2, Users, XCircle } from 'lucide-react';
+import { Bell, Building2, Bus, CalendarClock, Cog, Eye, PencilLine, RefreshCw, Search, Trash2, Users, XCircle } from 'lucide-react';
 import { Refreshing, SkeletonRows } from '../Skeleton';
 import {
-  CAIRO_LABEL, STATUS_FILTERS, formatCairo, percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel,
+  CAIRO_LABEL, PLATFORM_ANNOUNCEMENT, STATUS_FILTERS, formatCairo, percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel,
   type HistoryRow, type StatusFilter,
 } from '../../lib/notifications';
-import { useNotificationActions, type useNotificationHistory } from '../../lib/notificationsData';
+import type { HistoryActions, HistoryState } from '../../lib/notificationsData';
 import { EditScheduledDialog } from './EditScheduledDialog';
 import { NotificationDetails } from './NotificationDetails';
 import { ConfirmDialog } from './parts';
@@ -21,7 +21,8 @@ const chipClass = 'rounded-full px-2 py-0.5';
 interface RowProps {
   row: HistoryRow;
   onDetails: () => void;
-  onEdit: () => void;
+  /** Absent where a scheduled notification cannot be edited. */
+  onEdit?: () => void;
   onCancel: () => void;
   onDelete: () => void;
 }
@@ -46,7 +47,10 @@ const Row: React.FC<RowProps> = ({ row, onDetails, onEdit, onCancel, onDelete })
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold">
           {row.status !== 'sent' && <span className={`${chipClass} ${statusClass(row.status)}`}>{statusLabel(row.status)}</span>}
           <span className={`${chipClass} bg-indigo-50 text-indigo-700`}>{typeLabel(row.type, row.category)}</span>
-          <span className={`${chipClass} ${style.chip}`}>{senderLabel(row.sender_role, row.sender_name)}</span>
+          {row.company_name && (
+            <span className={`${chipClass} flex items-center gap-1 bg-sky-50 text-sky-700`}><Building2 className="h-3 w-3" />{row.company_name}</span>
+          )}
+          <span className={`${chipClass} ${style.chip}`}>{senderLabel(row.sender_role, row.sender_name, row.type)}</span>
           {row.audience && (
             <span className={`${chipClass} flex items-center gap-1 bg-slate-100 text-slate-600`}><Users className="h-3 w-3" />{row.audience}</span>
           )}
@@ -80,8 +84,10 @@ const Row: React.FC<RowProps> = ({ row, onDetails, onEdit, onCancel, onDelete })
           className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-50 hover:text-blue-600"><Eye className="h-4 w-4" /></button>
         {manual && row.status === 'scheduled' && (
           <>
-            <button type="button" onClick={onEdit} title="تعديل" aria-label="تعديل"
-              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-50 hover:text-blue-600"><PencilLine className="h-4 w-4" /></button>
+            {onEdit && (
+              <button type="button" onClick={onEdit} title="تعديل" aria-label="تعديل"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-50 hover:text-blue-600"><PencilLine className="h-4 w-4" /></button>
+            )}
             <button type="button" onClick={onCancel} title="إلغاء الإرسال" aria-label="إلغاء الإرسال"
               className="rounded-lg p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"><XCircle className="h-4 w-4" /></button>
           </>
@@ -96,10 +102,14 @@ const Row: React.FC<RowProps> = ({ row, onDetails, onEdit, onCancel, onDelete })
 };
 
 interface Props {
-  companyId: string;
+  /** The company whose scheduled notifications can be edited here; absent in the platform's history. */
+  companyId?: string;
   filter: StatusFilter;
   onFilter: (filter: StatusFilter) => void;
-  history: ReturnType<typeof useNotificationHistory>;
+  history: HistoryState;
+  actions: HistoryActions;
+  /** More filters, beside the status ones. */
+  filters?: React.ReactNode;
 }
 
 type Open = { kind: 'details' | 'edit' | 'cancel' | 'delete'; row: HistoryRow };
@@ -108,16 +118,15 @@ type Open = { kind: 'details' | 'edit' | 'cancel' | 'delete'; row: HistoryRow };
  * What was sent, what waits for its time, and what was cancelled or failed,
  * a page at a time. The numbers are the server's; a live change refreshes them.
  */
-export const History: React.FC<Props> = ({ companyId, filter, onFilter, history }) => {
+export const History: React.FC<Props> = ({ companyId, filter, onFilter, history, actions, filters }) => {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Open | null>(null);
   const [error, setError] = useState('');
-  const actions = useNotificationActions(companyId);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return history.rows;
-    return history.rows.filter((row) => [row.title, row.body, row.sender_name, row.audience]
+    return history.rows.filter((row) => [row.title, row.body, row.sender_name, row.audience, row.company_name]
       .some((field) => (field || '').toLowerCase().includes(q)));
   }, [history.rows, query]);
 
@@ -144,6 +153,7 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history 
               {item.label}
             </button>
           ))}
+          {filters}
           <Refreshing active={history.refreshing} />
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
@@ -185,7 +195,9 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history 
         <ul className="divide-y divide-slate-100">
           {shown.map((row) => (
             <Row key={row.id} row={row}
-              onDetails={() => setOpen({ kind: 'details', row })} onEdit={() => setOpen({ kind: 'edit', row })}
+              onDetails={() => setOpen({ kind: 'details', row })}
+              // A platform announcement is one of many, written for every company: it is not reworded for one.
+              onEdit={companyId && row.type !== PLATFORM_ANNOUNCEMENT ? () => setOpen({ kind: 'edit', row }) : undefined}
               onCancel={() => setOpen({ kind: 'cancel', row })} onDelete={() => setOpen({ kind: 'delete', row })} />
           ))}
         </ul>
@@ -203,12 +215,13 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history 
       {open?.kind === 'details' && openRow && (
         <NotificationDetails row={openRow} pushConfigured={history.pushConfigured} onClose={() => setOpen(null)} />
       )}
-      {open?.kind === 'edit' && <EditScheduledDialog companyId={companyId} row={open.row} onClose={() => setOpen(null)} />}
+      {open?.kind === 'edit' && companyId && <EditScheduledDialog companyId={companyId} row={open.row} onClose={() => setOpen(null)} />}
       {open?.kind === 'cancel' && (
         <ConfirmDialog danger title="إلغاء الإشعار المجدول" confirmLabel="إلغاء الإرسال"
           onConfirm={() => act(actions.cancel)} onClose={() => setOpen(null)}>
           <p>
             لن يُرسل الإشعار «<b>{open.row.title}</b>»{open.row.audience ? <> إلى {open.row.audience}</> : null}
+            {open.row.company_name ? <> في شركة «{open.row.company_name}»</> : null}
             {open.row.scheduled_at ? <> في موعده ({formatCairo(open.row.scheduled_at, true)} {CAIRO_LABEL})</> : null}. يبقى في السجل كإشعار ملغى.
           </p>
         </ConfirmDialog>
@@ -216,7 +229,10 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history 
       {open?.kind === 'delete' && (
         <ConfirmDialog danger title="حذف الإشعار" confirmLabel="حذف"
           onConfirm={() => act(actions.remove)} onClose={() => setOpen(null)}>
-          <p>حذف الإشعار «<b>{open.row.title}</b>»؟ سيختفي من عند كل الطلاب والمشرفين.</p>
+          <p>
+            حذف الإشعار «<b>{open.row.title}</b>»{open.row.company_name ? <> من شركة «{open.row.company_name}»</> : null}؟
+            {' '}سيختفي من عند كل الطلاب والمشرفين{open.row.company_name ? ' في هذه الشركة' : ''}.
+          </p>
         </ConfirmDialog>
       )}
     </div>

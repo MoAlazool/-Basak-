@@ -33,7 +33,8 @@ export const NotificationDetails: React.FC<{ row: HistoryRow; pushConfigured: bo
 
       <div className="mt-4">
         <Fact label="النوع">{typeLabel(row.type, row.category)}{row.priority === 'high' ? ' · أولوية عالية' : ''}</Fact>
-        <Fact label="المرسل">{senderLabel(row.sender_role, row.sender_name)}</Fact>
+        {row.company_name && <Fact label="الشركة">{row.company_name}</Fact>}
+        <Fact label="المرسل">{senderLabel(row.sender_role, row.sender_name, row.type)}</Fact>
         <Fact label="المستلمون">{row.audience || '—'}</Fact>
         <Fact label="أُنشئ">{formatCairo(row.created_at, true)}</Fact>
         {row.scheduled_at && <Fact label="موعد الإرسال المجدول">{formatCairo(row.scheduled_at, true)}</Fact>}
