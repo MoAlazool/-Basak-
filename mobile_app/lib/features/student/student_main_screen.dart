@@ -15,13 +15,28 @@ class StudentMainScreen extends StatefulWidget {
 
 class _StudentMainScreenState extends State<StudentMainScreen> {
   int _currentIndex = 0;
+  bool _navCollapsed = false;
+
+  // Every tab change shows the full bar again.
+  void _selectTab(int index) => setState(() {
+        _currentIndex = index;
+        _navCollapsed = false;
+      });
+
+  bool _onScroll(ScrollNotification notification) {
+    final collapse = FloatingGlassNavBar.collapseOnScroll(notification);
+    if (collapse != null && collapse != _navCollapsed) {
+      setState(() => _navCollapsed = collapse);
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
     final screens = [
       StudentHomeScreen(
-        onNavigateToSubscription: () => setState(() => _currentIndex = 1),
-        onNavigateToQr: () => setState(() => _currentIndex = 2),
+        onNavigateToSubscription: () => _selectTab(1),
+        onNavigateToQr: () => _selectTab(2),
       ),
       const SubscriptionScreen(),
       const StudentQrScreen(),
@@ -31,13 +46,18 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
     return Scaffold(
       extendBody: true,
       // Every tab stays alive: switching tabs never reloads or shows a spinner.
-      body: OfflineBanner(
-        child: IndexedStack(index: _currentIndex, children: screens),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: OfflineBanner(
+          child: IndexedStack(index: _currentIndex, children: screens),
+        ),
       ),
       bottomNavigationBar: FloatingGlassNavBar(
         currentIndex: _currentIndex,
-        onTabSelected: (index) => setState(() => _currentIndex = index),
+        onTabSelected: _selectTab,
         items: FloatingGlassNavBar.studentNavItems,
+        collapsed: _navCollapsed,
+        onExpand: () => setState(() => _navCollapsed = false),
       ),
     );
   }

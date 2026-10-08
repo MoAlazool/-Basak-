@@ -16,13 +16,28 @@ class SupervisorMainScreen extends StatefulWidget {
 
 class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
   int _currentIndex = 0;
+  bool _navCollapsed = false;
+
+  // Every tab change shows the full bar again.
+  void _selectTab(int index) => setState(() {
+        _currentIndex = index;
+        _navCollapsed = false;
+      });
+
+  bool _onScroll(ScrollNotification notification) {
+    final collapse = FloatingGlassNavBar.collapseOnScroll(notification);
+    if (collapse != null && collapse != _navCollapsed) {
+      setState(() => _navCollapsed = collapse);
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
     // Per-trip rider counts open from the Home tab. Receipt review is an
     // admin-only task (dashboard), never part of the supervisor app.
     final screens = [
-      SupervisorHomeScreen(onOpenScanner: () => setState(() => _currentIndex = 2)),
+      SupervisorHomeScreen(onOpenScanner: () => _selectTab(2)),
       // Going / Return trips: route, students per station, check-in state.
       const SupervisorTripsScreen(),
       const SupervisorQrScannerScreen(),
@@ -32,31 +47,36 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
 
     return Scaffold(
       extendBody: true,
-      body: OfflineBanner(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) => FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.025, 0),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: OfflineBanner(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.025, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
             ),
-          ),
-          child: KeyedSubtree(
-            key: ValueKey(_currentIndex),
-            child: screens[_currentIndex],
+            child: KeyedSubtree(
+              key: ValueKey(_currentIndex),
+              child: screens[_currentIndex],
+            ),
           ),
         ),
       ),
       bottomNavigationBar: FloatingGlassNavBar(
         currentIndex: _currentIndex,
-        onTabSelected: (index) => setState(() => _currentIndex = index),
+        onTabSelected: _selectTab,
         items: FloatingGlassNavBar.supervisorNavItems,
+        collapsed: _navCollapsed,
+        onExpand: () => setState(() => _navCollapsed = false),
       ),
     );
   }
