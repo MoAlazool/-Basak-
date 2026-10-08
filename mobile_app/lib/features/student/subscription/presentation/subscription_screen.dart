@@ -221,8 +221,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final subsAsync = ref.watch(allSubscriptionsProvider);
 
     return GlassScaffold(
+      canvas: const Color(0xFFEAF5FA),
       body: ColoredBox(
-        color: const Color(0xFFF5F8FD),
+        color: const Color(0xFFEAF5FA),
         child: RefreshIndicator(
           color: AppColors.teal,
           onRefresh: _handleRefresh,
@@ -391,7 +392,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
               const SizedBox(height: 10),
             ],
-            _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
+            _summaryLine(LucideIcons.busFront, 'الخط', sub.lineLabel),
             const SizedBox(height: 10),
             _summaryLine(LucideIcons.mapPin, 'محطة الصعود', sub.stationName ?? '—'),
             if (sub.endDate != null && !sub.isDaily) ...[

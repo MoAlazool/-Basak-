@@ -350,6 +350,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final now = DateTime.now();
 
     return GlassScaffold(
+      canvas: _canvas,
       body: ColoredBox(
         color: _canvas,
         child: RefreshIndicator(
@@ -474,11 +475,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             ],
           ),
           const SizedBox(height: 9),
-          if (sub.destination != null) ...[
-            _whiteInfo(LucideIcons.graduationCap, sub.destination!),
-            const SizedBox(height: 5),
-          ],
-          _whiteInfo(LucideIcons.busFront, sub.lineName ?? 'خط الجامعة'),
+          _whiteInfo(LucideIcons.busFront, sub.lineLabel),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),

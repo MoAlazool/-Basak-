@@ -11,6 +11,7 @@ import '../../../../core/widgets/glass_scaffold.dart';
 import '../../wallet/data/wallet_pass_repository.dart';
 import '../../wallet/presentation/add_to_wallet_button.dart';
 import '../data/student_qr_repository.dart';
+import '../../subscription/models/subscription_model.dart';
 
 final studentQrRepoProvider = Provider((ref) => StudentQrRepository());
 final studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
@@ -29,6 +30,7 @@ class StudentQrScreen extends ConsumerWidget {
     final passAsync = ref.watch(studentQrProvider);
 
     return GlassScaffold(
+      canvas: const Color(0xFFEAF5FA),
       body: ColoredBox(
         color: const Color(0xFFEAF5FA),
         child: SafeArea(
@@ -71,7 +73,7 @@ class StudentQrScreen extends ConsumerWidget {
                 // A fixed page: nothing scrolls. The card is laid out at the
                 // screen's width and, on a short screen, scaled down to fit above
                 // the navigation bar, so the QR is always fully in view.
-                return LayoutBuilder(builder: (context, box) => Padding(
+                return LayoutBuilder(builder: (context, box) => SizedBox.expand(child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
@@ -214,7 +216,9 @@ class StudentQrScreen extends ConsumerWidget {
                         const SizedBox(height: 12),
                         _detailRow(
                             'الخط',
-                            pass.lineName ?? 'لا يوجد اشتراك',
+                            pass.lineName == null
+                                ? 'لا يوجد اشتراك'
+                                : SubscriptionModel.routeLabel(pass.lineName, pass.university),
                             LucideIcons.busFront),
                         const SizedBox(height: 9),
                         _detailRow(
@@ -263,7 +267,7 @@ class StudentQrScreen extends ConsumerWidget {
                 ),
                     ),
                   ),
-                ));
+                )));
             },
           ),
         ),

@@ -539,6 +539,38 @@ BEGIN
 END $$;
 RESET ROLE;
 
+-- ------------------------------------------------------ the student's own profile
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE me uuid := pg_temp.id('st1');
+BEGIN
+  PERFORM pg_temp.act('st1');
+  PERFORM pg_temp.ok('a student adds their email, college and birth date',
+    public.update_my_profile('  Student.One@Example.com ', ' كلية الهندسة ', DATE '2005-03-14')
+      = '{"email": "student.one@example.com", "college": "كلية الهندسة", "birth_date": "2005-03-14"}'::jsonb);
+  PERFORM pg_temp.ok('all three are optional: empty values clear them',
+    public.update_my_profile('', NULL, NULL) = '{"email": null, "college": "غير محدد", "birth_date": null}'::jsonb);
+  PERFORM pg_temp.ok('a malformed email is refused',
+    pg_temp.err($q$SELECT public.update_my_profile('not-an-email', NULL, NULL)$q$) LIKE '%بريداً%');
+  PERFORM pg_temp.ok('an impossible birth date is refused',
+    pg_temp.err(format('SELECT public.update_my_profile(NULL, NULL, %L)', public.cairo_today())) LIKE '%الميلاد%');
+  PERFORM pg_temp.denied('name, phone and university still cannot be edited by the student',
+    format('UPDATE public.students SET full_name = ''Someone Else Entirely'', university = ''x'' WHERE id = %L', me));
+  PERFORM pg_temp.denied('nor can the new fields be written around the function',
+    format('UPDATE public.students SET email = ''a@b.co'' WHERE id = %L', me));
+  PERFORM pg_temp.ok('a photo that was not uploaded cannot be set',
+    pg_temp.err(format('SELECT public.set_my_profile_photo(%L)', me || '/avatar-1.jpg')) LIKE '%ارفع الصورة%');
+  PERFORM pg_temp.ok('nor a photo in someone else''s folder',
+    pg_temp.err(format('SELECT public.set_my_profile_photo(%L)', pg_temp.id('st2') || '/avatar-1.jpg')) LIKE '%ارفع الصورة%');
+  PERFORM pg_temp.act('admin_x');
+  PERFORM pg_temp.ok('the profile functions are for students',
+    pg_temp.err($q$SELECT public.update_my_profile('a@b.co', NULL, NULL)$q$) LIKE '%للطلاب%');
+  PERFORM pg_temp.act('st2');
+  PERFORM pg_temp.ok('one student''s changes never touch another''s',
+    (SELECT email IS NULL AND birth_date IS NULL FROM public.students WHERE id = auth.uid()));
+END $$;
+RESET ROLE;
+
 -- The student leaves: the company's record stays as issued.
 DO $$
 DECLARE v_before jsonb;

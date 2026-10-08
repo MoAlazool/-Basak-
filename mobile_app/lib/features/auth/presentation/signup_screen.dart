@@ -253,7 +253,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         Text(
                           _photoMissing
                               ? 'الصورة مطلوبة: تظهر على بطاقتك ليتعرّف عليك المشرف.'
-                              : 'صورة واضحة لوجهك. تظهر على بطاقتك ولا يمكن تغييرها بعد إنشاء الحساب.',
+                              : 'صورة واضحة لوجهك. تظهر على بطاقتك، ويمكنك تغييرها لاحقاً من حسابي.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               fontSize: 12.5, height: 1.5, color: _photoMissing ? _danger : _muted),

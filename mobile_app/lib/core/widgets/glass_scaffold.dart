@@ -10,6 +10,11 @@ class GlassScaffold extends StatelessWidget {
   final Widget? floatingActionButton;
   final bool extendBody;
 
+  /// The page's own background colour. When given, it fills the whole screen,
+  /// including behind the status bar, so the top of the page is one colour
+  /// with the rest instead of a separate strip.
+  final Color? canvas;
+
   const GlassScaffold({
     super.key,
     this.appBar,
@@ -17,6 +22,7 @@ class GlassScaffold extends StatelessWidget {
     this.bottomNavigationBar,
     this.floatingActionButton,
     this.extendBody = true, // Allows bottom navigation bar to float with glass blur over content
+    this.canvas,
   });
 
   @override
@@ -24,13 +30,17 @@ class GlassScaffold extends StatelessWidget {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: canvas ?? AppColors.background,
       extendBody: extendBody,
       extendBodyBehindAppBar: true,
       appBar: appBar,
       body: Stack(
+        // The page fills the screen even when its content is shorter.
+        fit: StackFit.expand,
         children: [
-          // Ambient blurred decorative shapes in background
+          // Ambient blurred decorative shapes in background (pages with their
+          // own canvas colour cover them, so they are not drawn there).
+          if (canvas == null) ...[
           Positioned(
             top: -60,
             left: -40,
@@ -82,6 +92,8 @@ class GlassScaffold extends StatelessWidget {
               ),
             ),
           ),
+
+          ],
 
           // Main Screen Content
           SafeArea(

@@ -147,6 +147,10 @@ void main() {
     test('the boarding station is the headline; the university and the line are rows under it', () {
       expect(subscription('active').boardingTitle, 'البجلات');
       expect(subscription('active').destination, 'جامعة الدلتا');
+      // The line reads with the student's own university, whatever the admin typed.
+      expect(subscription('active').lineLabel, 'منية النصر ← الدلتا');
+      expect(SubscriptionModel.routeLabel('الزرقا', 'جامعة المنصورة الجديدة'), 'الزرقا ← المنصورة الجديدة');
+      expect(SubscriptionModel.routeLabel('الزرقا', null), 'الزرقا');
       expect(subscription('active').periodName, 'الفصل الأول');
       expect(subscription('active', type: 'yearly', code: 'both').periodName, 'الفصلان معاً');
       // The older spelling still reads correctly.
@@ -311,7 +315,7 @@ void main() {
       expect(find.text('بانتظار الدفع'), findsOneWidget);
       expect(find.text('الفصل الأول'), findsOneWidget);
       expect(find.text('البجلات'), findsOneWidget);
-      expect(find.text('منية النصر'), findsOneWidget);
+      expect(find.text('منية النصر ← الدلتا'), findsOneWidget);
       expect(find.text('المبلغ المطلوب'), findsOneWidget);
       expect(find.text('8,000 ج.م'), findsOneWidget);
       // It needs the student, so it is already open.
