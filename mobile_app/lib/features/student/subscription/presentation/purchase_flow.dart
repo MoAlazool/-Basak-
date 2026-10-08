@@ -197,10 +197,10 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
             const SizedBox(height: 18),
             Text('اشتراكي الجامعي',
                 style: AppTextStyles.displayMedium.copyWith(color: _ink)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(_subtitles[step.index],
                 style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xFF718695))),
-            const SizedBox(height: 18),
+            const SizedBox(height: 22),
             if (catalog.companies.isEmpty)
               _message(
                   'لا توجد حالياً شركات أو خطوط متاحة لجامعتك'
@@ -322,15 +322,17 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
 
   /// "٢. اختر الخط", with what was chosen in the step before as a reminder.
   Widget _stepTitle(DraftStep step, String title, {String? previous}) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.only(bottom: 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${_numerals[step.index]}. $title',
               style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-          if (previous != null)
+          if (previous != null) ...[
+            const SizedBox(height: 3),
             Text(previous,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+          ],
         ]),
       );
 
@@ -365,6 +367,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(company.name, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
+                      const SizedBox(height: 3),
                       Text(
                           company.lines.length == 1
                               ? 'خط واحد متاح لجامعتك'
@@ -422,7 +425,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
                         .copyWith(color: _brand, fontWeight: FontWeight.w800)),
               ],
             ]),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(children: [
               const Icon(LucideIcons.graduationCap, size: 15, color: Color(0xFF3F51B5)),
               const SizedBox(width: 6),
@@ -432,7 +435,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
                         color: const Color(0xFF3F51B5), fontWeight: FontWeight.w700)),
               ),
             ]),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
                 line.stations.length == 1
                     ? 'محطة صعود واحدة: ${line.stations.first.name}'
@@ -440,7 +443,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Wrap(spacing: 6, runSpacing: 6, children: [
               if (line.firstDeparture != null)
                 BasakPill('أول ذهاب ${BasakUi.time12(line.firstDeparture)}',
@@ -532,7 +535,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
                     Text(station.name,
                         style: AppTextStyles.bodyLarge
                             .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(station.departures.map((d) => BasakUi.time12(d.time)).join(' · '),
                         style: AppTextStyles.labelSmall.copyWith(
                             color: const Color(0xFF15803D), fontWeight: FontWeight.w600)),
@@ -620,7 +623,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           Text(option.title,
               textAlign: TextAlign.center,
               style: AppTextStyles.labelSmall.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(_money(option.price),
@@ -703,7 +706,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   }
 
   Widget _reviewRow(IconData icon, String label, String value, DraftStep? edit) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
+        padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
           Icon(icon, size: 17, color: _brand),
           const SizedBox(width: 8),

@@ -282,7 +282,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 110),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('اشتراكاتي', style: AppTextStyles.displayMedium),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         if (open.isEmpty)
           _subscribeAgainCard()
         else ...[
@@ -300,7 +300,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8, right: 2),
+        padding: const EdgeInsets.only(bottom: 10, right: 2),
         child: Text(text,
             style: AppTextStyles.titleMedium.copyWith(color: AppColors.textSecondary)),
       );
@@ -370,7 +370,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           boxShadow: const [BoxShadow(color: Color(0x0B17384A), blurRadius: 15, offset: Offset(0, 5))]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 15, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Text(sub.periodName, style: AppTextStyles.titleLarge)),
@@ -386,16 +386,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 ]),
               ),
             ]),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             _summaryLine(LucideIcons.mapPin, 'محطة الصعود', sub.stationName ?? '—'),
             if (sub.endDate != null && !sub.isDaily) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
               _summaryLine(LucideIcons.calendarCheck2, sub.isExpired ? 'انتهى في' : 'صالح حتى',
                   ReceiptCard.day(sub.endDate)),
             ],
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             _summaryLine(
                 LucideIcons.wallet,
                 sub.isDaily
@@ -645,10 +645,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   Widget _summaryLine(IconData icon, String label, String value, {Key? labelKey, Key? valueKey}) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, size: 16, color: const Color(0xFF00658D))),
+      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Icon(icon, size: 16, color: const Color(0xFF00658D)),
         const SizedBox(width: 8),
         SizedBox(
             width: 104,
@@ -763,7 +761,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// "label: value" with the value right beside its label (a number or an
   /// address reads left to right but still sits next to the label).
   Widget _payLine(String label, String value, {bool copy = true}) => Padding(
-        padding: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.only(top: 8),
         child: Row(children: [
           Text('$label: ', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
           Flexible(
