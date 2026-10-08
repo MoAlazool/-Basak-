@@ -49,7 +49,7 @@ class StudentPassDetails {
         'cached_at': DateTime.now().toIso8601String(),
       };
 
-  factory StudentPassDetails.fromCache(Map<String, dynamic> json) =>
+  factory StudentPassDetails.fromCache(Map<String, dynamic> json, {bool isOfflineCache = true}) =>
       StudentPassDetails(
         qrValue: json['qr_value'] as String?,
         fullName: json['full_name'] as String?,
@@ -62,7 +62,7 @@ class StudentPassDetails {
         subscriptionType: json['subscription_type'] as String?,
         subscriptionStatus: json['subscription_status'] as String?,
         paymentDate: json['payment_date'] as String?,
-        isOfflineCache: true,
+        isOfflineCache: isOfflineCache,
         cachedAt: json['cached_at'] as String?,
       );
 }
@@ -70,11 +70,41 @@ class StudentPassDetails {
 class StudentQrRepository {
   final SupabaseClient _client = SupabaseService.client;
 
+  /// The student's card and QR code. It never waits for the network when it
+  /// has been shown before: the saved pass appears at once and is checked with
+  /// the server behind it (see [OfflineCache.readThrough]).
   Future<StudentPassDetails?> getStudentPassDetails() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
     try {
+      final json = await OfflineCache.readThrough('student_pass', () async {
+        final details = await _fetchPass(user);
+        if (details == null) return null;
+        final saved = details.toCacheJson();
+        // Kept under its own key too: the pass must survive anything else failing.
+        await OfflineCache.saveStudentPass(saved);
+        _refreshWalletCard();
+        return saved;
+      });
+      if (json == null) return null;
+      return StudentPassDetails.fromCache(Map<String, dynamic>.from(json as Map),
+          isOfflineCache: OfflineCache.offlineSince.value != null);
+    } catch (error) {
+      // Only an unreachable server falls back to the saved pass; a refused or
+      // deleted account must not keep showing a valid-looking QR.
+      if (!isNetworkFailure(error)) rethrow;
+      final cached = await OfflineCache.readStudentPass();
+      if (cached != null && (cached['qr_value'] as String?)?.isNotEmpty == true) {
+        final pass = StudentPassDetails.fromCache(cached);
+        OfflineCache.markOffline(DateTime.tryParse(pass.cachedAt ?? ''));
+        return pass;
+      }
+      rethrow;
+    }
+  }
+
+  Future<StudentPassDetails?> _fetchPass(User user) async {
       // Independent of the student row: runs alongside it instead of after it.
       // Wrapped in a plain Future so the request is sent exactly once (a
       // Postgrest builder re-sends on every listener).
@@ -131,22 +161,7 @@ class StudentQrRepository {
         subscriptionType: subscription?['type'] as String?,
         subscriptionStatus: subscription?['status'] as String?,
       );
-      await OfflineCache.saveStudentPass(details.toCacheJson());
-      OfflineCache.markOnline();
-      _refreshWalletCard();
       return details;
-    } catch (error) {
-      // Only an unreachable server falls back to the saved pass; a refused or
-      // deleted account must not keep showing a valid-looking QR.
-      if (!isNetworkFailure(error)) rethrow;
-      final cached = await OfflineCache.readStudentPass();
-      if (cached != null && (cached['qr_value'] as String?)?.isNotEmpty == true) {
-        final pass = StudentPassDetails.fromCache(cached);
-        OfflineCache.markOffline(DateTime.tryParse(pass.cachedAt ?? ''));
-        return pass;
-      }
-      rethrow;
-    }
   }
 
   /// A subscription can start or end by date alone, which nothing on the

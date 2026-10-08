@@ -36,27 +36,57 @@ class OfflineCache {
     return _storage.read(key: _roleKey);
   }
 
-  /// Runs [fetch] and saves its JSON result under [key] for the signed-in
-  /// user. When the server cannot be reached, returns the last saved result
-  /// instead; with nothing saved, the network error is rethrown.
+  /// Bumped when a read that was answered from the saved copy turns out to have
+  /// newer data on the server. Whoever shows that data reads it again (and gets
+  /// the fresh value from memory, without a second request).
+  static final ValueNotifier<int> refreshed = ValueNotifier(0);
+
+  /// How long a request may take before the saved copy is used instead. A phone
+  /// "connected" to a network with no internet would otherwise wait for ever.
+  static Duration requestTimeout = const Duration(seconds: 12);
+
+  /// Keys already answered once in this run of the app.
+  static final Set<String> _readOnce = {};
+
+  /// Values just fetched behind a saved copy, waiting to be shown.
+  static final Map<String, ({Object? value, DateTime at})> _fresh = {};
+  static const _freshFor = Duration(seconds: 10);
+
+  /// Cache first, for everything the app shows.
+  ///
+  /// The first time [key] is read after the app starts, the last saved result
+  /// is returned at once and the server is asked behind it: nothing waits for
+  /// the network, online or not. If the server has something newer, it is saved
+  /// and [refreshed] is bumped. Later reads (pull to refresh, a live change)
+  /// ask the server first and fall back to the saved result when it cannot be
+  /// reached. Only with nothing saved is a network error rethrown.
+  ///
+  /// Saved results belong to the signed-in user; a server that answers with a
+  /// refusal (signed out, removed, not allowed) is never papered over.
   static Future<dynamic> readThrough(
       String key, Future<dynamic> Function() fetch) async {
     final userId = _currentUserId();
     if (userId == null) return fetch();
     final storageKey = '$_dataPrefix$userId.$key';
+
+    final fresh = _fresh.remove(storageKey);
+    if (fresh != null && DateTime.now().difference(fresh.at) < _freshFor) {
+      return fresh.value;
+    }
+
+    if (_readOnce.add(storageKey)) {
+      final saved = _decode(await _safeRead(storageKey));
+      if (saved != null) {
+        unawaited(_revalidate(storageKey, fetch, saved));
+        return saved['v'];
+      }
+    }
+
     try {
-      final value = await fetch();
+      final value = await fetch().timeout(requestTimeout);
       offlineSince.value = null;
       // Saved in the background: the encrypted write must not delay the screen.
-      unawaited(_storage
-          .write(
-            key: storageKey,
-            value: jsonEncode(
-                {'v': value, 'at': DateTime.now().toIso8601String()}),
-          )
-          .catchError((_) {
-        // A full or locked keystore must never break a successful load.
-      }));
+      unawaited(_save(storageKey, value));
       return value;
     } catch (error) {
       if (!isNetworkFailure(error)) rethrow;
@@ -66,6 +96,53 @@ class OfflineCache {
       return saved['v'];
     }
   }
+
+  /// Asks the server for what was just shown from the saved copy.
+  static Future<void> _revalidate(String storageKey, Future<dynamic> Function() fetch,
+      Map<String, dynamic> saved) async {
+    try {
+      final value = await fetch().timeout(requestTimeout);
+      offlineSince.value = null;
+      await _save(storageKey, value);
+      if (jsonEncode(value) != jsonEncode(saved['v'])) {
+        _fresh[storageKey] = (value: value, at: DateTime.now());
+        refreshed.value++;
+      }
+    } catch (error) {
+      if (isNetworkFailure(error)) {
+        // No connection: what is on screen stays, marked with when it was saved.
+        markOffline(DateTime.tryParse(saved['at'] as String? ?? ''));
+        return;
+      }
+      // The server refused: the saved copy must not outlive the right to see it.
+      try {
+        await _storage.delete(key: storageKey);
+      } catch (_) {}
+      refreshed.value++;
+    }
+  }
+
+  static Future<void> _save(String storageKey, Object? value) async {
+    try {
+      await _storage.write(
+          key: storageKey,
+          value: jsonEncode({'v': value, 'at': DateTime.now().toIso8601String()}));
+    } catch (_) {
+      // A full or locked keystore must never break a successful load.
+    }
+  }
+
+  /// A new run of the app (tests), or another account: nothing counts as read yet.
+  @visibleForTesting
+  static void resetSession() {
+    _readOnce.clear();
+    _fresh.clear();
+    offlineSince.value = null;
+  }
+
+  /// Stands in for the signed-in user where Supabase is not started (tests).
+  @visibleForTesting
+  static String? debugUserId;
 
   /// For reads with their own cache (the student pass): saved data saved at
   /// [savedAt] is on screen. The banner shows the oldest such time.
@@ -99,6 +176,8 @@ class OfflineCache {
   /// deletion) so the next person on this device never sees it.
   static Future<void> clearAll() async {
     offlineSince.value = null;
+    _readOnce.clear();
+    _fresh.clear();
     try {
       final all = await _storage.readAll();
       for (final key in all.keys.where((k) => k.startsWith(_prefix))) {
@@ -152,6 +231,7 @@ class OfflineCache {
   }
 
   static String? _currentUserId() {
+    if (debugUserId != null) return debugUserId;
     try {
       return Supabase.instance.client.auth.currentUser?.id;
     } catch (_) {
