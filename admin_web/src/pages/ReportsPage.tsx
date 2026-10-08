@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DollarSign, RotateC
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonTable } from '../components/Skeleton';
 
 // ── Types ───────────────────────────────────────────────────────────
 interface ReportRow {
@@ -159,7 +159,7 @@ export const ReportsPage: React.FC = () => {
           <h2 className="font-bold text-slate-700">الطلاب والاشتراكات</h2>
           <span className="text-xs text-slate-400">{t ? `${t.count} اشتراك` : ''}{t && t.count > 2000 ? ' (يُعرض أول 2000)' : ''}</span>
         </div>
-        {loading ? <SkeletonRows rows={6} /> : !report || report.rows.length === 0 ? (
+        {loading ? <SkeletonTable rows={6} columns={6} /> : !report || report.rows.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد اشتراكات مطابقة.</div>
         ) : (
           <div className="overflow-x-auto">

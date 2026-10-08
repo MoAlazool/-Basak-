@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -30,7 +31,7 @@ class SupervisorProfileScreen extends ConsumerWidget {
           const BasakPageHeader(title: 'حسابي', subtitle: 'بيانات حساب المشرف'),
           const SizedBox(height: 18),
           dashboard.when(
-            loading: () => const BasakLoadingCard(height: 300),
+            loading: () => const SkeletonCard(radius: 24, child: ProfileSkeleton()),
             error: (_, __) => BasakMessageCard(
               icon: LucideIcons.wifiOff,
               title: 'تعذر تحميل بيانات الحساب',

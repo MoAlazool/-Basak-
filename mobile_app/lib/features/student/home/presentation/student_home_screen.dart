@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'supervisor_contact_sheet.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
@@ -981,8 +982,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 class _LoadingCard extends StatelessWidget {
   const _LoadingCard();
   @override
-  Widget build(BuildContext context) => const SizedBox(
-      height: 240, child: Center(child: CircularProgressIndicator()));
+  Widget build(BuildContext context) => const HomeSkeleton();
 }
 
 class _ErrorCard extends StatelessWidget {

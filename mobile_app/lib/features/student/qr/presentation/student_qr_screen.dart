@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/sync/session.dart';
@@ -43,7 +44,8 @@ class StudentQrScreen extends ConsumerWidget {
               } catch (_) {}
             },
             child: passAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              // Only when the card has never been loaded on this phone.
+              loading: () => const StudentCardSkeleton(),
               error: (error, _) => SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),

@@ -1,5 +1,6 @@
 import '../../data/supervisor_repository.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/network/network_errors.dart';
@@ -209,11 +210,12 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
           ),
 
           // Station Breakdown List
-          if (_isLoading)
-            const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
+          // Counts already on screen stay there while they are refreshed.
+          if (_isLoading && _counts.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(padding: EdgeInsets.all(16), child: StationRowsSkeleton(rows: 6)),
             )
-          else if (_error != null)
+          else if (_error != null && _counts.isEmpty)
             SliverFillRemaining(
               child: Center(child: Text('خطأ: $_error')),
             )

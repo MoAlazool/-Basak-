@@ -70,9 +70,11 @@ class AuthGate extends ConsumerWidget {
     }
 
     if (authState.isInitialLoading || onboardingDone == null) {
+      // A moment only: the session and role are read from the device.
       return const Scaffold(
+        backgroundColor: Color(0xFFEAF5FA),
         body: Center(
-          child: CircularProgressIndicator(),
+          child: Image(image: AssetImage('assets/images/basak_icon.webp'), width: 96, height: 96),
         ),
       );
     }

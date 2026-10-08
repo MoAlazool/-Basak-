@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/media/image_optimizer.dart';
 import '../../../../core/media/picker_errors.dart';
@@ -252,7 +253,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               }
               return _buildSubscriptionsView(open: open, history: history);
             },
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const SingleChildScrollView(
+                physics: NeverScrollableScrollPhysics(), child: SubscriptionsSkeleton()),
             error: (err, _) => SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
@@ -547,7 +549,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         _paymentMethodsCard(sub),
         const SizedBox(height: 14),
         if (receiptsAsync.isLoading && !receiptsAsync.hasValue)
-          const LinearProgressIndicator()
+          const Skeleton(child: SkeletonCard(child: Bone(height: 44, radius: 12)))
         else
           _receiptUploadCard(sub, receipts.length, latest),
         const SizedBox(height: 14),
@@ -699,7 +701,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final companyId = sub.companyId;
     if (companyId == null) return const SizedBox.shrink();
     return ref.watch(paymentMethodsProvider(companyId)).when(
-          loading: () => const LinearProgressIndicator(),
+          loading: () => const Skeleton(
+              child: SkeletonCard(
+                  child: Column(children: [Bone(height: 46, radius: 14), SizedBox(height: 8), Bone(height: 46, radius: 14)]))),
           error: (_, __) => const SizedBox.shrink(),
           data: (methods) {
             if (methods.isEmpty) return const SizedBox.shrink();

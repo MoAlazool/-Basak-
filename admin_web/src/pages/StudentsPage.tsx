@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { useQueryClient } from '@tanstack/react-query';
-import { keys, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { SkeletonTable } from '../components/Skeleton';
 import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
@@ -247,28 +247,17 @@ export const StudentsPage: React.FC = () => {
   const departureOptions = stopOptions(selectedLine, 'departure', selectedStationId, selectedUniversityId);
   const returnOptions = stopOptions(selectedLine, 'return', selectedStationId, selectedUniversityId);
 
-  // Payable periods come from the database (academic_terms + annual switch).
-  useEffect(() => {
-    let active = true;
-    if (!selectedLineId) { setPeriods([]); return; }
-    void supabase.rpc('get_purchasable_periods', { p_line_id: selectedLineId }).then(({ data, error }) => {
-      if (!active) return;
-      if (error) { console.warn('Could not load periods:', error.message); setPeriods([]); return; }
-      setPeriods((data || []) as PurchasablePeriod[]);
-    });
-    return () => { active = false; };
-  }, [selectedLineId]);
-
-  // The daily switch of the line's company (platform AND company).
-  const [dailyAvailable, setDailyAvailable] = useState(true);
-  useEffect(() => {
-    let active = true;
-    if (!selectedLine?.company_id) return;
-    void supabase.rpc('get_subscription_switches', { p_company_id: selectedLine.company_id }).then(({ data }) => {
-      if (active && data) setDailyAvailable(!!(data as { daily_effective?: boolean }).daily_effective);
-    });
-    return () => { active = false; };
-  }, [selectedLine?.company_id]);
+  // Payable periods and the daily switch come from the database. Both are
+  // cached like every other read of the workspace (and shared with the lines
+  // page), so reopening this page asks for neither again.
+  const periodsQuery = usePageData(keys.company(company.id, 'lineOptions', 'periods', selectedLineId || 'none'), async () =>
+    selectedLineId
+      ? unwrap<PurchasablePeriod[]>(supabase.rpc('get_purchasable_periods', { p_line_id: selectedLineId }))
+      : []);
+  useEffect(() => { setPeriods(periodsQuery.data ?? []); }, [periodsQuery.data]);
+  const switchesQuery = usePageData(keys.company(company.id, 'switches'), () =>
+    unwrap<{ daily_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: company.id })));
+  const dailyAvailable = switchesQuery.data ? !!switchesQuery.data.daily_effective : true;
 
   const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
   const annualAvailable = periods.some((p) => p.subscription_type === 'yearly');
@@ -564,7 +553,7 @@ export const StudentsPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <SkeletonRows rows={5} />
+          <SkeletonTable rows={5} columns={5} />
         ) : studentsPage.error ? (
           <div role="alert" className="p-8 text-center text-rose-700">تعذر تحميل الطلاب: {studentsPage.error}</div>
         ) : filteredStudents.length === 0 ? (

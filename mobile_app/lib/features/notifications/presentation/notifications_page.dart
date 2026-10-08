@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../core/network/network_errors.dart';
@@ -125,10 +126,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                 ])),
                 const SizedBox(height: 12),
                 if (async.isLoading && !async.hasValue)
-                  const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
+                  const SkeletonList(rows: 5)
                 else if (async.hasError && !async.hasValue)
                   _padded(_messageCard(
                     LucideIcons.wifiOff,

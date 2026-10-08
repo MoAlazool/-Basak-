@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../core/widgets/floating_glass_nav_bar.dart';
 import '../../core/widgets/offline_banner.dart';
@@ -17,9 +19,31 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
   int _currentIndex = 0;
   bool _navCollapsed = false;
 
+  /// Tabs that have been built. The home tab comes first, alone, so the app
+  /// opens on its own data only; the others are built a moment later, in the
+  /// background, so they are ready (and saved for offline use) before the
+  /// student taps them. Once built, a tab stays alive.
+  final Set<int> _built = {0};
+  Timer? _warmUp;
+
+  @override
+  void initState() {
+    super.initState();
+    _warmUp = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _built.addAll(const [1, 2, 3]));
+    });
+  }
+
+  @override
+  void dispose() {
+    _warmUp?.cancel();
+    super.dispose();
+  }
+
   // Every tab change shows the full bar again.
   void _selectTab(int index) => setState(() {
         _currentIndex = index;
+        _built.add(index);
         _navCollapsed = false;
       });
 
@@ -49,7 +73,10 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
       body: NotificationListener<ScrollNotification>(
         onNotification: _onScroll,
         child: OfflineBanner(
-          child: IndexedStack(index: _currentIndex, children: screens),
+          child: IndexedStack(index: _currentIndex, children: [
+            for (var i = 0; i < screens.length; i++)
+              _built.contains(i) ? screens[i] : const SizedBox.shrink(),
+          ]),
         ),
       ),
       bottomNavigationBar: FloatingGlassNavBar(

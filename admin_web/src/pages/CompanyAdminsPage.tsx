@@ -3,7 +3,7 @@ import { Building2, Mail, Plus, ShieldCheck, UserRound, KeyRound, Trash2 } from 
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { keys, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonTable } from '../components/Skeleton';
 
 interface Company { id: string; name: string; }
 interface CompanyAdmin { id: string; email: string; full_name: string; company_id: string; created_at: string; }
@@ -112,7 +112,7 @@ export const CompanyAdminsPage: React.FC = () => {
 
       <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5"><h2 className="font-bold text-slate-700">الحسابات المرتبطة بالشركات</h2></div>
-        {loading ? <SkeletonRows rows={3} /> : admins.length === 0 ? (
+        {loading ? <SkeletonTable rows={3} columns={4} /> : admins.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا يوجد مديرو شركات بعد.</div>
         ) : (
           <div className="overflow-x-auto">

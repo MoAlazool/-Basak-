@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/network/network_errors.dart';
@@ -134,9 +135,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   Widget build(BuildContext context) {
     final catalogAsync = ref.watch(saleCatalogProvider);
     return catalogAsync.when(
-      loading: () => const Padding(
-          padding: EdgeInsets.only(top: 80),
-          child: Center(child: CircularProgressIndicator())),
+      loading: () => const PurchaseFlowSkeleton(),
       error: (e, _) => _message('تعذر تحميل الشركات والخطوط: ${errorMessage(e)}', retry: true),
       data: (catalog) {
         // Whatever was chosen and is no longer offered is dropped.

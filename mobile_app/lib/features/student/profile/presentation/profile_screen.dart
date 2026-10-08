@@ -8,6 +8,7 @@ import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../home/presentation/student_home_screen.dart';
 import 'profile_editor.dart';
+import '../../../../core/widgets/skeleton.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -110,7 +111,10 @@ class ProfileScreen extends ConsumerWidget {
               GlassContainer(
                 padding: const EdgeInsets.all(20),
                 borderRadius: 24,
-                child: authState.isStudent && user != null
+                child: authState.isStudent && user != null && detailsAsync.isLoading && !detailsAsync.hasValue
+                    // First load on this phone only; afterwards the saved profile shows at once.
+                    ? const ProfileSkeleton()
+                    : authState.isStudent && user != null
                     ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         ProfileSection(
                             userId: user.id, profile: profile, fallbackName: fullName, fallbackPhone: phone),

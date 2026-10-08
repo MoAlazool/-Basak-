@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, Search, X } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonTable } from '../components/Skeleton';
 import { supabase } from '../lib/supabase';
 import { keys, unwrap, usePageData } from '../lib/query';
 
@@ -119,7 +119,7 @@ export const AllStudentsPage: React.FC = () => {
           </span>
         </div>
 
-        {page.loading ? <SkeletonRows rows={6} /> : page.error ? (
+        {page.loading ? <SkeletonTable rows={6} columns={5} /> : page.error ? (
           <div role="alert" className="p-8 text-center text-rose-700">تعذر تحميل الطلاب: {page.error}</div>
         ) : rows.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد حسابات مطابقة.</div>

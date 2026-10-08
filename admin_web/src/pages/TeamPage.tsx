@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonTable } from '../components/Skeleton';
 
 interface TeamAdmin { id: string; email: string; full_name: string; created_at: string; }
 
@@ -77,7 +77,7 @@ export const TeamPage: React.FC = () => {
       {(error || page.error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error || page.error}</p>}
 
       <div className="glass-panel overflow-hidden">
-        {loading ? <SkeletonRows rows={2} /> : admins.length === 0 ? (
+        {loading ? <SkeletonTable rows={2} columns={3} /> : admins.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا يوجد مديرون لهذه الشركة بعد.</div>
         ) : (
           <div className="overflow-x-auto">

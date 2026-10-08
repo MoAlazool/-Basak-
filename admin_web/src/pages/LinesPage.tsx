@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
-import { SkeletonRows } from '../components/Skeleton';
+import { SkeletonCards } from '../components/Skeleton';
 import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
 import {
   ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, GraduationCap, MapPin, Pencil,
@@ -219,7 +219,7 @@ export const LinesPage: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="rounded-2xl border border-slate-100 bg-white"><SkeletonRows /></div>
+        <SkeletonCards count={3} />
       ) : lines.length === 0 ? (
         <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-slate-500">
           لا توجد خطوط بعد. اضغط «إنشاء خط جديد» لإضافة الخط بمحطاته ورحلاته في خطوة واحدة.

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { SkeletonShell } from './components/Skeleton';
 import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { Shell } from './components/Shell';
 import { WorkspaceBar } from './components/WorkspaceBar';
@@ -167,7 +168,7 @@ const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ ad
     : companyQuery.data ? { state: 'ready', company: companyQuery.data } : { state: 'missing' };
 
   if (!allowed) return <Navigate to={`/c/${admin.company_id}`} replace />;
-  if (loaded.state === 'loading') return <div className="min-h-screen grid place-items-center" dir="rtl">جاري فتح مساحة الشركة...</div>;
+  if (loaded.state === 'loading') return <SkeletonShell />;
   if (loaded.state === 'missing') {
     return (
       <Notice title="الشركة غير موجودة" onLogout={onLogout}>

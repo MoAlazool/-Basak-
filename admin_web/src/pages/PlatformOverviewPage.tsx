@@ -1,4 +1,5 @@
 import React from 'react';
+import { Skeleton } from '../components/Skeleton';
 import { Link } from 'react-router-dom';
 import { Building2, Bus, FileCheck2, Users, Wallet } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
@@ -80,7 +81,13 @@ export const PlatformOverviewPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={8} className="p-8 text-center text-slate-500">جاري التحميل...</td></tr>}
+              {loading && Array.from({ length: 4 }, (_, r) => (
+                <tr key={r} aria-busy="true">
+                  {Array.from({ length: 8 }, (_, c) => (
+                    <td key={c} className="p-3"><Skeleton className={`h-3.5 ${c === 0 ? 'w-28' : 'w-12'}`} /></td>
+                  ))}
+                </tr>
+              ))}
               {!loading && rows.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-slate-500">لا توجد شركات بعد.</td></tr>}
               {rows.map((row) => (
                 <tr key={row.company.id} className="hover:bg-slate-50/70">
