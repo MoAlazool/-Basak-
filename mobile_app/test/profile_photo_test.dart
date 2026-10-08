@@ -1,3 +1,5 @@
+import 'package:basak_mobile/core/widgets/avatar_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -93,5 +95,17 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(result, isNull);
+  });
+
+  test('a fresh link to the same photo is tried again, while the saved copy on disk is still shared', () {
+    const path = 'https://x.supabase.co/storage/v1/object/sign/student-avatars/u1/avatar-1.jpg';
+    final expired = avatarImage('$path?token=old') as CachedNetworkImageProvider;
+    final fresh = avatarImage('$path?token=new') as CachedNetworkImageProvider;
+    // Different requests to the widget: a failed first attempt does not block the second.
+    expect(expired == fresh, isFalse);
+    expect(avatarImage('$path?token=new') == fresh, isTrue);
+    // One file on disk for both: the photo still shows offline.
+    expect(expired.cacheKey, fresh.cacheKey);
+    expect(fresh.cacheKey, 'x.supabase.co/storage/v1/object/sign/student-avatars/u1/avatar-1.jpg');
   });
 }

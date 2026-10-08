@@ -67,6 +67,8 @@ void main() {
     expect(await OfflineCache.readThrough('subscriptions', server), [{'status': 'pending_review'}]);
     await settle();
     expect(announced, 1, reason: 'the screen is told the server had something newer');
+    expect(OfflineCache.takeRefreshedKeys(), {'subscriptions'}, reason: 'and which data it was, so only its screens re-read');
+    expect(OfflineCache.takeRefreshedKeys(), isEmpty);
     expect(await OfflineCache.readThrough('subscriptions', server), [{'status': 'active'}]);
     expect(requests, 1, reason: 'the fresh value comes from memory');
     expect(OfflineCache.offlineSince.value, isNull);

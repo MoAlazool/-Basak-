@@ -51,7 +51,7 @@ export function App() {
       const current = ++generation;
       if (!userId) {
         clearCache();
-        if (mounted) setAdmin(null);
+        if (mounted) { setAdmin(null); setAuthLoading(false); }
         return;
       }
       const profile = await loadAdminProfile(userId);
@@ -65,13 +65,17 @@ export function App() {
         setAdmin(null);
         if (session) await supabase.auth.signOut();
       }
+      // Only the check that is still the latest decides what to show. On a page
+      // reload two checks start almost together (the stored session and the
+      // library's own first event); the first is discarded above, and ending
+      // the wait there would show the sign-in page for a moment.
+      if (mounted) setAuthLoading(false);
     };
 
     const restore = async () => {
       if (/type=(recovery|invite)/.test(window.location.hash)) setRecoveryMode(true);
       const { data: { session } } = await supabase.auth.getSession();
       await applySession(session?.user.id ?? null);
-      if (mounted) setAuthLoading(false);
     };
     void restore();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -97,7 +101,8 @@ export function App() {
     setAdmin(null);
   };
 
-  if (authLoading) return <div className="min-h-screen grid place-items-center" dir="rtl">جاري التحقق من الجلسة...</div>;
+  // While the session is checked, the frame of the dashboard, not a blank page.
+  if (authLoading) return <SkeletonShell />;
   if (recoveryMode) return <ResetPasswordPage onComplete={() => setRecoveryMode(false)} />;
   if (!admin) {
     return <LoginPage onLogin={setAdmin} />;

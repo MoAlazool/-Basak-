@@ -79,7 +79,10 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
   void _onSavedCopyRefreshed() {
     if (!mounted) return;
     _debounce?.cancel();
-    _pendingTables.addAll(_everything);
+    // Only what shows the data that changed is read again.
+    for (final key in OfflineCache.takeRefreshedKeys()) {
+      _pendingTables.addAll(_tablesFor(key));
+    }
     _debounce = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       final tables = Set<String>.from(_pendingTables);
@@ -98,6 +101,20 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
       _offlineRetry?.cancel();
       _offlineRetry = null;
     }
+  }
+
+  /// The tables whose screens show a saved read (see OfflineCache.readThrough).
+  static Set<String> _tablesFor(String key) {
+    if (key == 'profile.summary' || key == 'student_pass') return const {'students'};
+    if (key.startsWith('subscriptions') || key.startsWith('receipts.') || key.startsWith('subscription_receipt')) {
+      return const {'subscriptions'};
+    }
+    if (key == 'sale_catalog' || key.startsWith('payment_methods')) return const {'lines'};
+    if (key == 'notifications') return const {'notifications'};
+    if (key.startsWith('supervisor.') || key.startsWith('rider_counts')) {
+      return const {'supervisor_scan_events', 'supervisors'};
+    }
+    return _everything;
   }
 
   static const _everything = {
