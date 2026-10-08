@@ -12,6 +12,9 @@ Creates `basak_test`, loads `supabase_stub.sql` (roles, `auth.uid()`, `storage.*
 applies every migration in order (with `seed_before_<migration>.sql` fixtures that
 simulate existing production data) and runs `e2e_full_flow.sql`, which acts as the
 super admin, company admins, supervisors, students, anon and the service role.
+Then `e2e_ride_choices.sql` builds its own line in a rolled-back transaction and
+checks that supervisors see riders by the trip each one chose for the day (per
+trip, station and university, and who has not confirmed yet).
 
 ## 2. HTTP (GoTrue + PostgREST + Edge Functions, through supabase-js)
 

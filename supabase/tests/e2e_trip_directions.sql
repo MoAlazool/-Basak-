@@ -1,6 +1,8 @@
 -- End-to-end test: Going / Return trips for supervisors (manifest + check-in per
 -- direction and trip) and the student company → line catalogue with the company
--- stored on the subscription (20261006000001). ONE transaction, aborted at the end.
+-- stored on the subscription (20261006000001). The manifest lists students by the
+-- trip they chose for the day (20261022000001), so the student confirms the ride
+-- first. ONE transaction, aborted at the end.
 --   npx.cmd supabase@latest db query --project-ref <ref> --linked -f supabase/tests/e2e_trip_directions.sql
 BEGIN;
 
@@ -92,6 +94,41 @@ RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 UPDATE public.subscriptions SET start_date = public.cairo_today(), end_date = public.cairo_today()
 WHERE student_id = (SELECT student_id FROM e2e_ctx) AND line_id = (SELECT line_id FROM e2e_ctx);
+-- Open today's vote for the company whatever the time: 23:59:59 yesterday → 23:59:58 today.
+UPDATE public.companies SET vote_opens_at = '23:59:59', vote_closes_at = '23:59:58', vote_reminder_minutes = 0,
+  vote_reminder_off_weekdays = '{}', vote_reminder_off_dates = '{}'
+WHERE id = (SELECT company_id FROM e2e_ctx);
+
+-- ------------------------------------------------ SUPERVISOR, before the vote
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object('sub', supervisor_id, 'role', 'authenticated')::text, true) FROM e2e_ctx;
+DO $$
+DECLARE c record; m jsonb; st jsonb;
+BEGIN
+  SELECT * INTO c FROM e2e_ctx;
+  IF c.supervisor_id IS NULL THEN RETURN; END IF;  -- reported below
+  m := public.get_supervisor_trip_manifest(c.line_id, 'departure');
+  SELECT s INTO st FROM jsonb_array_elements(m->'stations') s WHERE (s->>'id')::uuid = c.station2;
+  INSERT INTO e2e_results(step, ok, detail) VALUES ('going: before the vote the student is "not confirmed yet", on no station',
+    jsonb_array_length(st->'students') = 0
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(m->'unconfirmed') u WHERE (u->>'id')::uuid = c.student_id),
+    m->>'unconfirmed');
+END $$;
+RESET ROLE;
+
+-- ------------------------------------------------ STUDENT confirms today's ride
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object('sub', student_id, 'role', 'authenticated')::text, true) FROM e2e_ctx;
+DO $$
+DECLARE r jsonb;
+BEGIN
+  r := public.toggle_student_daily_ride(public.cairo_today(), true, '07:20'::time, '17:25'::time, true);
+  INSERT INTO e2e_results(step, ok, detail) VALUES ('vote: the student confirms today, going 07:20 and back 17:25',
+    (r->>'success')::boolean AND (r->>'is_riding')::boolean AND r->>'departure_time' = '07:20:00'
+      AND r->>'return_time' = '17:25:00',
+    r::text);
+END $$;
+RESET ROLE;
 
 -- --------------------------------------------------------------- SUPERVISOR
 SET LOCAL ROLE authenticated;
@@ -108,7 +145,10 @@ BEGIN
   SELECT s INTO st FROM jsonb_array_elements(m->'stations') s WHERE (s->>'id')::uuid = c.station2;
   INSERT INTO e2e_results(step, ok, detail) VALUES ('going: manifest lists the student at their station, not checked in',
     (m->'trip'->>'id')::uuid = c.dep_trip AND jsonb_array_length(st->'students') = 1
-      AND st->'students'->0->>'checked_in_at' IS NULL AND st->>'stop_time' = '07:20:00',
+      AND (st->'students'->0->>'id')::uuid = c.student_id AND (st->'students'->0->>'confirmed')::boolean
+      AND st->'students'->0->>'chosen_time' = '07:20:00'
+      AND st->'students'->0->>'checked_in_at' IS NULL AND st->>'stop_time' = '07:20:00'
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(m->'unconfirmed') u WHERE (u->>'id')::uuid = c.student_id),
     (SELECT string_agg(s->>'name', ' → ') FROM jsonb_array_elements(m->'stations') s));
 
   m := public.get_supervisor_trip_manifest(c.line_id, 'return');
@@ -124,7 +164,8 @@ BEGIN
   m := public.get_supervisor_trip_manifest(c.line_id, 'return');
   SELECT s INTO st FROM jsonb_array_elements(m->'stations') s WHERE (s->>'id')::uuid = c.station2;
   INSERT INTO e2e_results(step, ok, detail) VALUES ('return: still "not checked in" after the going check-in',
-    st->'students'->0->>'checked_in_at' IS NULL, NULL);
+    jsonb_array_length(st->'students') = 1 AND st->'students'->0->>'chosen_time' = '17:25:00'
+      AND st->'students'->0->>'checked_in_at' IS NULL, st::text);
 
   r := public.supervisor_check_in_student(c.qr, 'return', c.ret_trip);
   INSERT INTO e2e_results(step, ok, detail) VALUES ('return: QR check-in recorded on the return trip',
