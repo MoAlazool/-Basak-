@@ -86,14 +86,18 @@ class SubscriptionModel {
   bool get isRejected => status == 'rejected';
   bool get isDaily => type == 'daily';
 
-  /// "line ← the student's university": the one title used on every screen.
-  /// The line name is short (where it starts); the destination is the
-  /// student's own university, never a list typed into the line name.
-  String get routeTitle {
-    final line = (lineName ?? '').trim();
-    final destination = (studentUniversity ?? universityName ?? '').trim();
-    if (line.isEmpty) return destination.isEmpty ? 'خط الجامعة' : destination;
-    return destination.isEmpty || line.contains(destination) ? line : '$line ← $destination';
+  /// The main title on every screen: where the student boards. The line and
+  /// the university are shown under it, each on its own row, so a long line
+  /// name never becomes the headline.
+  String get boardingTitle {
+    final station = (stationName ?? '').trim();
+    return station.isNotEmpty ? station : ((lineName ?? '').trim().isNotEmpty ? lineName!.trim() : 'اشتراكي');
+  }
+
+  /// The student's own university: where the line takes them.
+  String? get destination {
+    final name = (studentUniversity ?? universityName ?? '').trim();
+    return name.isEmpty ? null : name;
   }
 
   /// "الفصل الأول", "الفصلان معاً" ... without the year.

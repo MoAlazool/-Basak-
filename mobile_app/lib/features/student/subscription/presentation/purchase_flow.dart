@@ -41,8 +41,23 @@ final subscriptionCreatorProvider =
 const _ink = Color(0xFF17384A);
 const _brand = Color(0xFF00658D);
 const _stepNames = ['الشركة', 'الخط', 'المحطة', 'الفترة', 'المراجعة'];
+const _green = Color(0xFF22C55E);
+const _greenSoft = Color(0xFFE7F8F0);
+const _rail = Color(0xFFBBF7D0);
 
-String _money(double value) => '${value.toStringAsFixed(0)} ج.م';
+/// "8,000 ج.م"
+String formatMoney(double value) {
+  final digits = value.toStringAsFixed(0);
+  final grouped = digits.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+  return '$grouped ج.م';
+}
+
+String _money(double value) => formatMoney(value);
+
+/// Periods in the order a student thinks of them, not by date.
+const _optionOrder = ['first', 'second', 'both', 'summer'];
+List<SaleOption> _ordered(List<SaleOption> options) => [...options]
+  ..sort((a, b) => _optionOrder.indexOf(a.option).compareTo(_optionOrder.indexOf(b.option)));
 
 /// Company → Line → Boarding station → Period → Review.
 ///
@@ -122,7 +137,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
       loading: () => const Padding(
           padding: EdgeInsets.only(top: 80),
           child: Center(child: CircularProgressIndicator())),
-      error: (e, _) => _message('تعذر تحميل الشركات والخطوط: ${errorMessage(e)}'),
+      error: (e, _) => _message('تعذر تحميل الشركات والخطوط: ${errorMessage(e)}', retry: true),
       data: (catalog) {
         // Whatever was chosen and is no longer offered is dropped.
         final draft = _draft.reconciled(catalog);
@@ -143,37 +158,62 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop) _back();
           },
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _progress(draft, step),
-            const SizedBox(height: 14),
-            if (step != DraftStep.company || widget.onCancel != null)
+          // Its own Material, so the cards' ink is drawn above the page colour.
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (step == DraftStep.company && widget.onCancel != null)
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: TextButton.icon(
                   key: const Key('flow-back'),
-                  onPressed: _submitting ? null : _back,
+                  onPressed: _back,
                   icon: const Icon(LucideIcons.arrowRight, size: 18),
-                  label: Text(step == DraftStep.company ? 'العودة إلى اشتراكاتي' : 'رجوع'),
+                  label: const Text('العودة إلى اشتراكاتي'),
                 ),
               ),
+            _progress(draft, step),
+            const SizedBox(height: 18),
+            Text('اشتراكي الجامعي',
+                style: AppTextStyles.displayMedium.copyWith(color: _ink)),
+            const SizedBox(height: 4),
+            Text(_subtitles[step.index],
+                style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xFF718695))),
+            const SizedBox(height: 18),
             if (catalog.companies.isEmpty)
               _message(
                   'لا توجد حالياً شركات أو خطوط متاحة لجامعتك'
                   '${catalog.universityName == null ? '' : ' (${catalog.universityName})'}.',
                   retry: true)
             else
-              switch (step) {
-                DraftStep.company => _companyStep(catalog, draft),
-                DraftStep.line => _lineStep(catalog, draft),
-                DraftStep.station => _stationStep(catalog, draft),
-                DraftStep.period => _periodStep(catalog, draft),
-                DraftStep.review => _reviewStep(catalog, draft),
-              },
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: KeyedSubtree(
+                  key: ValueKey(step),
+                  child: switch (step) {
+                    DraftStep.company => _companyStep(catalog, draft),
+                    DraftStep.line => _lineStep(catalog, draft),
+                    DraftStep.station => _stationStep(catalog, draft),
+                    DraftStep.period => _periodStep(catalog, draft),
+                    DraftStep.review => _reviewStep(catalog, draft),
+                  },
+                ),
+              ),
           ]),
+          ),
         );
       },
     );
   }
+
+  static const _subtitles = [
+    'اختر شركة النقل التي تخدم جامعتك.',
+    'اختر خط سير حافلتك.',
+    'اختر المحطة التي ستركب منها.',
+    'اختر مدة اشتراكك.',
+    'راجع اختياراتك قبل الدفع.',
+  ];
+  static const _numerals = ['١', '٢', '٣', '٤', '٥'];
 
   // ── Shared pieces ──────────────────────────────────────────────────
 
@@ -194,128 +234,122 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         ]),
       );
 
-  /// The five steps; a step already reachable can be tapped to jump to it.
-  Widget _progress(SubscriptionDraft draft, DraftStep step) => Container(
-        padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
-        decoration: BoxDecoration(
-            color: Colors.white.withOpacity(.94),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE3EDF3))),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  /// "الخطوة ٢ من ٥" with the five dots; a step already reachable can be
+  /// tapped to go straight to it.
+  Widget _progress(SubscriptionDraft draft, DraftStep step) {
+    final n = step.index + 1;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
+      decoration: BoxDecoration(
+          color: Colors.white.withOpacity(.94),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE3EDF3))),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('الخطوة $n من 5',
+              style: AppTextStyles.labelSmall.copyWith(color: _brand, fontWeight: FontWeight.bold)),
+          Text(
+              n == 5
+                  ? 'الخطوة الأخيرة'
+                  : n == 4
+                      ? 'متبقي خطوة واحدة'
+                      : 'متبقي ${5 - n} خطوات',
+              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+        ]),
+        const SizedBox(height: 13),
+        Row(children: [
+          for (final s in DraftStep.values) ...[
+            InkWell(
+              key: Key('flow-step-${s.name}'),
+              customBorder: const CircleBorder(),
+              onTap: draft.canOpen(s) && !_submitting ? () => _go(s) : null,
+              child: CircleAvatar(
+                  radius: 15,
+                  backgroundColor: s.index <= step.index ? _brand : const Color(0xFFE7EEF4),
+                  child: Icon(s.index < step.index ? LucideIcons.check : LucideIcons.circle,
+                      size: 15,
+                      color: s.index <= step.index ? Colors.white : AppColors.textSecondary)),
+            ),
+            if (s != DraftStep.review)
+              Expanded(
+                  child: Container(
+                      height: 2,
+                      color: s.index < step.index ? _brand : const Color(0xFFE7EEF4))),
+          ]
+        ]),
+        const SizedBox(height: 6),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           for (final s in DraftStep.values)
-            Expanded(
-              child: InkWell(
-                key: Key('flow-step-${s.name}'),
-                borderRadius: BorderRadius.circular(12),
-                onTap: draft.canOpen(s) && !_submitting ? () => _go(s) : null,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Column(children: [
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: s.index <= step.index ? _brand : const Color(0xFFE7EEF4),
-                      child: s.index < step.index
-                          ? const Icon(LucideIcons.check, size: 15, color: Colors.white)
-                          : Text('${s.index + 1}',
-                              style: AppTextStyles.labelSmall.copyWith(
-                                  color: s == step ? Colors.white : AppColors.textSecondary,
-                                  fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(_stepNames[s.index],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.labelSmall.copyWith(
-                            color: s == step ? _brand : AppColors.textSecondary,
-                            fontWeight: s == step ? FontWeight.bold : FontWeight.normal)),
-                  ]),
-                ),
+            Text(_stepNames[s.index],
+                style: AppTextStyles.labelSmall.copyWith(
+                    color: s == step ? _brand : null,
+                    fontWeight: s == step ? FontWeight.bold : null)),
+        ]),
+      ]),
+    );
+  }
+
+  /// "٢. اختر الخط" with, on the other side, what was chosen before and a way back to it.
+  Widget _stepTitle(DraftStep step, String title, {String? previous}) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(children: [
+          Expanded(
+              child: Text('${_numerals[step.index]}. $title',
+                  style: AppTextStyles.titleMedium.copyWith(color: _ink))),
+          if (previous != null)
+            Flexible(
+              child: TextButton.icon(
+                key: const Key('flow-back'),
+                onPressed: _submitting ? null : _back,
+                icon: const Icon(LucideIcons.arrowRight, size: 16),
+                label: Text('$previous · تغيير', maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ),
         ]),
-      );
-
-  Widget _heading(String title, [String? hint]) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: AppTextStyles.titleLarge.copyWith(color: _ink)),
-          if (hint != null) ...[
-            const SizedBox(height: 3),
-            Text(hint, style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          ],
-        ]),
-      );
-
-  Widget _choiceCard(
-          {required Key key,
-          required bool selected,
-          required VoidCallback? onTap,
-          required Widget child}) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: InkWell(
-          key: key,
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: selected ? const Color(0xFFEAF4FB) : Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                  color: selected ? _brand : const Color(0xFFE6EEF3), width: selected ? 1.6 : 1),
-            ),
-            child: child,
-          ),
-        ),
-      );
-
-  Widget _next(String label, VoidCallback? onPressed) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: ElevatedButton(
-          key: const Key('flow-next'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _brand,
-            foregroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-          onPressed: onPressed,
-          child: Text(label),
-        ),
       );
 
   // ── 1. Company ─────────────────────────────────────────────────────
 
   Widget _companyStep(SaleCatalog catalog, SubscriptionDraft draft) =>
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _heading('اختر شركة النقل',
-            catalog.universityName == null ? null : 'الشركات التي تخدم ${catalog.universityName}'),
+        _stepTitle(DraftStep.company, 'اختر شركة النقل'),
         for (final company in catalog.companies)
-          _choiceCard(
-            key: Key('company-${company.id}'),
-            selected: draft.companyId == company.id,
-            onTap: () => _choose(draft.pickCompany(catalog, company.id), DraftStep.line),
-            child: Row(children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(color: BasakUi.softTeal, shape: BoxShape.circle),
-                child: const Icon(LucideIcons.building2, color: BasakUi.teal),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(company.name, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-                  Text(
-                      company.lines.length == 1
-                          ? 'خط واحد متاح لجامعتك'
-                          : '${company.lines.length} خطوط متاحة لجامعتك',
-                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: InkWell(
+              key: Key('company-${company.id}'),
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => _choose(draft.pickCompany(catalog, company.id), DraftStep.line),
+              child: Ink(
+                padding: const EdgeInsets.all(16),
+                decoration: draft.companyId == company.id
+                    ? BoxDecoration(
+                        color: const Color(0xFFEAF4FB),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: _brand, width: 1.6))
+                    : BasakUi.card(radius: 18),
+                child: Row(children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: const BoxDecoration(color: BasakUi.softTeal, shape: BoxShape.circle),
+                    child: const Icon(LucideIcons.building2, color: BasakUi.teal),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(company.name, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
+                      Text(
+                          company.lines.length == 1
+                              ? 'خط واحد متاح لجامعتك'
+                              : '${company.lines.length} خطوط متاحة لجامعتك',
+                          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+                    ]),
+                  ),
+                  const Icon(LucideIcons.chevronLeft, color: AppColors.textSecondary),
                 ]),
               ),
-              const Icon(LucideIcons.chevronLeft, color: AppColors.textSecondary),
-            ]),
+            ),
           ),
       ]);
 
@@ -324,7 +358,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   Widget _lineStep(SaleCatalog catalog, SubscriptionDraft draft) {
     final company = catalog.company(draft.companyId)!;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _heading('اختر الخط', company.name),
+      _stepTitle(DraftStep.line, 'اختر الخط', previous: company.name),
       for (final line in company.lines) _lineCard(catalog, draft, line),
     ]);
   }
@@ -333,47 +367,74 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
     final selected = draft.lineId == line.id;
     final sells = line.options.isNotEmpty || (widget.allowDaily && line.dailyEnabled);
     final from = line.fromPrice;
-    return _choiceCard(
-      key: Key('line-${line.id}'),
-      selected: selected,
-      onTap: sells ? () => _choose(draft.pickLine(catalog, line.id), DraftStep.station) : null,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(selected ? LucideIcons.circleCheck : LucideIcons.busFront,
-              color: selected ? _brand : AppColors.textSecondary),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Text(line.name, style: AppTextStyles.titleMedium.copyWith(color: _ink))),
-          if (from != null)
-            Text('من ${_money(from)}',
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: _brand, fontWeight: FontWeight.w800)),
-        ]),
-        const SizedBox(height: 6),
-        Text('إلى ${line.university ?? 'جامعتك'}',
-            style: AppTextStyles.bodyMedium
-                .copyWith(color: const Color(0xFF3F51B5), fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          BasakPill(line.stations.length == 1 ? 'محطة واحدة' : '${line.stations.length} محطات',
-              icon: LucideIcons.mapPin),
-          if (line.firstDeparture != null)
-            BasakPill('أول ذهاب ${BasakUi.time12(line.firstDeparture)}',
-                background: const Color(0xFFE7F8F0),
-                foreground: const Color(0xFF15803D),
-                icon: LucideIcons.sunrise),
-          if (line.lastReturn != null)
-            BasakPill('آخر عودة ${BasakUi.time12(line.lastReturn)}',
-                background: const Color(0xFFFFF4E5),
-                foreground: const Color(0xFFB97812),
-                icon: LucideIcons.sunset),
-        ]),
-        if (!sells) ...[
-          const SizedBox(height: 8),
-          Text('الاشتراك في هذا الخط غير متاح الآن.',
-              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-        ],
-      ]),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        key: Key('line-${line.id}'),
+        borderRadius: BorderRadius.circular(18),
+        onTap: sells ? () => _choose(draft.pickLine(catalog, line.id), DraftStep.station) : null,
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF4FB) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: selected ? _brand : const Color(0xFFE6EEF3), width: selected ? 1.6 : 1),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(selected ? LucideIcons.circleCheck : LucideIcons.busFront,
+                  color: selected ? _brand : AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: Text(line.name,
+                      style: AppTextStyles.titleMedium.copyWith(color: _ink))),
+              if (from != null) ...[
+                const SizedBox(width: 8),
+                Text('من ${_money(from)}',
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: _brand, fontWeight: FontWeight.w800)),
+              ],
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Icon(LucideIcons.graduationCap, size: 15, color: Color(0xFF3F51B5)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(line.university ?? 'جامعتك',
+                    style: AppTextStyles.labelSmall.copyWith(
+                        color: const Color(0xFF3F51B5), fontWeight: FontWeight.w700)),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+                line.stations.length == 1
+                    ? 'محطة واحدة: ${line.stations.first.name}'
+                    : '${line.stations.length} محطات: ${line.stations.map((s) => s.name).join(' · ')}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              if (line.firstDeparture != null)
+                BasakPill('أول ذهاب ${BasakUi.time12(line.firstDeparture)}',
+                    background: const Color(0xFFE7F8F0),
+                    foreground: const Color(0xFF15803D),
+                    icon: LucideIcons.sunrise),
+              if (line.lastReturn != null)
+                BasakPill('آخر عودة ${BasakUi.time12(line.lastReturn)}',
+                    background: const Color(0xFFFFF4E5),
+                    foreground: const Color(0xFFB97812),
+                    icon: LucideIcons.sunset),
+            ]),
+            if (!sells) ...[
+              const SizedBox(height: 8),
+              Text('الاشتراك في هذا الخط غير متاح الآن.',
+                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 
@@ -382,141 +443,170 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   Widget _stationStep(SaleCatalog catalog, SubscriptionDraft draft) {
     final line = catalog.line(draft.lineId)!;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _heading('اختر محطة الصعود',
-          'المحطة التي ستركب منها على خط ${line.name}. موعد كل يوم تختاره من الرئيسية.'),
+      _stepTitle(DraftStep.station, 'اختر محطة الصعود', previous: line.name),
       if (line.stations.isEmpty)
         _message('لا توجد رحلات متاحة لجامعتك على هذا الخط.')
       else
-        for (final station in line.stations) _stationCard(draft, station),
-      _next('التالي', draft.stationId == null ? null : () => _go(DraftStep.period)),
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          decoration: BasakUi.card(radius: 22),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (var i = 0; i < line.stations.length; i++)
+              _stationRow(draft, line.stations[i],
+                  first: i == 0, last: i == line.stations.length - 1),
+          ]),
+        ),
+      const SizedBox(height: 8),
+      Text('الموعد الظاهر هو وقت مرور الباص على المحطة. موعد كل يوم تختاره من الرئيسية.',
+          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
     ]);
   }
 
-  Widget _stationCard(SubscriptionDraft draft, SaleStation station) {
+  /// A stop on the route rail. Under its name, one time per departure trip
+  /// that stops there: a station has no single bus time.
+  Widget _stationRow(SubscriptionDraft draft, SaleStation station,
+      {required bool first, required bool last}) {
     final selected = draft.stationId == station.id;
-    String list(Iterable<String> times) => times.map(BasakUi.time12).join(' · ');
-    return _choiceCard(
+    return InkWell(
       key: Key('station-${station.id}'),
-      selected: selected,
-      onTap: () => setState(() => _draft = draft.pickStation(station.id)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(selected ? LucideIcons.circleCheck : LucideIcons.mapPin,
-              size: 20, color: selected ? _brand : AppColors.textSecondary),
-          const SizedBox(width: 10),
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _choose(draft.pickStation(station.id), DraftStep.period),
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SizedBox(
+            width: 24,
+            child: Column(children: [
+              Expanded(child: Container(width: 2, color: first ? Colors.transparent : _rail)),
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? _green : Colors.white,
+                  border: Border.all(color: _green, width: 2.5),
+                ),
+              ),
+              Expanded(child: Container(width: 2, color: last ? Colors.transparent : _rail)),
+            ]),
+          ),
+          const SizedBox(width: 8),
           Expanded(
-              child: Text(station.name, style: AppTextStyles.titleMedium.copyWith(color: _ink))),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: BoxDecoration(
+                color: selected ? _greenSoft : const Color(0xFFF5F8FA),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: selected ? _green : Colors.transparent, width: 1.4),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(station.name,
+                        style: AppTextStyles.bodyLarge
+                            .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(station.departures.map((d) => BasakUi.time12(d.time)).join(' · '),
+                        style: AppTextStyles.labelSmall.copyWith(
+                            color: const Color(0xFF15803D), fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+                Icon(selected ? LucideIcons.circleCheck : LucideIcons.circle,
+                    size: 19, color: selected ? const Color(0xFF15803D) : const Color(0xFFB6C3CB)),
+              ]),
+            ),
+          ),
         ]),
-        // One time per trip that stops here: a station has no single bus time.
-        if (selected) ...[
-          const SizedBox(height: 10),
-          _timesRow(
-              LucideIcons.sunrise,
-              station.departures.length == 1 ? 'موعد المرور للذهاب' : 'مواعيد المرور للذهاب',
-              list(station.departures.map((d) => d.time)),
-              const Color(0xFF15803D)),
-          if (station.returns.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            _timesRow(
-                LucideIcons.sunset,
-                station.returns.length == 1 ? 'العودة تتحرك من الجامعة' : 'رحلات العودة تتحرك من الجامعة',
-                list(station.returns.map((r) => r.start)),
-                const Color(0xFFB97812)),
-          ],
-        ],
-      ]),
+      ),
     );
   }
-
-  Widget _timesRow(IconData icon, String label, String times, Color color) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text.rich(TextSpan(children: [
-            TextSpan(
-                text: '$label: ',
-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-            TextSpan(
-                text: times,
-                style: AppTextStyles.bodyMedium.copyWith(color: color, fontWeight: FontWeight.w700)),
-          ])),
-        ),
-      ]);
 
   // ── 4. Period ──────────────────────────────────────────────────────
 
   Widget _periodStep(SaleCatalog catalog, SubscriptionDraft draft) {
     final line = catalog.line(draft.lineId)!;
+    final station = line.station(draft.stationId)!;
+    final options = _ordered(line.options);
     final daily = widget.allowDaily && line.dailyEnabled;
+    final first = line.option(options.where((o) => o.option == 'first').firstOrNull?.key);
+    final second = line.option(options.where((o) => o.option == 'second').firstOrNull?.key);
+    // What paying both semesters at once saves, when both single prices are on sale.
+    final saving = (first == null || second == null) ? null : first.price + second.price;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _heading('اختر فترة الاشتراك'),
-      if (line.options.isEmpty && !daily)
+      _stepTitle(DraftStep.period, 'اختر فترة الاشتراك', previous: station.name),
+      if (options.isEmpty && !daily)
         _message('لا توجد فترة متاحة للاشتراك الآن على هذا الخط.', retry: true)
       else ...[
-        // The periods the company sells now, side by side.
-        if (line.options.isNotEmpty)
-          LayoutBuilder(builder: (context, box) {
-            final perRow = line.options.length > 3 ? 2 : line.options.length;
-            final width = (box.maxWidth - 10 * (perRow - 1)) / perRow;
-            return Wrap(spacing: 10, runSpacing: 10, children: [
-              for (final option in line.options)
-                SizedBox(width: width, child: _optionCard(draft, option)),
-            ]);
-          }),
+        if (options.isNotEmpty)
+          IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (var i = 0; i < options.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(child: _optionCard(draft, options[i], pairPrice: saving)),
+              ],
+            ]),
+          ),
         if (daily) ...[
           const SizedBox(height: 10),
-          _choiceCard(
+          InkWell(
             key: const Key('option-daily'),
-            selected: draft.isDaily,
-            onTap: () => setState(() => _draft = draft.pickOption(SubscriptionDraft.dailyKey)),
-            child: Row(children: [
-              Icon(draft.isDaily ? LucideIcons.circleCheck : LucideIcons.wallet,
-                  size: 20, color: draft.isDaily ? _brand : AppColors.textSecondary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('يوم واحد', style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-                  Text('الدفع نقداً في الباص',
-                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-                ]),
-              ),
-              Text(_money(line.dailyPrice),
-                  style: AppTextStyles.titleMedium.copyWith(color: _brand)),
-            ]),
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _choose(draft.pickOption(SubscriptionDraft.dailyKey), DraftStep.review),
+            child: Ink(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+              decoration: BoxDecoration(
+                  color: draft.isDaily ? const Color(0xFFEAF4FB) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                      color: draft.isDaily ? _brand : const Color(0xFFE6EEF3),
+                      width: draft.isDaily ? 1.5 : 1)),
+              child: Row(children: [
+                Expanded(
+                  child: Text('يوم واحد · الدفع نقداً في الباص',
+                      style: AppTextStyles.labelSmall.copyWith(fontWeight: FontWeight.bold)),
+                ),
+                Text(_money(line.dailyPrice),
+                    style: AppTextStyles.titleMedium.copyWith(color: _brand)),
+              ]),
+            ),
           ),
         ],
       ],
-      _next('التالي', draft.optionKey == null ? null : () => _go(DraftStep.review)),
     ]);
   }
 
-  Widget _optionCard(SubscriptionDraft draft, SaleOption option) {
+  Widget _optionCard(SubscriptionDraft draft, SaleOption option, {double? pairPrice}) {
     final selected = draft.optionKey == option.key;
+    final saved = option.option == 'both' && pairPrice != null ? pairPrice - option.price : 0.0;
     return InkWell(
       key: Key('option-${option.option}'),
       borderRadius: BorderRadius.circular(16),
-      onTap: () => setState(() => _draft = draft.pickOption(option.key)),
+      onTap: () => _choose(draft.pickOption(option.key), DraftStep.review),
       child: Ink(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
         decoration: BoxDecoration(
             color: selected ? const Color(0xFFEAF4FB) : Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: selected ? _brand : const Color(0xFFE6EEF3), width: selected ? 1.6 : 1)),
-        child: Column(children: [
+                color: selected ? _brand : const Color(0xFFE6EEF3), width: selected ? 1.5 : 1)),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(option.title,
               textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: _ink, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(_money(option.price),
-              style: AppTextStyles.titleMedium.copyWith(color: _brand)),
-          if (option.isUpcoming) ...[
-            const SizedBox(height: 6),
-            Text('الفترة القادمة',
+              style: AppTextStyles.labelSmall.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(_money(option.price),
+                style: AppTextStyles.titleMedium.copyWith(color: _brand)),
+          ),
+          if (saved > 0 || option.isUpcoming) ...[
+            const SizedBox(height: 4),
+            Text(saved > 0 ? 'وفّر ${_money(saved)}' : 'الفترة القادمة',
                 textAlign: TextAlign.center,
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: const Color(0xFF3F51B5), fontWeight: FontWeight.w600)),
+                style: AppTextStyles.labelSmall.copyWith(
+                    color: saved > 0 ? const Color(0xFF15803D) : const Color(0xFF3F51B5),
+                    fontWeight: FontWeight.w600)),
           ],
         ]),
       ),
@@ -532,25 +622,30 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
     final option = draft.isDaily ? null : line.option(draft.optionKey);
     final amount = option?.price ?? line.dailyPrice;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _heading('راجع اختياراتك', 'يمكنك تعديل أي اختيار قبل التأكيد.'),
+      _stepTitle(DraftStep.review, 'راجع اختياراتك', previous: option?.title ?? 'يوم واحد'),
       Container(
-        padding: const EdgeInsets.fromLTRB(16, 6, 8, 14),
-        decoration: BasakUi.card(),
+        padding: const EdgeInsets.fromLTRB(17, 8, 8, 17),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(color: Color(0x0B17384A), blurRadius: 15, offset: Offset(0, 5))
+            ]),
         child: Column(children: [
           _reviewRow(LucideIcons.building2, 'شركة النقل', company.name, DraftStep.company),
           _reviewRow(LucideIcons.busFront, 'الخط', line.name, DraftStep.line),
           _reviewRow(LucideIcons.graduationCap, 'الجامعة', line.university ?? '—', null),
           _reviewRow(LucideIcons.mapPin, 'محطة الصعود', station.name, DraftStep.station),
-          _reviewRow(LucideIcons.calendarDays, 'الفترة',
+          _reviewRow(LucideIcons.calendarDays, 'فترة الاشتراك',
               option?.title ?? 'يوم واحد (نقداً في الباص)', DraftStep.period),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Container(
-            margin: const EdgeInsetsDirectional.only(end: 8),
-            padding: const EdgeInsets.all(13),
+            margin: const EdgeInsetsDirectional.only(end: 9),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
                 color: const Color(0xFFF1F6FB), borderRadius: BorderRadius.circular(13)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Expanded(child: Text('المبلغ', style: AppTextStyles.bodyMedium)),
+            child: Row(children: [
+              Expanded(child: Text('المبلغ المطلوب', style: AppTextStyles.bodyMedium)),
               Text(_money(amount),
                   key: const Key('review-amount'),
                   style: AppTextStyles.titleLarge.copyWith(color: _brand)),
@@ -558,54 +653,53 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           ),
         ]),
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 24),
+      ElevatedButton(
+        key: const Key('flow-confirm'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _brand,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        onPressed: _submitting ? null : () => _confirm(catalog),
+        child: _submitting
+            ? const CircularProgressIndicator(color: Colors.white)
+            : Text(draft.isDaily ? 'تأكيد اشتراك اليوم' : 'تأكيد والذهاب للدفع'),
+      ),
+      const SizedBox(height: 8),
       Text(
           draft.isDaily
-              ? 'بعد التأكيد يُفعّل اشتراك اليوم مباشرة وتدفع نقداً للمشرف في الباص.'
-              : 'بعد التأكيد يُنشأ طلب الاشتراك وتنتقل للدفع، ولا يمكن تغيير هذه الاختيارات بعدها.',
+              ? 'يُفعّل اشتراك اليوم مباشرة، وتدفع نقداً للمشرف في الباص.'
+              : 'بعد التأكيد لا يمكن تغيير هذه الاختيارات.',
+          textAlign: TextAlign.center,
           style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-      Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: ElevatedButton(
-          key: const Key('flow-confirm'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _brand,
-            foregroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(52),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-          onPressed: _submitting ? null : () => _confirm(catalog),
-          child: _submitting
-              ? const SizedBox.square(
-                  dimension: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-              : Text(draft.isDaily ? 'تأكيد اشتراك اليوم' : 'تأكيد والانتقال للدفع'),
-        ),
-      ),
     ]);
   }
 
   Widget _reviewRow(IconData icon, String label, String value, DraftStep? edit) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: 1),
         child: Row(children: [
-          Icon(icon, size: 18, color: _brand),
-          const SizedBox(width: 9),
+          Icon(icon, size: 17, color: _brand),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 92,
+            child: Text(label,
+                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+          ),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label,
-                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-              Text(value,
-                  style: AppTextStyles.bodyMedium.copyWith(color: _ink, fontWeight: FontWeight.w700)),
-            ]),
+            child: Text(value,
+                style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
           ),
           if (edit != null)
             TextButton(
               key: Key('review-edit-${edit.name}'),
+              style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 40), padding: const EdgeInsets.symmetric(horizontal: 8)),
               onPressed: _submitting ? null : () => _go(edit),
               child: const Text('تعديل'),
             )
           else
-            const SizedBox(height: 48),
+            const SizedBox(width: 48, height: 40),
         ]),
       );
 }

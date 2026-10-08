@@ -235,9 +235,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(open.isEmpty ? 'اشتراك جديد' : 'الاشتراك في فترة أخرى',
-              style: AppTextStyles.displayMedium.copyWith(color: const Color(0xFF17384A))),
-          const SizedBox(height: 14),
           PurchaseFlow(
             // A new flow each time it is opened, starting from the offered choices.
             key: ValueKey(_buyingFrom),
@@ -275,7 +272,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           ],
           const SizedBox(height: 12),
           if (active) ..._approvedState(sub) else ..._paymentState(sub),
-          _payNextCard(sub),
+          // Offered once this subscription is paid, not while a payment is open.
+          if (active) _payNextCard(sub),
           if (history.isNotEmpty) ...[
             const SizedBox(height: 18),
             Text('اشتراكات منتهية', style: AppTextStyles.titleMedium),
@@ -476,7 +474,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                       optionKey: option.key);
                   _buying = true;
                 }),
-                child: Text('${option.title} · ${ReceiptCard.money(option.price)}'),
+                child: Text('${option.title} · ${formatMoney(option.price)}'),
               ),
             ),
           ),
@@ -522,7 +520,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
-                child: Text(sub.routeTitle, style: AppTextStyles.titleLarge)),
+                child: Text(sub.boardingTitle, style: AppTextStyles.titleLarge)),
             const SizedBox(width: 8),
             _statusPill(
                 active
@@ -534,16 +532,21 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                             : 'بانتظار الدفع',
                 active)
           ]),
-          if ((sub.companyName ?? '').isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(sub.companyName!,
-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          ],
+          const SizedBox(height: 4),
+          Text('محطة الصعود',
+              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
           const Divider(height: 22),
-          _summaryLine(LucideIcons.mapPin, 'محطة الصعود',
-              sub.stationName ?? 'غير محددة'),
+          if (sub.destination != null) ...[
+            _summaryLine(LucideIcons.graduationCap, 'الجامعة', sub.destination!),
+            const SizedBox(height: 10),
+          ],
+          _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
+          if ((sub.companyName ?? '').isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
+          ],
           const SizedBox(height: 10),
-          _summaryLine(LucideIcons.calendarDays, 'الفترة', sub.periodName),
+          _summaryLine(LucideIcons.calendarDays, 'فترة الاشتراك', sub.periodName),
           if (active && sub.endDate != null) ...[
             const SizedBox(height: 10),
             _summaryLine(LucideIcons.calendarCheck2, 'صالح حتى', ReceiptCard.day(sub.endDate)),
@@ -568,7 +571,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                           key: const Key('amount-label'),
                           style: AppTextStyles.bodyMedium),
                     ),
-                    Text(ReceiptCard.money(sub.price),
+                    Text(formatMoney(sub.price),
                         key: const Key('amount-value'),
                         style: AppTextStyles.titleLarge
                             .copyWith(color: const Color(0xFF00658D)))
@@ -581,13 +584,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       Row(children: [
         Icon(icon, size: 17, color: const Color(0xFF00658D)),
         const SizedBox(width: 8),
-        Expanded(
+        SizedBox(
+            width: 96,
             child: Text(label,
                 style: AppTextStyles.labelSmall
                     .copyWith(color: AppColors.textSecondary))),
-        Text(value,
-            style:
-                AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600))
+        Expanded(
+            child: Text(value,
+                textAlign: TextAlign.end,
+                style:
+                    AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)))
       ]);
 
   Widget _statusPill(String label, bool active) => Container(

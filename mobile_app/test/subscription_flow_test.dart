@@ -141,8 +141,9 @@ void main() {
   });
 
   group('titles', () {
-    test('line ← the student\'s own university, wherever it is shown', () {
-      expect(subscription('active').routeTitle, 'منية النصر ← جامعة الدلتا');
+    test('the boarding station is the headline; the university and the line are rows under it', () {
+      expect(subscription('active').boardingTitle, 'البجلات');
+      expect(subscription('active').destination, 'جامعة الدلتا');
       expect(subscription('active').periodName, 'الفصل الأول');
       expect(subscription('active', type: 'yearly', code: 'both').periodName, 'الفصلان معاً');
       // The older spelling still reads correctly.
@@ -187,71 +188,66 @@ void main() {
 
     testWidgets('five steps, forward and back, changing choices: nothing is written until confirm', (tester) async {
       await open(tester);
-      expect(find.text('الشركات التي تخدم جامعة الدلتا'), findsOneWidget);
+      expect(find.text('الخطوة 1 من 5'), findsOneWidget);
       await tap(tester, 'company-c1');
 
-      // Line card: name, own university, counts, range of times, lowest price. Nothing repeated.
+      // Line card: name, own university, stations, range of times, lowest price. Nothing repeated.
       expect(find.text('منية النصر'), findsOneWidget);
-      expect(find.text('إلى جامعة الدلتا'), findsNWidgets(2));
-      expect(find.text('من 8000 ج.م'), findsOneWidget);
+      expect(find.text('جامعة الدلتا'), findsNWidgets(2));
+      expect(find.text('من 8,000 ج.م'), findsOneWidget);
       expect(find.text('أول ذهاب 6:30 ص'), findsOneWidget);
       expect(find.text('آخر عودة 5:30 م'), findsOneWidget);
       expect(find.textContaining('يخدم'), findsNothing);
       await tap(tester, 'line-l1');
 
-      // Station: one time per trip that stops there, returns apart.
-      await tap(tester, 'station-s1');
-      expect(find.textContaining('7:00 ص · 9:00 ص', findRichText: true), findsOneWidget);
-      expect(find.textContaining('3:00 م', findRichText: true), findsOneWidget);
+      // Station: under each name, one time per trip that stops there.
+      expect(find.text('7:00 ص · 9:00 ص'), findsOneWidget);
+      expect(find.text('7:10 ص'), findsOneWidget);
       await tap(tester, 'station-s2');
-      expect(find.textContaining('7:10 ص', findRichText: true), findsOneWidget);
-      expect(find.textContaining('9:00 ص', findRichText: true), findsNothing);
-      await tap(tester, 'flow-next');
 
-      // Period: exactly what is on sale, each with its price, and no dates.
+      // Period: exactly what is on sale, in a fixed order, each with its price, and no dates.
+      expect(find.text('الخطوة 4 من 5'), findsOneWidget);
       expect(find.text('الفصل الأول'), findsOneWidget);
       expect(find.text('الفصل الثاني'), findsOneWidget);
       expect(find.text('الفصلان معاً'), findsOneWidget);
       expect(find.text('الفصل الصيفي'), findsNothing);
-      expect(find.text('8500 ج.م'), findsOneWidget);
+      expect(tester.getCenter(find.text('الفصل الأول')).dx, greaterThan(tester.getCenter(find.text('الفصل الثاني')).dx));
+      expect(tester.getCenter(find.text('الفصل الثاني')).dx, greaterThan(tester.getCenter(find.text('الفصلان معاً')).dx));
+      expect(find.text('8,500 ج.م'), findsOneWidget);
+      expect(find.text('وفّر 1,500 ج.م'), findsOneWidget);
       expect(find.textContaining('2026'), findsNothing);
       expect(find.textContaining('2027'), findsNothing);
       await tap(tester, 'option-second');
-      await tap(tester, 'flow-next');
 
-      // Review: every choice once, the amount once.
-      expect(find.text('8500 ج.م'), findsOneWidget);
+      // Review: every choice, the amount once.
+      expect(find.text('8,500 ج.م'), findsOneWidget);
       expect(find.text('البجلات'), findsOneWidget);
       expect(find.text('المستقبل'), findsOneWidget);
 
-      // Back to the station, change it, come forward again: the period is kept.
+      // Back to the station, change it: the period is kept.
       await tap(tester, 'review-edit-station');
       await tap(tester, 'station-s1');
-      await tap(tester, 'flow-next');
-      await tap(tester, 'flow-next');
+      await tap(tester, 'flow-step-review');
       expect(find.text('ميت تمامة'), findsOneWidget);
-      expect(find.text('8500 ج.م'), findsOneWidget);
+      expect(find.text('8,500 ج.م'), findsOneWidget);
 
-      // Back step by step to the line, pick another line: its missing station is asked again.
+      // Back step by step to the line, pick another line: its station is asked again.
       await tap(tester, 'flow-back');
       await tap(tester, 'flow-back');
       await tap(tester, 'flow-back');
       await tap(tester, 'line-l2');
-      expect(find.text('اختر محطة الصعود'), findsOneWidget);
+      expect(find.text('٣. اختر محطة الصعود'), findsOneWidget);
       await tap(tester, 'station-s9');
-      await tap(tester, 'flow-next');
       await tap(tester, 'option-first');
-      await tap(tester, 'flow-next');
-      expect(find.text('6000 ج.م'), findsOneWidget);
+      expect(find.text('6,000 ج.م'), findsOneWidget);
 
-      // And change the period from the progress bar.
+      // And jump from the progress bar to change the line and the period.
       await tap(tester, 'flow-step-line');
       await tap(tester, 'line-l1');
       await tap(tester, 'station-s2');
-      await tap(tester, 'flow-next');
+      await tap(tester, 'flow-step-period');
       await tap(tester, 'option-both');
-      await tap(tester, 'flow-next');
-      expect(find.text('15000 ج.م'), findsOneWidget);
+      expect(find.text('15,000 ج.م'), findsOneWidget);
 
       expect(created, isEmpty, reason: 'moving between the steps must not create or change anything');
 
@@ -265,8 +261,8 @@ void main() {
       await open(tester,
           initial: const SubscriptionDraft(companyId: 'c1', lineId: 'l1', stationId: 's2', optionKey: 'second:2026'),
           allowDaily: false);
-      expect(find.text('راجع اختياراتك'), findsOneWidget);
-      expect(find.text('8500 ج.م'), findsOneWidget);
+      expect(find.text('٥. راجع اختياراتك'), findsOneWidget);
+      expect(find.text('8,500 ج.م'), findsOneWidget);
       // A student who already holds a subscription is not offered a cash day ride.
       await tap(tester, 'review-edit-period');
       expect(find.byKey(const Key('option-daily')), findsNothing);
@@ -303,10 +299,12 @@ void main() {
     testWidgets('payment: the amount once, one block of notes, and no way to change the selection', (tester) async {
       await open(tester, subscription('pending_payment'));
       expect(find.text('إتمام الدفع'), findsOneWidget);
-      expect(find.text('منية النصر ← جامعة الدلتا'), findsOneWidget);
+      // The boarding station is the headline; the line is a row under it.
       expect(find.text('البجلات'), findsOneWidget);
+      expect(find.text('منية النصر'), findsOneWidget);
+      expect(find.byKey(const Key('next-period')), findsNothing);
       expect(find.text('المبلغ المطلوب'), findsOneWidget);
-      expect(find.text('8000 ج.م'), findsOneWidget);
+      expect(find.text('8,000 ج.م'), findsOneWidget);
       expect(find.byKey(const Key('payment-notes')), findsOneWidget);
       expect(find.textContaining('صورة واضحة'), findsOneWidget);
       // The method's own note joins the same block once the method is chosen.
@@ -315,7 +313,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsOneWidget);
       expect(find.text('almostaqbal@instapay'), findsOneWidget);
-      expect(find.text('8000 ج.م'), findsOneWidget);
+      expect(find.text('8,000 ج.م'), findsOneWidget);
       // The selection is fixed once the request exists.
       expect(find.byKey(const Key('flow-back')), findsNothing);
       expect(find.textContaining('تعديل'), findsNothing);
@@ -344,7 +342,7 @@ void main() {
       expect(find.text('اشتراكك مفعّل'), findsOneWidget);
       expect(find.text('المبلغ المطلوب'), findsNothing);
       expect(find.text('المبلغ المدفوع'), findsOneWidget);
-      expect(find.text('8000 ج.م'), findsOneWidget);
+      expect(find.text('8,000 ج.م'), findsOneWidget);
       expect(find.byKey(const Key('payment-methods')), findsNothing);
       expect(find.byKey(const Key('payment-notes')), findsNothing);
       expect(find.text('إيصال التحويل'), findsNothing);
@@ -353,7 +351,7 @@ void main() {
       expect(find.byKey(const Key('receipt-pdf')), findsOneWidget);
       expect(find.byKey(const Key('receipt-image')), findsOneWidget);
       // The next period, when the company sells it in advance, with its own price.
-      expect(find.text('الفصل الثاني · 8500 ج.م'), findsOneWidget);
+      expect(find.text('الفصل الثاني · 8,500 ج.م'), findsOneWidget);
     });
 
     testWidgets('approved before receipts existed: the summary, without the buttons', (tester) async {

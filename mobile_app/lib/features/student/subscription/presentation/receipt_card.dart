@@ -31,7 +31,10 @@ class ReceiptCard extends StatelessWidget {
   static TextStyle _text(double size, Color color, [FontWeight weight = FontWeight.w400]) =>
       TextStyle(fontFamily: 'ReadexPro', fontSize: size, color: color, fontWeight: weight, height: 1.35);
 
-  static String money(double value) => '${value.toStringAsFixed(0)} ج.م';
+  static String money(double value) {
+    final grouped = value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+    return '$grouped ج.م';
+  }
 
   /// "8 أكتوبر 2026" from an ISO date or timestamp.
   static String day(String? iso) {
