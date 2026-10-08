@@ -3,8 +3,9 @@ import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
+import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
 import {
-  ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
+  ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, GraduationCap, MapPin, Pencil,
   Plus, Power, Save, Trash2, UserCheck, Wand2, X,
 } from 'lucide-react';
 
@@ -23,7 +24,9 @@ interface LineRow {
   stations: StationRow[];
   line_trips: TripRow[];
   line_universities: { university_id: string }[];
+  line_period_prices: { option: SaleOption; price: number; is_enabled: boolean }[];
 }
+type PriceDraft = Record<SaleOption, { price: string; enabled: boolean }>;
 interface Option { id: string; name: string }
 
 /** Editor state — stations by position; trip stop times keyed by station key. */
@@ -36,7 +39,9 @@ interface LineDraft {
   id?: string; company_id: string; name: string; origin_name: string; destination_university_id: string;
   /** Universities served by the line (shared route, stored once). */
   university_ids: string[];
-  price_termly: string; price_yearly: string; price_daily: string; is_active: boolean;
+  /** One price and one switch per subscription option. */
+  prices: PriceDraft;
+  price_daily: string; is_active: boolean;
   stations: StationDraft[]; trips: TripDraft[];
 }
 
@@ -52,14 +57,6 @@ const addMinutes = (t: string, minutes: number) => {
   const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
-/**
- * Return trips may leave every station time empty: the trip then serves all the
- * line's stations and students see when it leaves the university. It is saved
- * with each stop at the start time (what the app and the server match on), and
- * read back as "no times set".
- */
-const stopTimesUnset = (direction: Direction, start: string, stopTimes: string[]) =>
-  direction === 'return' && stopTimes.length > 0 && stopTimes.every((t) => hhmm(t) === hhmm(start));
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
 const activeStations = (line: LineRow) =>
@@ -103,15 +100,20 @@ const draftFromLine = (line: LineRow): LineDraft => {
     university_ids: (line.line_universities ?? []).map((u) => u.university_id).length
       ? (line.line_universities ?? []).map((u) => u.university_id)
       : (line.destination_university_id ? [line.destination_university_id] : []),
-    price_termly: String(line.price_termly), price_yearly: String(line.price_yearly), price_daily: String(line.price_daily),
+    prices: Object.fromEntries(SALE_OPTIONS.map((o) => {
+      const row = (line.line_period_prices ?? []).find((p) => p.option === o);
+      return [o, row ? { price: String(row.price), enabled: row.is_enabled }
+        : { price: String(o === 'both' ? line.price_yearly : line.price_termly), enabled: o === 'first' || o === 'second' }];
+    })) as PriceDraft,
+    price_daily: String(line.price_daily),
     is_active: line.is_active, stations,
     trips: (line.line_trips ?? []).filter((t) => t.is_active)
       .sort((a, b) => a.direction.localeCompare(b.direction) || a.start_time.localeCompare(b.start_time))
       .map((t) => ({
         key: t.id, id: t.id, direction: t.direction, label: t.label || '', start_time: hhmm(t.start_time),
         arrival_time: hhmm(t.arrival_time), university_id: t.university_id || '', is_active: t.is_active,
-        times: stopTimesUnset(t.direction, t.start_time, (t.line_trip_stops ?? []).map((s) => s.stop_time))
-          ? {}
+        // The way back has no station times: only when the bus leaves the university.
+        times: t.direction === 'return' ? {}
           : Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
       })),
   };
@@ -119,7 +121,11 @@ const draftFromLine = (line: LineRow): LineDraft => {
 
 const emptyDraft = (companyId: string): LineDraft => ({
   company_id: companyId, name: '', origin_name: '', destination_university_id: '', university_ids: [],
-  price_termly: '3500', price_yearly: '6500', price_daily: '50', is_active: true,
+  prices: {
+    first: { price: '3500', enabled: true }, second: { price: '3500', enabled: true },
+    both: { price: '6500', enabled: false }, summer: { price: '0', enabled: false },
+  },
+  price_daily: '50', is_active: true,
   stations: [{ key: newKey(), name: '' }],
   trips: [emptyTrip('departure', '07:00'), emptyTrip('return', '14:00')],
 });
@@ -141,7 +147,8 @@ export const LinesPage: React.FC = () => {
         .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
           is_active, stations(id, name, order_index, is_active),
           line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
-            line_trip_stops(station_id, stop_time)), line_universities(university_id)`)
+            line_trip_stops(station_id, stop_time)), line_universities(university_id),
+          line_period_prices(option, price, is_enabled)`)
         .eq('company_id', company.id).order('name'),
       supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
       supabase.from('supervisors').select('id, full_name').eq('company_id', company.id).order('full_name'),
@@ -194,7 +201,7 @@ export const LinesPage: React.FC = () => {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">إدارة خطوط السير</h1>
-          <p className="text-sm text-slate-500">كل خط = نقطة بداية ← محطات بالترتيب ← الجامعة، وله رحلات ذهاب وعودة بموعد لكل محطة</p>
+          <p className="text-sm text-slate-500">كل خط له اسم قصير، الجامعات التي يخدمها، محطات الصعود، ورحلات الذهاب ومواعيد العودة من الجامعة</p>
         </div>
         <button
           onClick={() => setDraft(emptyDraft(defaultCompany))}
@@ -235,20 +242,15 @@ export const LinesPage: React.FC = () => {
                         {line.is_active ? 'نشط' : 'معطّل'}
                       </span>
                     </div>
-                    {/* Route: origin → stations → destination */}
+                    {/* Boarding stations in order; each student ends at their own university */}
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 font-bold text-blue-700"><Flag className="h-3 w-3" />{line.origin_name || line.name}</span>
-                      {stations.map((s) => (
-                        <React.Fragment key={s.id}>
-                          <span className="text-slate-300">←</span>
-                          <span className="rounded-lg bg-slate-50 px-2 py-1 text-slate-600">{s.name}</span>
-                        </React.Fragment>
+                      <span className="text-slate-400">المحطات:</span>
+                      {stations.map((st) => (
+                        <span key={st.id} className="rounded-lg bg-slate-50 px-2 py-1 text-slate-600">{st.name}</span>
                       ))}
-                      <span className="text-slate-300">←</span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 font-bold text-indigo-700"><GraduationCap className="h-3 w-3" />{uniName(line.destination_university_id) || 'الوجهة غير محددة'}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                      <span className="text-slate-400">الجامعات:</span>
+                      <span className="text-slate-400">الوجهة (الجامعات):</span>
                       {(line.line_universities ?? []).length === 0
                         ? <span className="rounded-lg bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">غير محددة — عدّل الخط واختر الجامعات</span>
                         : (line.line_universities ?? []).map((u) => (
@@ -259,8 +261,9 @@ export const LinesPage: React.FC = () => {
                       <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{dep.length} رحلة ذهاب</span>
                       <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">{ret.length} رحلة عودة</span>
                       <span>{[
-                        `ترم ${line.price_termly} ج.م`,
-                        switches && !switches.annual_effective ? 'سنوي معطّل' : `سنوي ${line.price_yearly} ج.م`,
+                        ...SALE_OPTIONS.map((o) => (line.line_period_prices ?? []).find((p) => p.option === o))
+                          .filter((p) => p?.is_enabled && !(p.option === 'both' && switches && !switches.annual_effective))
+                          .map((p) => `${optionName[p!.option]} ${p!.price} ج.م`),
                         switches && !switches.daily_effective ? 'يومي معطّل' : `يومي ${line.price_daily} ج.م`,
                       ].join(' · ')}</span>
                       <span className="inline-flex items-center gap-1"><UserCheck className="h-3.5 w-3.5" />{sups.length ? sups.join('، ') : 'بدون مشرف (من صفحة المشرفين)'}</span>
@@ -306,7 +309,7 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
   const [tab, setTab] = useState<Direction>('departure');
   const stations = activeStations(line);
   const trips = tripsOf(line, tab).filter((t) => t.is_active);
-  const ordered = tab === 'departure' ? stations : [...stations].reverse();
+  const ordered = stations;
   return (
     <div className="border-t border-slate-100 bg-slate-50/50 p-5">
       <div className="mb-4 inline-flex rounded-xl bg-white p-1 shadow-sm">
@@ -323,7 +326,6 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trips.map((trip) => {
             const times = Object.fromEntries((trip.line_trip_stops ?? []).map((s) => [s.station_id, s.stop_time]));
-            const unset = stopTimesUnset(trip.direction, trip.start_time, Object.values(times));
             return (
               <div key={trip.id} className="rounded-2xl border-r-4 border-emerald-400 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -335,18 +337,22 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
                     {trip.university_id ? uniName(trip.university_id) : 'كل الجامعات'}
                   </span>
                 </div>
-                <ol className="relative space-y-2 border-r-2 border-emerald-100 pr-4">
-                  {ordered.map((s) => (
-                    <li key={s.id} className="relative flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                      <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
-                      <span className="text-slate-700">{s.name}</span>
-                      <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
-                        {times[s.id] ? (unset ? 'يمر' : fmt12(times[s.id])) : 'لا يقف'}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                {trip.arrival_time && <p className="mt-3 text-xs text-slate-500">الوصول: {fmt12(trip.arrival_time)}</p>}
+                {tab === 'return' ? (
+                  <p className="text-xs text-slate-500">يتحرك الباص من الجامعة في هذا الموعد ويعيد كل طالب إلى محطته.</p>
+                ) : (
+                  <ol className="relative space-y-2 border-r-2 border-emerald-100 pr-4">
+                    {ordered.map((s) => (
+                      <li key={s.id} className="relative flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
+                        <span className="text-slate-700">{s.name}</span>
+                        <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
+                          {times[s.id] ? fmt12(times[s.id]) : 'لا يقف'}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {tab === 'departure' && trip.arrival_time && <p className="mt-3 text-xs text-slate-500">الوصول: {fmt12(trip.arrival_time)}</p>}
               </div>
             );
           })}
@@ -375,21 +381,40 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
 
   // A subscription type the company (or the platform) has switched off: its
   // price is locked here; the saved price stays as it was.
-  const [offered, setOffered] = useState({ annual: true, daily: true });
+  const [offered, setOffered] = useState({ daily: true });
+  // The company is the ceiling: an option it does not sell stays off for students
+  // whatever the line says, so it is shown greyed here with the reason.
+  const [companySells, setCompanySells] = useState<Record<SaleOption, boolean> | null>(null);
   useEffect(() => {
     if (!d.company_id) return;
     let live = true;
     void supabase.rpc('get_subscription_switches', { p_company_id: d.company_id }).then(({ data }) => {
-      const s = data as { annual_effective?: boolean; daily_effective?: boolean } | null;
-      if (live && s) setOffered({ annual: !!s.annual_effective, daily: !!s.daily_effective });
+      const s = data as { daily_effective?: boolean } | null;
+      if (live && s) setOffered({ daily: !!s.daily_effective });
+    });
+    void supabase.rpc('get_subscription_settings', { p_company_id: d.company_id }).then(({ data }) => {
+      const rows = ((data as { sale_periods?: SaleRow[] } | null)?.sale_periods ?? []);
+      if (live && data) {
+        setCompanySells(Object.fromEntries(SALE_OPTIONS.map((o) => {
+          const row = rows.find((r) => r.option === o);
+          return [o, !!row && row.reason !== 'company_not_selling' && row.reason !== 'company_inactive'];
+        })) as Record<SaleOption, boolean>);
+      }
     });
     return () => { live = false; };
   }, [d.company_id]);
+  const patchPrice = (o: SaleOption, p: Partial<PriceDraft[SaleOption]>) =>
+    setD((cur) => ({ ...cur, prices: { ...cur.prices, [o]: { ...cur.prices[o], ...p } } }));
+  const priceOf = (o: SaleOption) => Number(d.prices[o].price) || 0;
+  const bothWarning = !d.prices.both.enabled || priceOf('both') <= 0 ? null
+    : priceOf('both') < Math.max(priceOf('first'), priceOf('second'))
+      ? 'سعر الفصلين معاً أقل من سعر فصل واحد. راجع السعر.'
+      : priceOf('both') > priceOf('first') + priceOf('second')
+        ? 'سعر الفصلين معاً أكبر من مجموع الفصلين. راجع السعر.' : null;
 
   const patchTrip = (key: string, p: Partial<TripDraft>) =>
     setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
   const routeFor = (direction: Direction) => (direction === 'departure' ? d.stations : [...d.stations].reverse());
-  const destName = universities.find((u) => u.id === (d.destination_university_id || d.university_ids[0]))?.name || 'الجامعة (الوجهة)';
 
   // Stations
   const moveStation = (i: number, delta: number) => setD((cur) => {
@@ -426,13 +451,17 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const save = async () => {
     setError('');
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
+    const noPrice = SALE_OPTIONS.find((o) => d.prices[o].enabled && priceOf(o) <= 0);
+    if (noPrice) { setError(`اكتب سعر «${optionName[noPrice]}» أو عطّله.`); return; }
+    const noReturnTime = d.trips.find((t) => t.direction === 'return' && !t.start_time);
+    if (noReturnTime) { setTab('return'); setError('حدد موعد تحرك كل رحلة عودة من الجامعة.'); return; }
     const noStops = d.trips.find((t) => t.direction === 'departure' && !Object.values(t.times).some(Boolean));
     if (noStops) {
       setTab('departure');
       setError(`رحلة الذهاب ${fmt12(noStops.start_time)}: حدد موعد مرورها على المحطات، فالطلاب يركبون منها.`);
       return;
     }
-    const badTrip = d.trips.find((t) => tripProblem(t, routeFor(t.direction)));
+    const badTrip = d.trips.find((t) => t.direction === 'departure' && tripProblem(t, routeFor(t.direction)));
     if (badTrip) {
       setTab(badTrip.direction);
       setError(`${badTrip.direction === 'departure' ? 'رحلة الذهاب' : 'رحلة العودة'} ${fmt12(badTrip.start_time)}: ${tripProblem(badTrip, routeFor(badTrip.direction))}`);
@@ -443,27 +472,35 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     const payload = {
       id: d.id ?? null,
       company_id: d.company_id,
+      // The short name defaults to where the line starts.
+      // Empty: the server names it after the first station. The start point
+      // and the destination are not entered: the student's station and university are.
       name: d.name.trim(),
-      origin_name: d.origin_name.trim(),
-      destination_university_id: d.destination_university_id || d.university_ids[0] || null,
+      origin_name: '',
+      destination_university_id: null,
       university_ids: d.university_ids,
-      price_termly: Number(d.price_termly), price_yearly: Number(d.price_yearly), price_daily: Number(d.price_daily),
+      // Older clients read these two; the per-option prices below are what is sold.
+      price_termly: priceOf('first'), price_yearly: priceOf('both'), price_daily: Number(d.price_daily),
       is_active: d.is_active,
       stations: stations.map((s) => ({ id: s.id ?? null, name: s.name })),
       trips: d.trips.map((t) => ({
         id: t.id ?? null, direction: t.direction, label: t.label.trim(), start_time: t.start_time,
-        arrival_time: t.arrival_time || null, university_id: t.university_id || null, is_active: t.is_active,
-        stops: t.direction === 'return' && !Object.values(t.times).some(Boolean)
-          // No times set: the trip serves every station (see stopTimesUnset).
-          ? stations.map((_, i) => ({ station_index: i, time: t.start_time }))
+        arrival_time: t.direction === 'departure' ? t.arrival_time || null : null,
+        university_id: t.university_id || null, is_active: t.is_active,
+        // A return trip is a time and a university; it has no stops.
+        stops: t.direction === 'return' ? []
           : Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
             .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
       })),
     };
     setSaving(true);
-    const { error: rpcError } = await supabase.rpc('save_line', { p_line: payload });
+    const { data: lineId, error: rpcError } = await supabase.rpc('save_line', { p_line: payload });
+    if (rpcError) { setSaving(false); setError(rpcError.message); return; }
+    const { error: priceError } = await supabase.from('line_period_prices').upsert(
+      SALE_OPTIONS.map((o) => ({ line_id: lineId as string, option: o, price: priceOf(o), is_enabled: d.prices[o].enabled })),
+      { onConflict: 'line_id,option' });
     setSaving(false);
-    if (rpcError) setError(rpcError.message);
+    if (priceError) setError('تم حفظ الخط لكن تعذر حفظ الأسعار: ' + priceError.message);
     else onSaved();
   };
 
@@ -483,20 +520,15 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-slate-700">١. بيانات الخط</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="text-xs font-semibold text-slate-500">اسم الخط
-                <input value={d.name} onChange={(e) => patch({ name: e.target.value })} placeholder="مثال: منية النصر - جامعة الدلتا" className={`mt-1 ${input}`} />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">نقطة البداية
-                <input value={d.origin_name} onChange={(e) => patch({ origin_name: e.target.value })} placeholder="مثال: منية النصر" className={`mt-1 ${input}`} />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">الوجهة (نهاية المسار)
-                <select value={d.destination_university_id} onChange={(e) => patch({ destination_university_id: e.target.value })} className={`mt-1 ${input}`}>
-                  <option value="">أول جامعة مختارة</option>
-                  {universities.filter((u) => d.university_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
+              <label className="text-xs font-semibold text-slate-500 sm:col-span-2">اسم الخط (قصير)
+                <input value={d.name} maxLength={40} onChange={(e) => patch({ name: e.target.value.replace(/[←→]/g, '') })}
+                  placeholder={d.stations[0]?.name.trim() || 'مثال: منية النصر'} className={`mt-1 ${input}`} />
+                <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                  اسم المنطقة يكفي. إذا تركته فارغاً يأخذ اسم أول محطة. لا تكتب فيه الجامعات: وجهة كل طالب هي جامعته، وبدايته هي المحطة التي يختارها.
+                </span>
               </label>
               <fieldset className="sm:col-span-2 lg:col-span-4">
-                <legend className="text-xs font-semibold text-slate-500">الجامعات التي يخدمها الخط ({d.university_ids.length} مختارة)</legend>
+                <legend className="text-xs font-semibold text-slate-500">وجهة الخط: الجامعات التي يخدمها ({d.university_ids.length} مختارة)</legend>
                 <div className="mt-1 flex flex-wrap gap-2 rounded-xl border border-slate-200 p-2">
                   {universities.map((u) => {
                     const on = d.university_ids.includes(u.id);
@@ -517,14 +549,33 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                   })}
                 </div>
               </fieldset>
-              <label className="text-xs font-semibold text-slate-500">سعر الترم (ج.م)
-                <input type="number" min={0} value={d.price_termly} onChange={(e) => patch({ price_termly: e.target.value })} className={`mt-1 ${input}`} />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">سعر السنوي (ج.م)
-                <input type="number" min={0} value={offered.annual ? d.price_yearly : 0} disabled={!offered.annual}
-                  onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
-                {!offered.annual && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك السنوي معطّل من الإعدادات.</span>}
-              </label>
+              <fieldset className="sm:col-span-2 lg:col-span-4">
+                <legend className="text-xs font-semibold text-slate-500">أسعار الاشتراك لهذا الخط</legend>
+                <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {SALE_OPTIONS.map((o) => {
+                    const sold = companySells ? companySells[o] : true;
+                    const on = d.prices[o].enabled;
+                    return (
+                      <div key={o} className={`rounded-xl border p-3 ${!sold ? 'border-slate-200 bg-slate-50' : on ? 'border-blue-200 bg-blue-50/40' : 'border-slate-200'}`}>
+                        <label className="flex cursor-pointer items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                          {optionName[o]}
+                          <input type="checkbox" checked={on} onChange={(e) => patchPrice(o, { enabled: e.target.checked })} aria-label={`بيع ${optionName[o]} على هذا الخط`} />
+                        </label>
+                        <div className="mt-2 flex items-center gap-1">
+                          <input type="number" min={0} value={d.prices[o].price} disabled={!on}
+                            onChange={(e) => patchPrice(o, { price: e.target.value })}
+                            className={`${input} disabled:bg-slate-100 disabled:text-slate-400`} aria-label={`سعر ${optionName[o]}`} />
+                          <span className="text-[11px] text-slate-400">ج.م</span>
+                        </div>
+                        <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                          {!sold ? 'الشركة لا تبيع هذه الفترة (من الإعدادات)، فلن تظهر للطلاب.' : on ? 'يظهر للطلاب في موعده.' : 'معطّل على هذا الخط.'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {bothWarning && <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">{bothWarning}</p>}
+              </fieldset>
               <label className="text-xs font-semibold text-slate-500">سعر اليومي كاش (ج.م)
                 <input type="number" min={0} value={offered.daily ? d.price_daily : 0} disabled={!offered.daily}
                   onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
@@ -535,9 +586,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
 
           {/* 2. Route */}
           <section className="space-y-3">
-            <h3 className="text-sm font-bold text-slate-700">٢. المسار والمحطات (بالترتيب)</h3>
+            <h3 className="text-sm font-bold text-slate-700">٢. محطات الصعود (بترتيب المسار)</h3>
             <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
-              <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700"><Flag className="h-4 w-4" /> البداية: {d.origin_name || '—'}</div>
               {d.stations.map((s, i) => (
                 <div key={s.key} className="flex items-center gap-2">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-500 shadow-sm">{i + 1}</span>
@@ -554,15 +604,15 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 className="flex items-center gap-1 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-white">
                 <Plus className="h-3.5 w-3.5" /> إضافة محطة
               </button>
-              <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700"><GraduationCap className="h-4 w-4" /> الوجهة: {destName}</div>
+              <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700"><GraduationCap className="h-4 w-4" /> الوجهة: {d.university_ids.map((id) => universities.find((u) => u.id === id)?.name).filter(Boolean).join('، ') || 'اختر الجامعات أعلاه'}</div>
             </div>
           </section>
 
           {/* 3. Trips */}
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-bold text-slate-700">٣. الرحلات ومواعيد المحطات</h3>
-              <label className="flex items-center gap-2 text-xs text-slate-500">
+              <h3 className="text-sm font-bold text-slate-700">٣. الرحلات والمواعيد</h3>
+              <label className={`flex items-center gap-2 text-xs text-slate-500 ${tab === 'return' ? 'invisible' : ''}`}>
                 <Wand2 className="h-4 w-4 text-blue-500" /> التعبئة التلقائية: كل
                 <input type="number" min={0} value={gap} onChange={(e) => setGap(e.target.value)} className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs" />
                 دقيقة بين المحطات
@@ -572,23 +622,46 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
               {(['departure', 'return'] as Direction[]).map((dir) => (
                 <button key={dir} onClick={() => setTab(dir)}
                   className={`rounded-lg px-4 py-1.5 text-xs font-bold ${tab === dir ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>
-                  {dir === 'departure' ? 'رحلات الذهاب' : 'رحلات العودة'} ({d.trips.filter((t) => t.direction === dir).length})
+                  {dir === 'departure' ? 'رحلات الذهاب' : 'العودة من الجامعة'} ({d.trips.filter((t) => t.direction === dir).length})
                 </button>
               ))}
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
               {tripsInTab.map((trip) => (
+                tab === 'return' ? (
                 <div key={trip.key} className="space-y-3 rounded-2xl border border-slate-200 p-4">
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق {tab === 'departure' ? `من ${d.origin_name || 'البداية'}` : `من ${destName}`}
+                    <label className="text-[11px] font-semibold text-slate-500">موعد التحرك من الجامعة
+                      <input type="time" value={trip.start_time} onChange={(e) => patchTrip(trip.key, { start_time: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">من جامعة
+                      <select value={trip.university_id} onChange={(e) => patchTrip(trip.key, { university_id: e.target.value })} className={`mt-1 ${input}`}>
+                        <option value="">كل جامعات الخط</option>
+                        {universities.filter((u) => d.university_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="col-span-2 text-[11px] font-semibold text-slate-500">اسم الرحلة (اختياري)
+                      <input value={trip.label} placeholder="مثال: عودة الظهر" onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <button onClick={() => duplicate(trip)} className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-600"><Copy className="h-3 w-3" /> نسخ الموعد</button>
+                    <button onClick={() => setD((cur) => ({ ...cur, trips: cur.trips.filter((t) => t.key !== trip.key) }))}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /> حذف</button>
+                  </div>
+                </div>
+                ) : (
+                <div key={trip.key} className="space-y-3 rounded-2xl border border-slate-200 p-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] font-semibold text-slate-500">موعد الانطلاق
                       <input type="time" value={trip.start_time} onChange={(e) => patchTrip(trip.key, { start_time: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">موعد الوصول (اختياري)
                       <input type="time" value={trip.arrival_time} onChange={(e) => patchTrip(trip.key, { arrival_time: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">اسم الرحلة (اختياري)
-                      <input value={trip.label} placeholder={tab === 'departure' ? 'مثال: أول رحلة صباحية' : 'مثال: عودة الظهر'} onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
+                      <input value={trip.label} placeholder="مثال: أول رحلة صباحية" onChange={(e) => patchTrip(trip.key, { label: e.target.value })} className={`mt-1 ${input}`} />
                     </label>
                     <label className="text-[11px] font-semibold text-slate-500">الجامعة
                       <select value={trip.university_id} onChange={(e) => patchTrip(trip.key, { university_id: e.target.value })} className={`mt-1 ${input}`}>
@@ -597,11 +670,6 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       </select>
                     </label>
                   </div>
-                  {tab === 'return' && !Object.values(trip.times).some(Boolean) && (
-                    <p className="rounded-xl bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
-                      بدون مواعيد محطات: الرحلة تمر على كل المحطات، والطالب يرى موعد الانطلاق من الجامعة. مواعيد المحطات هنا اختيارية.
-                    </p>
-                  )}
                   <div className="space-y-1.5">
                     {routeFor(tab).map((s) => (
                       <div key={s.key} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
@@ -628,10 +696,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /> حذف الرحلة</button>
                   </div>
                 </div>
+                )
               ))}
               <button onClick={() => setD((cur) => ({ ...cur, trips: [...cur.trips, emptyTrip(tab)] }))}
                 className="flex min-h-[120px] items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50">
-                <Bus className="h-4 w-4" /> إضافة رحلة {tab === 'departure' ? 'ذهاب' : 'عودة'}
+                <Bus className="h-4 w-4" /> {tab === 'departure' ? 'إضافة رحلة ذهاب' : 'إضافة موعد عودة'}
               </button>
             </div>
             {(() => {
@@ -643,7 +712,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 </p>
               );
             })()}
-            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. في رحلات العودة يمكن ترك كل مواعيد المحطات فارغة: تمر الرحلة على كل المحطات. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
+            <p className="text-[11px] text-slate-400">
+              {tab === 'departure'
+                ? 'مواعيد المحطات بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.'
+                : 'العودة تبدأ من جامعة الطالب: حدد موعد تحرك الباص من كل جامعة فقط، ويعود كل طالب إلى محطته. لا توجد محطات للعودة.'}
+            </p>
           </section>
         </div>
 

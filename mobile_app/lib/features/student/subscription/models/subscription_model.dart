@@ -33,6 +33,10 @@ class SubscriptionModel {
   /// University whose trip this subscription rides on (scheduled lines only).
   final String? universityName;
 
+  /// The student's own university: where the line takes them.
+  final String? studentUniversity;
+  final String? companyName;
+
   /// Semester / annual period (configured centrally in academic_terms).
   final String? periodCode;
   final int? academicYear;
@@ -66,6 +70,8 @@ class SubscriptionModel {
     this.supervisorName,
     this.supervisorPhotoPath,
     this.universityName,
+    this.studentUniversity,
+    this.companyName,
     this.periodCode,
     this.academicYear,
     this.periodLabel,
@@ -79,6 +85,29 @@ class SubscriptionModel {
   bool get isPendingReview => status == 'pending_review';
   bool get isRejected => status == 'rejected';
   bool get isDaily => type == 'daily';
+
+  /// The main title on every screen: where the student boards. The line and
+  /// the university are shown under it, each on its own row, so a long line
+  /// name never becomes the headline.
+  String get boardingTitle {
+    final station = (stationName ?? '').trim();
+    return station.isNotEmpty ? station : ((lineName ?? '').trim().isNotEmpty ? lineName!.trim() : 'اشتراكي');
+  }
+
+  /// The student's own university: where the line takes them.
+  String? get destination {
+    final name = (studentUniversity ?? universityName ?? '').trim();
+    return name.isEmpty ? null : name;
+  }
+
+  /// "الفصل الأول", "الفصلان معاً" ... without the year.
+  String get periodName => switch (periodCode) {
+        'first' => 'الفصل الأول',
+        'second' => 'الفصل الثاني',
+        'both' || 'annual' => 'الفصلان معاً',
+        'summer' => 'الفصل الصيفي',
+        _ => type == 'daily' ? 'اشتراك يومي' : (periodLabel ?? 'اشتراك'),
+      };
 
   /// A return stop [time] as shown to the student: its trip's start time.
   String returnShown(String time) => returnStartTimes[_hhmm(time)] ?? time;
@@ -115,9 +144,21 @@ class SubscriptionModel {
     final availableDepartureTimes = stops.isNotEmpty
         ? stopTimes('departure', json['departure_time'])
         : stationTimes(station?['departure_times'] ?? json['departure_time']);
-    final availableReturnTimes = stops.isNotEmpty
-        ? stopTimes('return', json['return_time'])
-        : stationTimes(station?['return_times'] ?? json['return_time']);
+    // The way back starts at the university: its times are the return trips'
+    // own times (the trips this student may ride; RLS filters them).
+    final returnTrips = (line?['line_trips'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((t) => t['direction'] == 'return' && t['is_active'] == true)
+        .toList();
+    final availableReturnTimes = returnTrips.isNotEmpty
+        ? (stationTimes([
+            ...returnTrips.map((t) => t['start_time']),
+            if (json['return_time'] != null) json['return_time'],
+          ]).toSet().toList()
+          ..sort())
+        : stops.isNotEmpty
+            ? stopTimes('return', json['return_time'])
+            : stationTimes(station?['return_times'] ?? json['return_time']);
     final returnStartTimes = <String, String>{
       for (final stop in stops)
         if ((stop['line_trips'] as Map<String, dynamic>?)?['direction'] == 'return' &&
@@ -157,50 +198,14 @@ class SubscriptionModel {
       supervisorName: supervisor?['full_name'] as String?,
       supervisorPhotoPath: supervisor?['profile_image_url'] as String?,
       universityName: university?['name'] as String?,
+      studentUniversity: (json['student'] as Map?)?['university'] as String?,
+      companyName: (line?['companies'] as Map?)?['name'] as String?,
       periodCode: json['period_code'] as String?,
       academicYear: (json['academic_year'] as num?)?.toInt(),
       periodLabel: json['period_label'] as String?,
       periodPhase: json['period_phase'] as String?,
     );
   }
-}
-
-/// A period the student can pay for now (get_purchasable_periods RPC).
-class PurchasablePeriod {
-  final String periodCode;
-  final int academicYear;
-  final String label;
-
-  /// termly | yearly
-  final String subscriptionType;
-  final String startDate;
-  final String endDate;
-
-  /// current | upcoming
-  final String phase;
-
-  PurchasablePeriod({
-    required this.periodCode,
-    required this.academicYear,
-    required this.label,
-    required this.subscriptionType,
-    required this.startDate,
-    required this.endDate,
-    required this.phase,
-  });
-
-  bool get isUpcoming => phase == 'upcoming';
-  String get key => '$periodCode:$academicYear';
-
-  factory PurchasablePeriod.fromJson(Map<String, dynamic> json) => PurchasablePeriod(
-        periodCode: json['period_code'] as String,
-        academicYear: (json['academic_year'] as num).toInt(),
-        label: json['label'] as String? ?? json['name'] as String? ?? '',
-        subscriptionType: json['subscription_type'] as String,
-        startDate: json['start_date'] as String,
-        endDate: json['end_date'] as String,
-        phase: json['phase'] as String? ?? 'current',
-      );
 }
 
 class ReceiptModel {

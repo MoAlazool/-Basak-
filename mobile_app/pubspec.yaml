@@ -1,7 +1,7 @@
 name: basak_mobile
 description: "University Bus Subscription System (باصك - Basak) - Flutter Mobile Client for Students and Supervisors"
 publish_to: "none"
-version: 1.0.5+17
+version: 1.0.6+20
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -36,6 +36,9 @@ dependencies:
   package_info_plus: ^9.0.1
   flutter_local_notifications: ^22.3.1
   timezone: ^0.11.1
+  pdf: ^3.12.0
+  share_plus: ^12.0.2
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -49,6 +52,11 @@ flutter:
     - assets/images/basak_icon.webp
     # Licenses of the bundled fonts below.
     - assets/fonts/READEX_PRO_OFL.txt
+    - assets/fonts/CAIRO_OFL.txt
+    # Receipts as PDF: the PDF library needs a font with Arabic presentation forms.
+    - assets/fonts/Cairo-Regular.ttf
+    - assets/fonts/Cairo-SemiBold.ttf
+    - assets/fonts/Cairo-Bold.ttf
     - assets/fonts/LUCIDE_FLUTTER_LICENSE.txt
 
   fonts:

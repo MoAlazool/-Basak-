@@ -85,6 +85,7 @@ interface TripOption {
 
 interface LineOption {
   id: string; name: string; company_id: string; price_termly: number; price_yearly: number; price_daily: number;
+  line_period_prices?: { option: string; price: number }[];
   stations: StationOption[];
   line_trips: TripOption[];
 }
@@ -172,7 +173,7 @@ export const StudentsPage: React.FC = () => {
     const [uniRes, lineRes] = await Promise.all([
       supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
       supabase.from('lines')
-        .select('id,name,company_id,price_termly,price_yearly,price_daily,stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
+        .select('id,name,company_id,price_termly,price_yearly,price_daily,line_period_prices(option,price),stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
         .eq('company_id', company.id).eq('is_active', true).order('name'),
     ]);
     if (uniRes.error) throw new Error(uniRes.error.message);
@@ -271,6 +272,9 @@ export const StudentsPage: React.FC = () => {
 
   const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
   const annualAvailable = periods.some((p) => p.subscription_type === 'yearly');
+  // Each period has its own price on the line ('annual' is the older name of both).
+  const periodPrice = (code: string) =>
+    selectedLine?.line_period_prices?.find((x) => x.option === (code === 'annual' ? 'both' : code))?.price ?? '—';
   useEffect(() => {
     if (subscriptionType === 'yearly' && periods.length > 0 && !annualAvailable) setSubscriptionType('termly');
     if (subscriptionType === 'daily' && !dailyAvailable) setSubscriptionType('termly');
@@ -495,8 +499,8 @@ export const StudentsPage: React.FC = () => {
           <div>
             <label className="text-xs font-semibold text-slate-500">نوع الاشتراك الأول</label>
             <select value={subscriptionType} onChange={(e) => setSubscriptionType(e.target.value as 'termly' | 'yearly' | 'daily')} className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm">
-              <option value="termly">ترم — {selectedLine?.price_termly ?? '—'} ج.م</option>
-              <option value="yearly" disabled={!annualAvailable}>سنوي — {selectedLine?.price_yearly ?? '—'} ج.م{annualAvailable ? '' : ' (غير مفعّل)'}</option>
+              <option value="termly">فصل دراسي</option>
+              <option value="yearly" disabled={!annualAvailable}>الفصلان معاً{annualAvailable ? '' : ' (غير متاح الآن)'}</option>
               <option value="daily" disabled={!dailyAvailable}>يومي — {selectedLine?.price_daily ?? '—'} ج.م{dailyAvailable ? '' : ' (غير مفعّل)'}</option>
             </select>
           </div>
@@ -508,7 +512,7 @@ export const StudentsPage: React.FC = () => {
                 {periodsForType.length === 0 && <option value="">لا توجد فترة متاحة الآن</option>}
                 {periodsForType.map((p) => (
                   <option key={`${p.period_code}:${p.academic_year}`} value={`${p.period_code}:${p.academic_year}`}>
-                    {p.label} ({p.start_date} ← {p.end_date}){p.phase === 'upcoming' ? ' — دفع مقدم' : ''}
+                    {p.label} — {periodPrice(p.period_code)} ج.م{p.phase === 'upcoming' ? ' — دفع مقدم' : ''}
                   </option>
                 ))}
               </select>

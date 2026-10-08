@@ -100,8 +100,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       _sessionSubscription = SupabaseService.client.auth.onAuthStateChange.listen((change) async {
         if (change.event == AuthChangeEvent.signedOut && state.isAuthenticated) {
-          await OfflineCache.clearStudentPass();
-          await OfflineCache.clearStudentLookups();
+          // Everything saved for this account goes with the session.
+          await OfflineCache.clearAll();
           await SnapshotStore.clear();
           if (mounted) state = const AuthState();
         }
@@ -122,12 +122,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final current = SupabaseService.currentUser;
       if (current != null) {
         UserRole role;
-        try {
-          role = await _repo.detectUserRole(current.id);
-          await OfflineCache.saveSession(current, role.name);
-        } catch (_) {
-          final cachedRole = await OfflineCache.readRoleFor(current.id);
+        // Known from last time: the app opens at once, with or without a
+        // connection, and the role is checked with the server behind it.
+        final cachedRole = await OfflineCache.readRoleFor(current.id).catchError((_) => null);
+        if (cachedRole != null) {
           role = UserRole.fromString(cachedRole);
+          unawaited(_confirmRole(current, role));
+        } else {
+          try {
+            role = await _repo.detectUserRole(current.id);
+            await OfflineCache.saveSession(current, role.name);
+          } catch (_) {
+            role = UserRole.fromString(null);
+          }
         }
         state = AuthState(user: current, role: role, isInitialLoading: false);
         if (role == UserRole.student) unawaited(_refreshOfflineStudentPass());
@@ -138,6 +145,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Keep the app usable at the sign-in screen when the backend is offline
       // or has not been initialized (for example, in a widget preview).
       state = const AuthState(isInitialLoading: false);
+    }
+  }
+
+  /// The saved role, checked against the server once it answers.
+  Future<void> _confirmRole(User user, UserRole shown) async {
+    try {
+      final role = await _repo.detectUserRole(user.id);
+      await OfflineCache.saveSession(user, role.name);
+      if (mounted && role != shown && state.user?.id == user.id) {
+        state = AuthState(user: user, role: role, isInitialLoading: false);
+      }
+    } catch (_) {
+      // Offline: the saved role stands.
     }
   }
 

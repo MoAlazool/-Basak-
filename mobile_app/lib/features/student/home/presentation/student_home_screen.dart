@@ -461,11 +461,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             children: [
               const Padding(
                 padding: EdgeInsets.only(top: 3),
-                child: Icon(LucideIcons.busFront, size: 19, color: Colors.white),
+                child: Icon(LucideIcons.mapPin, size: 19, color: Colors.white),
               ),
               const SizedBox(width: 8),
               Expanded(
-                  child: Text(sub.lineName ?? 'خط الجامعة',
+                  child: Text(sub.boardingTitle,
                       style: AppTextStyles.titleMedium
                           .copyWith(color: Colors.white))),
               const SizedBox(width: 10),
@@ -473,7 +473,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             ],
           ),
           const SizedBox(height: 9),
-          _whiteInfo(LucideIcons.mapPin, sub.stationName ?? 'محطة الركوب'),
+          if (sub.destination != null) ...[
+            _whiteInfo(LucideIcons.graduationCap, sub.destination!),
+            const SizedBox(height: 5),
+          ],
+          _whiteInfo(LucideIcons.busFront, sub.lineName ?? 'خط الجامعة'),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),

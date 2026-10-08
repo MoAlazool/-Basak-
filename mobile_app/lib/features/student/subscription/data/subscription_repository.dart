@@ -7,6 +7,7 @@ import '../../../../core/network/supabase_service.dart';
 import '../../../../core/storage/offline_cache.dart';
 import '../models/subscription_model.dart';
 import '../models/payment_method_model.dart';
+import '../models/sale_catalog.dart';
 
 class SubscriptionRepository {
   final SupabaseClient _client = SupabaseService.client;
@@ -14,7 +15,8 @@ class SubscriptionRepository {
   // period_label / period_phase are computed by the database from academic_terms.
   static const _select = '''
           *, period_label, period_phase,
-          lines(name, supervisors(*)),
+          lines(name, companies(name), supervisors(*), line_trips(direction, is_active, start_time)),
+          student:students(university),
           stations(name, departure_times, return_times,
             line_trip_stops(stop_time, line_trips(direction, is_active, start_time))),
           departure_trip:departure_trip_id(label, start_time, universities(name)),
@@ -69,26 +71,26 @@ class SubscriptionRepository {
     return response == null ? null : Map<String, dynamic>.from(response as Map);
   }
 
-  /// Periods payable now for [lineId]: the current semester, the next one
-  /// (advance payment) and the annual subscription when the company enables it.
-  /// Whether the daily (cash) subscription is offered by [companyId]
-  /// (switched on for the platform and for the company).
-  Future<bool> isDailySubscriptionEnabled(String companyId) async {
+  /// Companies, lines, stations with their trip times, and the options on
+  /// sale with their prices, for the signed-in student's university.
+  Future<SaleCatalog> getSaleCatalog() async {
     final response = await OfflineCache.readThrough(
-        'daily_enabled.$companyId',
-        () => _client.rpc(SupabaseRpcs.dailySubscriptionEnabled,
-            params: {'p_company_id': companyId}));
-    return response == true;
+        'sale_catalog', () => _client.rpc(SupabaseRpcs.getSubscriptionCatalog));
+    return SaleCatalog.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
-  Future<List<PurchasablePeriod>> getPurchasablePeriods(String lineId) async {
-    final response = await OfflineCache.readThrough(
-        'purchasable_periods.$lineId',
-        () => _client.rpc(SupabaseRpcs.getPurchasablePeriods,
-            params: {'p_line_id': lineId}));
-    return (response as List<dynamic>)
-        .map((e) => PurchasablePeriod.fromJson(e as Map<String, dynamic>))
-        .toList();
+  /// The receipt issued when [subscriptionId] was approved, if any.
+  Future<SubscriptionReceipt?> getSubscriptionReceipt(String subscriptionId) async {
+    final row = await OfflineCache.readThrough(
+        'subscription_receipt.$subscriptionId',
+        () => _client
+            .from('subscription_receipts')
+            .select()
+            .eq('subscription_id', subscriptionId)
+            .maybeSingle());
+    return row == null
+        ? null
+        : SubscriptionReceipt.fromJson(Map<String, dynamic>.from(row as Map));
   }
 
   /// Create a subscription. Status, dates and price are set by the database:
@@ -103,7 +105,8 @@ class SubscriptionRepository {
     required double price,
     String? departureTripId,
     String? returnTripId,
-    PurchasablePeriod? period,
+    String? periodCode,
+    int? academicYear,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('المستخدم غير مسجل.');
@@ -121,8 +124,8 @@ class SubscriptionRepository {
         'return_time': returnTime,
         'type': type,
         'price': price,
-        if (type != 'daily' && period != null) 'period_code': period.periodCode,
-        if (type != 'daily' && period != null) 'academic_year': period.academicYear,
+        if (type != 'daily' && periodCode != null) 'period_code': periodCode,
+        if (type != 'daily' && academicYear != null) 'academic_year': academicYear,
       }).select(_select).single());
       return SubscriptionModel.fromJson(inserted);
     } on PostgrestException catch (error) {

@@ -303,13 +303,6 @@ void main() {
     expect(sub('expired', 'expired').isExpired, isTrue);
     expect(sub('pending_payment', 'expired').isExpired, isTrue);
     expect(sub('active', 'upcoming').academicYear, 2026);
-
-    final period = PurchasablePeriod.fromJson({
-      'period_code': 'second', 'academic_year': 2026, 'label': 'الفصل الدراسي الثاني 2026/2027',
-      'subscription_type': 'termly', 'start_date': '2027-02-01', 'end_date': '2027-06-30', 'phase': 'upcoming',
-    });
-    expect(period.isUpcoming, isTrue);
-    expect(period.key, 'second:2026');
   });
 
   testWidgets('StudentHomeScreen has RefreshIndicator for pull to refresh', (tester) async {

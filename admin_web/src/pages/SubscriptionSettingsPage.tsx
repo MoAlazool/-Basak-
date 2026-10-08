@@ -6,6 +6,7 @@ import { useAdminScope, useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
 import { VoteSettingsCard } from '../components/VoteSettingsCard';
+import { optionName, reasonText, type SaleRow } from '../lib/saleOptions';
 
 interface Term {
   code: 'first' | 'second' | 'summer';
@@ -14,6 +15,7 @@ interface Term {
   start_month: number; start_day: number; start_year_offset: number;
   end_month: number; end_day: number; end_year_offset: number;
   included_in_annual: boolean;
+  is_on_sale: boolean;
 }
 interface Period { period_code: string; academic_year: number; label: string; start_date: string; end_date: string; }
 interface Settings {
@@ -25,6 +27,11 @@ interface Settings {
   terms: Term[];
   periods: Period[] | null;
   purchasable: (Period & { phase: string; subscription_type: string })[] | null;
+  advance_enabled: boolean | null;
+  /** What is printed about the company on its receipts. */
+  receipt_info: { phone: string | null; address: string | null; commercial_register: string | null; tax_number: string | null } | null;
+  /** Every option of every line, with the reason when students do not see it. */
+  sale_preview: { line_id: string; line: string; is_active: boolean; options: SaleRow[] | null }[] | null;
 }
 
 interface Switches {
@@ -57,6 +64,8 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   const admin = useAdminScope();
   const [drafts, setDrafts] = useState<Record<string, Term>>({});
   const [saving, setSaving] = useState(false);
+  const [receiptInfo, setReceiptInfo] = useState({ phone: '', address: '', commercial_register: '', tax_number: '' });
+  const [savingInfo, setSavingInfo] = useState(false);
 
   const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
     unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })));
@@ -69,6 +78,11 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   // The editable copy follows what is saved, whenever that changes.
   useEffect(() => {
     if (settings) setDrafts(Object.fromEntries((settings.terms || []).map((t) => [t.code, { ...t }])));
+    if (settings?.receipt_info) {
+      const info = settings.receipt_info;
+      setReceiptInfo({ phone: info.phone ?? '', address: info.address ?? '',
+        commercial_register: info.commercial_register ?? '', tax_number: info.tax_number ?? '' });
+    }
   }, [settings]);
 
   const setAnnual = async (enabled: boolean, target: string | null) => {
@@ -77,6 +91,26 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
     });
     if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
     await Promise.all([load(), switchesPage.reload()]);
+  };
+
+  const setSale = async (advance: boolean | null, onSale: Record<string, boolean> | null) => {
+    const { error: setError_ } = await supabase.rpc('set_company_sale_settings', {
+      p_company_id: companyId, p_advance: advance, p_on_sale: onSale,
+    });
+    if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
+    await load();
+  };
+
+  const saveReceiptInfo = async () => {
+    setSavingInfo(true);
+    const { error: saveError } = await supabase.rpc('set_company_receipt_info', {
+      p_company_id: companyId, p_phone: receiptInfo.phone, p_address: receiptInfo.address,
+      p_commercial_register: receiptInfo.commercial_register, p_tax_number: receiptInfo.tax_number,
+    });
+    setSavingInfo(false);
+    if (saveError) alert('تعذر حفظ بيانات الإيصال: ' + saveError.message);
+    else alert('تم الحفظ. تظهر هذه البيانات على الإيصالات التي تصدر من الآن؛ الإيصالات السابقة لا تتغير.');
+    await load();
   };
 
   const setDaily = async (enabled: boolean, target: string | null) => {
@@ -155,7 +189,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[620px] text-right text-sm">
                 <thead className="text-xs text-slate-500">
-                  <tr><th className="p-2">الفصل</th><th className="p-2">البداية</th><th className="p-2">النهاية</th><th className="p-2">ضمن السنوي</th></tr>
+                  <tr><th className="p-2">الفصل</th><th className="p-2">البداية</th><th className="p-2">النهاية</th><th className="p-2">معروض للبيع</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {settings.terms.map((term) => {
@@ -180,7 +214,11 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
                         </td>
                         <td className="p-2">{dayMonth('start_day', 'start_month')}</td>
                         <td className="p-2">{dayMonth('end_day', 'end_month')}</td>
-                        <td className="p-2 text-xs">{term.included_in_annual ? 'نعم' : 'لا'}</td>
+                        <td className="p-2 text-xs">
+                          {companyId
+                            ? <Toggle on={term.is_on_sale} onClick={() => void setSale(null, { [term.code]: !term.is_on_sale })} />
+                            : term.is_on_sale ? 'نعم' : 'لا (تفعّله الشركة)'}
+                        </td>
                       </tr>
                     );
                   })}
@@ -210,14 +248,14 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
           </div>
 
           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-bold text-slate-700">الاشتراك السنوي (الفصلان الأول والثاني)</h2>
+            <h2 className="text-base font-bold text-slate-700">الفصلان معاً (الأول والثاني)</h2>
             <p className="mt-1 text-xs text-slate-500">
-              عند التعطيل لا يظهر خيار الاشتراك السنوي للطلاب ولا يمكن إنشاؤه.
+              اشتراك واحد يغطي الفصلين الأول والثاني فقط، ولا يشمل الصيفي. يُباع ما دام الفصلان معروضين للبيع، وحتى نهاية الفصل الأول.
             </p>
             {companyId ? (
               <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-100 p-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-700">الاشتراك السنوي لدى {companyName}</p>
+                  <p className="text-sm font-semibold text-slate-700">بيع الفصلين معاً لدى {companyName}</p>
                   <p className="text-[11px] text-slate-500">
                     {settings.annual_effective ? 'يظهر للطلاب' : !settings.annual_global ? 'معطّل على مستوى المنصة حالياً' : 'لا يظهر للطلاب'}
                   </p>
@@ -227,7 +265,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
             ) : (
               <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-700">السماح بالاشتراك السنوي على المنصة</p>
+                  <p className="text-sm font-semibold text-slate-700">السماح ببيع الفصلين معاً على المنصة</p>
                   <p className="text-[11px] text-slate-500">عند التعطيل يتوقف لدى كل الشركات. عند التفعيل تقرر كل شركة من إعداداتها.</p>
                 </div>
                 <Toggle on={settings.annual_global} disabled={!settings.can_edit_global}
@@ -235,6 +273,85 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
               </div>
             )}
           </div>
+
+          {companyId && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-base font-bold text-slate-700">الاشتراك المسبق في الفترة القادمة</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                عند التفعيل يستطيع الطالب دفع الفترة القادمة وهي لم تبدأ بعد، بسعرها المحدد على الخط. عند التعطيل تُباع الفترة الجارية فقط
+                (وإن لم تكن هناك فترة جارية تُباع القادمة).
+              </p>
+              <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-100 p-3">
+                <p className="text-sm font-semibold text-slate-700">السماح بالاشتراك المسبق لدى {companyName}</p>
+                <Toggle on={!!settings.advance_enabled} onClick={() => void setSale(!settings.advance_enabled, null)} />
+              </div>
+            </div>
+          )}
+
+          {companyId && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-base font-bold text-slate-700">ما يراه الطلاب الآن</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                نفس القاعدة التي يستخدمها التطبيق عند الاشتراك: إعدادات الشركة هي الحد الأعلى، والخط يحدد أسعاره وما يبيعه منها.
+                الأسعار تُعدّل من صفحة الخطوط.
+              </p>
+              {(settings.sale_preview ?? []).length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">لا توجد خطوط بعد.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {(settings.sale_preview ?? []).map((line) => (
+                    <div key={line.line_id} className="rounded-xl border border-slate-100 p-3">
+                      <p className="text-sm font-bold text-slate-700">{line.line}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(line.options ?? []).map((o) => (
+                          <span key={o.option} className={`rounded-xl px-3 py-1.5 text-xs ${o.available ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-500'}`}>
+                            <b>{optionName[o.option] ?? o.label}</b>{' '}
+                            {o.available
+                              ? `${o.price} ج.م${o.phase === 'upcoming' ? ' · مسبق' : ''}`
+                              : `لا يظهر: ${reasonText[o.reason ?? ''] ?? '—'}`}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {companyId && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-base font-bold text-slate-700">بيانات الشركة على الإيصال</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                تُطبع على إيصال الاشتراك (PDF) الذي يحمّله الطالب بعد اعتماد الدفع. كلها اختيارية؛ السجل التجاري والرقم الضريبي يظهران فقط إذا كتبتهما.
+                الشعار يُؤخذ من تصميم بطاقة المحفظة.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-500">هاتف الشركة
+                  <input dir="ltr" value={receiptInfo.phone} maxLength={30} onChange={(e) => setReceiptInfo({ ...receiptInfo, phone: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">العنوان
+                  <input value={receiptInfo.address} maxLength={200} onChange={(e) => setReceiptInfo({ ...receiptInfo, address: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">رقم السجل التجاري
+                  <input dir="ltr" value={receiptInfo.commercial_register} maxLength={40} onChange={(e) => setReceiptInfo({ ...receiptInfo, commercial_register: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">رقم التسجيل الضريبي
+                  <input dir="ltr" value={receiptInfo.tax_number} maxLength={40} onChange={(e) => setReceiptInfo({ ...receiptInfo, tax_number: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button disabled={savingInfo} onClick={() => void saveReceiptInfo()}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-50">
+                  <Save className="h-4 w-4" /> {savingInfo ? 'جاري الحفظ...' : 'حفظ البيانات'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {switches && (
             <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">

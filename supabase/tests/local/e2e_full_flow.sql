@@ -62,8 +62,8 @@ BEGIN
   PERFORM t.ok('A7 legacy unpaid termly got the current period dates',
     r.period_code = 'first' AND r.start_date = first_start AND r.status = 'pending_payment');
   SELECT * INTO r FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000003';
-  PERFORM t.ok('A8 legacy yearly moved onto the annual period (5 Sep -> 30 Jun)',
-    r.period_code = 'annual' AND r.start_date = first_start AND to_char(r.end_date, 'DD-MM') = '30-06');
+  PERFORM t.ok('A8 legacy yearly moved onto both semesters (5 Sep -> 30 Jun)',
+    r.period_code = 'both' AND r.start_date = first_start AND to_char(r.end_date, 'DD-MM') = '30-06');
   PERFORM t.ok('A9 dangling profile photo reference removed, real one kept',
     (SELECT profile_image_url FROM public.students WHERE id = 'c0000000-0000-0000-0000-000000000002') IS NULL
     AND (SELECT profile_image_url FROM public.students WHERE id = 'c0000000-0000-0000-0000-000000000001') IS NOT NULL);
@@ -336,7 +336,7 @@ DO $$ BEGIN
   PERFORM t.ok('E11 annual disabled for company 1: purchase refused by the database',
     t.err(format($q$INSERT INTO public.subscriptions (student_id, line_id, station_id, type, price, departure_time, return_time)
       VALUES (auth.uid(), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', %L, 'yearly', 1, %L, %L)$q$, t.getv('station'), t.getv('dep'), t.getv('ret')))
-      LIKE '%السنوي غير متاح%');
+      LIKE '%الفصلين معاً غير متاح%');
 END $$;
 SELECT t.login(:super);
 SELECT public.set_annual_subscription(false);
@@ -356,8 +356,8 @@ BEGIN
   INSERT INTO public.subscriptions (student_id, line_id, station_id, type, price, departure_time, return_time)
   VALUES (auth.uid(), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', t.getv('station')::uuid, 'yearly', 1, t.getv('dep')::time, t.getv('ret')::time);
   SELECT * INTO r FROM public.subscriptions WHERE student_id = auth.uid();
-  PERFORM t.ok('E13 annual re-enabled; older client without period gets the current annual period',
-    r.period_code = 'annual' AND r.price = 6500 AND to_char(r.start_date, 'DD-MM') = '05-09', format('%s %s %s', r.period_code, r.price, r.start_date));
+  PERFORM t.ok('E13 annual re-enabled; older client without period gets both semesters',
+    r.period_code = 'both' AND r.price = 6500 AND to_char(r.start_date, 'DD-MM') = '05-09', format('%s %s %s', r.period_code, r.price, r.start_date));
 END $$;
 
 -- Rider counts / trip times with a current AND an upcoming paid subscription.

@@ -10,18 +10,18 @@ interface ReportRow {
   id: string; student_name: string; phone: string; university: string | null; company: string; line: string;
   type: string; period: string; academic_year: number | null; label: string | null; status: string;
   phase: 'current' | 'upcoming' | 'expired'; paid: boolean; amount: number | null; price: number;
-  paid_at: string | null; start_date: string | null; end_date: string | null; payment_method: string | null;
+  paid_at: string | null; start_date: string | null; end_date: string | null; payment_method: string | null; receipt_no?: number | null;
 }
 interface Totals {
   count: number; paid: number; unpaid: number; upcoming: number; upcoming_paid: number; expired: number;
-  revenue: number; revenue_first: number; revenue_second: number; revenue_summer: number; revenue_annual: number; revenue_daily: number;
+  revenue: number; revenue_first: number; revenue_second: number; revenue_summer: number; revenue_annual: number; revenue_both?: number; revenue_daily: number;
 }
 interface Report { baseline: string | null; totals: Totals; rows: ReportRow[] }
 interface ResetRow { id: string; scope: 'financial' | 'all'; reset_at: string; note: string | null; undone_at: string | null }
 interface Option { id: string; name: string }
 
 const PERIODS: Record<string, string> = {
-  first: 'الفصل الأول', second: 'الفصل الثاني', summer: 'الفصل الصيفي', annual: 'سنوي', daily: 'يومي (كاش)',
+  first: 'الفصل الأول', second: 'الفصل الثاني', summer: 'الفصل الصيفي', both: 'الفصلان معاً', annual: 'الفصلان معاً', daily: 'يومي (كاش)',
 };
 const PHASES: Record<string, string> = { current: 'ساري', upcoming: 'قادم (مدفوع مقدماً)', expired: 'منتهي' };
 const money = (n: number | null | undefined) => `${Number(n || 0).toLocaleString('ar-EG')} ج.م`;
@@ -110,7 +110,7 @@ export const ReportsPage: React.FC = () => {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Revenue title="الفصل الأول" value={t?.revenue_first} onClick={() => set({ period: 'first', payment: 'paid' })} />
         <Revenue title="الفصل الثاني" value={t?.revenue_second} onClick={() => set({ period: 'second', payment: 'paid' })} />
-        <Revenue title="سنوي" value={t?.revenue_annual} onClick={() => set({ period: 'annual', payment: 'paid' })} />
+        <Revenue title="الفصلان معاً" value={t?.revenue_both ?? t?.revenue_annual} onClick={() => set({ period: 'both', payment: 'paid' })} />
         <Revenue title="الفصل الصيفي" value={t?.revenue_summer} onClick={() => set({ period: 'summer', payment: 'paid' })} />
         <Revenue title="يومي (كاش)" value={t?.revenue_daily} onClick={() => set({ period: 'daily', payment: 'paid' })} />
       </div>
@@ -176,7 +176,8 @@ export const ReportsPage: React.FC = () => {
                     <td className="p-3">{r.paid
                       ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-3 w-3" />مدفوع</span>
                       : <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-bold text-rose-600"><Clock3 className="h-3 w-3" />{r.status === 'pending_review' ? 'إيصال قيد المراجعة' : r.status === 'rejected' ? 'إيصال مرفوض' : 'غير مدفوع'}</span>}
-                      {r.payment_method && <div className="mt-1 text-[11px] text-slate-400">{r.payment_method}</div>}</td>
+                      {r.payment_method && <div className="mt-1 text-[11px] text-slate-400">{r.payment_method}</div>}
+                      {r.receipt_no != null && <div className="mt-1 text-[11px] text-slate-400">إيصال رقم {r.receipt_no}</div>}</td>
                     <td className="p-3 font-bold text-emerald-700">{r.paid ? money(r.amount) : <span className="text-slate-400">{money(r.price)} مستحق</span>}</td>
                     <td className="p-3 text-xs text-slate-600">{date(r.paid_at)}</td>
                     <td className="p-3 text-xs text-slate-600">{date(r.start_date)} ← {date(r.end_date)}</td>

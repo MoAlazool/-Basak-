@@ -81,6 +81,17 @@ Deno.serve(async (request: Request) => {
     }
 
     const priceColumn = { termly: 'price_termly', yearly: 'price_yearly', daily: 'price_daily' }[subscriptionType] as 'price_termly' | 'price_yearly' | 'price_daily';
+    // A period has its own price on the line; the line columns are the fallback
+    // (daily, or a period left for the database to pick).
+    let price = Number(line[priceColumn]);
+    const option = subscriptionType === 'daily' ? null
+      : subscriptionType === 'yearly' || periodCode === 'annual' ? 'both' : periodCode;
+    if (option) {
+      const { data: optionPrice, error: optionError } = await serviceClient.from('line_period_prices')
+        .select('price').eq('line_id', line.id).eq('option', option).maybeSingle();
+      if (optionError) throw optionError;
+      if (optionPrice && Number(optionPrice.price) > 0) price = Number(optionPrice.price);
+    }
 
     const email = `${phone}@busak.app`;
     const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
@@ -119,7 +130,7 @@ Deno.serve(async (request: Request) => {
       departure_time: departureTripId ? null : requestedDeparture || null,
       return_time: returnTripId ? null : requestedReturn || null,
       status: 'pending_payment',
-      price: Number(line[priceColumn]),
+      price,
     });
     if (subscriptionError) {
       await serviceClient.auth.admin.deleteUser(created.user.id);

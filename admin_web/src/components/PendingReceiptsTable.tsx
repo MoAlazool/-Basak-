@@ -5,7 +5,7 @@ import { createReceiptImageUrl, type PendingReceiptRow } from '../lib/pendingRec
 
 export type { PendingReceiptRow } from '../lib/pendingReceipts';
 
-const typeLabels: Record<string, string> = { termly: 'فصلي (ترم)', yearly: 'سنوي', daily: 'يومي' };
+const typeLabels: Record<string, string> = { termly: 'فصلي (ترم)', yearly: 'الفصلان معاً', daily: 'يومي' };
 const formatUpload = (iso: string) => {
   const date = new Date(iso);
   return {

@@ -10,10 +10,12 @@ import '../../features/notifications/data/notifications_repository.dart';
 import '../../features/student/home/presentation/student_home_screen.dart';
 import '../../features/student/invites/invites.dart';
 import '../../features/student/qr/presentation/student_qr_screen.dart';
+import '../../features/student/subscription/presentation/purchase_flow.dart';
 import '../../features/student/subscription/presentation/subscription_screen.dart';
 import '../../features/supervisor/data/supervisor_repository.dart';
 import '../../features/supervisor/trips/presentation/supervisor_trips_screen.dart';
 import '../network/supabase_service.dart';
+import '../storage/offline_cache.dart';
 
 /// Bumped whenever the student's ride vote should be read again (app resume,
 /// reconnect). The home screen listens to it.
@@ -39,6 +41,7 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
   Timer? _debounce;
   final Set<String> _pendingTables = {};
   DateTime _lastFullRefresh = DateTime.now();
+  Timer? _offlineRetry;
 
   SupabaseClient get _client => SupabaseService.client;
 
@@ -47,11 +50,16 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _retune());
+    OfflineCache.refreshed.addListener(_onSavedCopyRefreshed);
+    OfflineCache.offlineSince.addListener(_onOfflineChanged);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    OfflineCache.refreshed.removeListener(_onSavedCopyRefreshed);
+    OfflineCache.offlineSince.removeListener(_onOfflineChanged);
+    _offlineRetry?.cancel();
     _debounce?.cancel();
     for (final channel in _channels.values) {
       _client.removeChannel(channel);
@@ -65,6 +73,36 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     // Back in the foreground: whatever changed while the app slept is fetched now.
     if (state == AppLifecycleState.resumed) _refreshEverything();
   }
+
+  /// A screen opened from its saved copy and the server had something newer:
+  /// show it. The values are already in memory, so this costs no request.
+  void _onSavedCopyRefreshed() {
+    if (!mounted) return;
+    _debounce?.cancel();
+    _pendingTables.addAll(_everything);
+    _debounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      final tables = Set<String>.from(_pendingTables);
+      _pendingTables.clear();
+      _invalidateFor(tables);
+    });
+  }
+
+  /// While saved data is on screen, try again quietly until the server answers;
+  /// the first answer brings everything up to date.
+  void _onOfflineChanged() {
+    final offline = OfflineCache.offlineSince.value != null;
+    if (offline && _offlineRetry == null) {
+      _offlineRetry = Timer.periodic(const Duration(seconds: 20), (_) => _refreshEverything());
+    } else if (!offline) {
+      _offlineRetry?.cancel();
+      _offlineRetry = null;
+    }
+  }
+
+  static const _everything = {
+    'subscriptions', 'lines', 'company_invites', 'students', 'notifications', 'supervisor_scan_events', 'supervisors',
+  };
 
   /// The topics this account should be listening to right now.
   Set<String> _wantedTopics() {
@@ -140,10 +178,11 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
         ref.invalidate(subscriptionReceiptsProvider);
         ref.invalidate(studentQrProvider);
       }
-      if (tables.any(const {'lines', 'stations', 'line_trips'}.contains)) {
-        ref.invalidate(studentCatalogProvider);
-        ref.invalidate(allLinesProvider);
+      // What is on sale depends on the lines, their prices and what the student holds.
+      if (tables.any(const {'lines', 'stations', 'line_trips', 'line_period_prices', 'subscriptions'}.contains)) {
+        ref.invalidate(saleCatalogProvider);
       }
+      if (tables.contains('subscriptions')) ref.invalidate(subscriptionReceiptDocProvider);
       if (tables.contains('company_invites') || tables.contains('company_students')) {
         ref.invalidate(myInvitesProvider);
       }
@@ -170,9 +209,8 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
       _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students', 'notifications'});
-      // Company settings (annual / daily switches, vote times) send no event to students.
-      ref.invalidate(purchasablePeriodsProvider);
-      ref.invalidate(dailySubscriptionEnabledProvider);
+      // Company settings (sale switches, vote times) send no event to students.
+      ref.invalidate(saleCatalogProvider);
       ref.invalidate(voteSettingsProvider);
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {

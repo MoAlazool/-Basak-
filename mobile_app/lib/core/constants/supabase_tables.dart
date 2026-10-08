@@ -16,14 +16,11 @@ class SupabaseRpcs {
   static const String toggleStudentDailyRide = 'toggle_student_daily_ride';
   static const String getLineRiderCounts = 'get_line_rider_counts_with_returns';
   static const String lookupStudentByQr = 'lookup_student_by_qr';
-  static const String getStudentLineOptions = 'get_student_line_options';
   static const String getSupervisorDashboard = 'get_supervisor_dashboard';
   static const String supervisorCheckInStudent = 'supervisor_check_in_student';
   static const String getSupervisorMonthlySummary = 'get_supervisor_monthly_summary';
   static const String getSupervisorTripManifest = 'get_supervisor_trip_manifest';
-  static const String getStudentCatalog = 'get_student_catalog';
-  static const String getPurchasablePeriods = 'get_purchasable_periods';
-  static const String dailySubscriptionEnabled = 'daily_subscription_enabled';
+  static const String getSubscriptionCatalog = 'get_subscription_catalog';
   static const String getSubscriptionSwitches = 'get_subscription_switches';
   static const String getVoteSettings = 'get_vote_settings';
   static const String requestStudentPasswordReset = 'request_student_password_reset';
