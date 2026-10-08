@@ -14,7 +14,7 @@ import '../../lines/data/lines_repository.dart';
 import '../../lines/models/line_model.dart';
 import '../../lines/models/trip_model.dart';
 import '../../lines/models/catalog_model.dart';
-import '../../lines/presentation/trip_timetable.dart';
+import '../../lines/presentation/station_picker.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import 'package:flutter/services.dart';
 import '../models/subscription_model.dart';
@@ -90,13 +90,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   CatalogCompany? _selectedCompany;
   LineModel? _selectedLine;
   StationModel? _selectedStation;
-  String? _selectedDepartureTime;
-  String? _selectedReturnTime;
   List<StationModel> _stations = [];
   List<TripModel> _trips = [];
-  TripModel? _departureTrip;
-  TripModel? _returnTrip;
-  bool _showDepartureTrips = true;
   String _selectedType = 'termly'; // termly | yearly | daily
   bool _isLoadingStations = false;
   bool _isSubmitting = false;
@@ -126,49 +121,24 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     } catch (_) {}
   }
 
-  List<TripModel> _tripsFor(bool departure) =>
-      _trips.where((trip) => trip.isDeparture == departure).toList();
+  /// The earliest trip of a direction that stops at [station] (trips arrive
+  /// sorted by start time). The student only picks where they board and
+  /// chooses the ride times day by day on the home screen; the subscription
+  /// still records a trip of each direction, which the database requires.
+  TripModel? _firstTripAt(StationModel station, {required bool departure}) => _trips
+      .where((trip) => trip.isDeparture == departure && trip.stops.containsKey(station.id))
+      .firstOrNull;
 
-  /// Return trips that stop at the chosen boarding station.
-  List<TripModel> get _returnOptions => _selectedStation == null
-      ? const []
-      : _tripsFor(false).where((t) => t.stops.containsKey(_selectedStation!.id)).toList();
-
-  void _onTripStop(TripModel trip, StationModel station) {
-    setState(() {
-      if (trip.isDeparture) {
-        _selectedStation = station;
-        _departureTrip = trip;
-        _selectedDepartureTime = trip.timeAt(station.id);
-        // Keep the return trip only if it still serves this station.
-        if (_returnTrip != null && !_returnTrip!.stops.containsKey(station.id)) {
-          _returnTrip = null;
-          _selectedReturnTime = null;
-        }
-        final returns = _returnOptions;
-        if (_returnTrip == null && returns.length == 1) {
-          _returnTrip = returns.first;
-          _selectedReturnTime = returns.first.timeAt(station.id);
-        }
-        if (_returnTrip == null && returns.isNotEmpty) _showDepartureTrips = false;
-      } else {
-        _returnTrip = trip;
-        _selectedReturnTime = trip.timeAt(station.id);
-      }
-    });
-  }
+  /// Stations a departure trip open to the student stops at, in route order.
+  List<StationModel> get _boardingStations =>
+      _stations.where((station) => _firstTripAt(station, departure: true) != null).toList();
 
   Future<void> _onLineSelected(LineModel line) async {
     setState(() {
       _selectedLine = line;
       _selectedPeriod = null;
       _selectedStation = null;
-      _selectedDepartureTime = null;
-      _selectedReturnTime = null;
-      _departureTrip = null;
-      _returnTrip = null;
       _trips = [];
-      _showDepartureTrips = true;
       _isLoadingStations = true;
     });
 
@@ -198,17 +168,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   Future<void> _createSubscription() async {
-    if (_selectedLine == null ||
-        _selectedStation == null ||
-        _departureTrip == null ||
-        _selectedDepartureTime == null ||
-        (_returnOptions.isNotEmpty && _returnTrip == null)) {
+    final station = _selectedStation;
+    final departureTrip =
+        station == null ? null : _firstTripAt(station, departure: true);
+    if (_selectedLine == null || station == null || departureTrip == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('اختر الخط والمحطة وموعدي الذهاب والعودة.')),
+        const SnackBar(content: Text('اختر الخط ومحطة الصعود.')),
       );
       return;
     }
+    final returnTrip = _firstTripAt(station, departure: false);
     if (_selectedType != 'daily' && _selectedPeriod == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('اختر فترة الاشتراك (الفصل الدراسي).')),
@@ -240,13 +209,13 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     try {
       final created = await ref.read(subscriptionRepoProvider).createSubscription(
             lineId: _selectedLine!.id,
-            stationId: _selectedStation!.id,
-            departureTime: _selectedDepartureTime!,
-            returnTime: _selectedReturnTime,
+            stationId: station.id,
+            departureTime: departureTrip.timeAt(station.id)!,
+            returnTime: returnTrip?.timeAt(station.id),
             type: _selectedType,
             price: price,
-            departureTripId: _departureTrip!.id,
-            returnTripId: _returnTrip?.id,
+            departureTripId: departureTrip.id,
+            returnTripId: returnTrip?.id,
             period: _selectedType == 'daily' ? null : _selectedPeriod,
           );
       _refreshSubscriptions();
@@ -546,10 +515,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ]),
       );
 
-  /// Subscription flow position (1 company, 2 line & trip, 3 period, 4 payment).
+  /// Subscription flow position (1 company, 2 line & station, 3 period, 4 payment).
   int get _selectionStep => _selectedCompany == null
       ? 1
-      : (_selectedLine == null || _departureTrip == null)
+      : (_selectedLine == null || _selectedStation == null)
           ? 2
           : 3;
 
@@ -593,7 +562,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('الشركة', style: AppTextStyles.labelSmall),
-            Text('الخط والرحلة', style: AppTextStyles.labelSmall),
+            Text('الخط والمحطة', style: AppTextStyles.labelSmall),
             Text('الفترة', style: AppTextStyles.labelSmall),
             Text('الدفع', style: AppTextStyles.labelSmall)
           ]),
@@ -641,8 +610,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           _summaryLine(LucideIcons.mapPin, 'محطة الصعود',
               sub.stationName ?? 'غير محددة'),
           const SizedBox(height: 10),
-          _summaryLine(LucideIcons.clock3, 'الذهاب / العودة',
-              '${sub.departureTime ?? '—'}  /  ${sub.returnTimeShown ?? '—'}'),
+          _summaryLine(LucideIcons.clock3, 'مواعيد الذهاب والعودة',
+              'تختارها يومياً من الرئيسية'),
           const SizedBox(height: 12),
           Container(
               width: double.infinity,
@@ -1005,74 +974,26 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                     : _lineStep(_selectedCompany!),
           ),
 
-          // 2. Pick the trip and the meeting point (station) inside it
+          // 2. Pick the boarding station (the ride times are chosen daily)
           if (_selectedLine != null) ...[
             const SizedBox(height: 20),
-            Text('اختر رحلتك ونقطة التجمع',
+            Text('اختر محطة الصعود',
                 style: AppTextStyles.titleMedium
                     .copyWith(color: const Color(0xFF17384A))),
             const SizedBox(height: 4),
             Text(
-                '${_selectedLine!.originName ?? _selectedLine!.name} ← ${_selectedLine!.destinationName ?? 'الجامعة'} · اضغط على محطتك داخل الرحلة',
+                'المحطة التي ستركب منها. موعد الذهاب والعودة تختاره يومياً من الرئيسية.',
                 style: AppTextStyles.labelSmall
                     .copyWith(color: AppColors.textSecondary)),
             const SizedBox(height: 10),
             if (_isLoadingStations)
               const Center(child: CircularProgressIndicator())
-            else ...[
-              TripDirectionTabs(
-                departure: _showDepartureTrips,
-                departureCount: _tripsFor(true).length,
-                returnCount: _selectedStation == null
-                    ? _tripsFor(false).length
-                    : _returnOptions.length,
-                onChanged: (value) => setState(() => _showDepartureTrips = value),
+            else
+              StationPicker(
+                stations: _boardingStations,
+                selectedStationId: _selectedStation?.id,
+                onSelect: (station) => setState(() => _selectedStation = station),
               ),
-              const SizedBox(height: 12),
-              if (!_showDepartureTrips && _selectedStation == null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BasakUi.card(),
-                  child: Text('اختر محطة الصعود من رحلات الذهاب أولاً، ثم اختر رحلة العودة.',
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
-                )
-              else
-                TripTimetable(
-                  trips: _tripsFor(_showDepartureTrips),
-                  stations: _stations,
-                  selectedTripId: _showDepartureTrips ? _departureTrip?.id : _returnTrip?.id,
-                  selectedStationId: _selectedStation?.id,
-                  lockedStationId: _showDepartureTrips ? null : _selectedStation?.id,
-                  onSelect: _onTripStop,
-                ),
-              if (_selectedStation != null) ...[
-                const SizedBox(height: 4),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                      color: const Color(0xFFEAF4FB),
-                      borderRadius: BorderRadius.circular(16)),
-                  child: Wrap(spacing: 8, runSpacing: 8, children: [
-                    BasakPill('محطتك: ${_selectedStation!.name}', icon: LucideIcons.mapPin),
-                    if (_departureTrip != null)
-                      BasakPill('ذهاب ${BasakUi.time12(_selectedDepartureTime)}',
-                          background: const Color(0xFFE7F8F0),
-                          foreground: const Color(0xFF15803D),
-                          icon: LucideIcons.sunrise),
-                    BasakPill(
-                        _returnTrip != null
-                            ? 'عودة ${BasakUi.time12(_returnTrip!.startTime)}'
-                            : (_returnOptions.isEmpty ? 'لا توجد رحلة عودة من محطتك' : 'اختر رحلة العودة'),
-                        background: const Color(0xFFFFF4E5),
-                        foreground: const Color(0xFFB97812),
-                        icon: LucideIcons.sunset),
-                  ]),
-                ),
-              ],
-            ],
 
             // 3. Subscription Type & Pricing
             const SizedBox(height: 20),
@@ -1125,8 +1046,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 onTap: () => setState(() {
                   _selectedCompany = company;
                   _selectedLine = null;
-                  _departureTrip = null;
-                  _returnTrip = null;
                   _selectedStation = null;
                 }),
                 child: Ink(
@@ -1164,8 +1083,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 onPressed: () => setState(() {
                   _selectedCompany = null;
                   _selectedLine = null;
-                  _departureTrip = null;
-                  _returnTrip = null;
                   _selectedStation = null;
                 }),
                 icon: const Icon(LucideIcons.building2, size: 16),

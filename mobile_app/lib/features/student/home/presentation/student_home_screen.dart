@@ -67,6 +67,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   bool _isSavingRide = false;
   String? _selectedDepartureTime;
   String? _selectedReturnTime;
+
+  /// Departure time of the confirmed ride (null when not riding): the bus
+  /// arrival shown on the subscription card. Unlike [_selectedDepartureTime]
+  /// it only changes when a confirmation is saved.
+  String? _confirmedDepartureTime;
   DateTime? _loadedRideDate;
   Timer? _votingWindowTimer;
   Map<DateTime, bool> _weeklyRideStatuses = const {};
@@ -123,6 +128,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           _isReturningToday = details.isReturning;
           _selectedDepartureTime = details.departureTime;
           _selectedReturnTime = details.returnTime;
+          _confirmedDepartureTime = details.isRiding ? details.departureTime : null;
           _weeklyRideStatuses = statuses;
         });
       }
@@ -204,6 +210,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       riding: _isRidingToday,
       departure: _selectedDepartureTime,
       returning: _selectedReturnTime,
+      confirmed: _confirmedDepartureTime,
       week: _weeklyRideStatuses,
     );
     final rideDate = vote.rideDateFor(now);
@@ -213,6 +220,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       _isRidingToday = isRiding;
       _selectedDepartureTime = departureTime;
       _selectedReturnTime = returnTime;
+      _confirmedDepartureTime = isRiding ? departureTime : null;
       _weeklyRideStatuses = {..._weeklyRideStatuses, rideDay: isRiding};
     });
     try {
@@ -229,6 +237,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _isReturningToday = result.isReturning;
         _selectedDepartureTime = result.departureTime;
         _selectedReturnTime = result.returnTime;
+        _confirmedDepartureTime = result.isRiding ? result.departureTime : null;
         _isSavingRide = false;
       });
       // Voted (riding or not): no more reminders for this ride.
@@ -243,6 +252,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _isRidingToday = before.riding;
         _selectedDepartureTime = before.departure;
         _selectedReturnTime = before.returning;
+        _confirmedDepartureTime = before.confirmed;
         _weeklyRideStatuses = before.week;
       });
       _showRideMessage(errorMessage(e), isError: true);
@@ -382,10 +392,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                       : _lockedRideCard(),
                   if (subAsync.valueOrNull?.isActive == true) ...[
                     const SizedBox(height: 22),
-                    _sectionTitle('مواعيد خطك'),
-                    const SizedBox(height: 10),
-                    _timesCard(subAsync.valueOrNull!),
-                    const SizedBox(height: 22),
                     _sectionTitle('متابعة رحلات الأسبوع'),
                     const SizedBox(height: 10),
                     _weeklyRideCard(),
@@ -439,6 +445,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   Widget _subscriptionCard(SubscriptionModel sub) {
     final active = sub.isActive;
+    // The bus comes at the time the student confirmed for the ride day.
+    final arrival = active ? _confirmedDepartureTime : null;
     final statusText = active && sub.isUpcoming
         ? 'مدفوع · يبدأ ${sub.startDate ?? ''}'
         : active
@@ -486,12 +494,12 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(LucideIcons.busFront, size: 22, color: Colors.white),
-              const SizedBox(width: 9),
+              const Icon(LucideIcons.busFront, size: 19, color: Colors.white),
+              const SizedBox(width: 8),
               Expanded(
                   child: Text(sub.lineName ?? 'خط الجامعة',
-                      style: AppTextStyles.titleLarge
-                          .copyWith(color: Colors.white, fontSize: 19))),
+                      style: AppTextStyles.titleMedium
+                          .copyWith(color: Colors.white))),
             ],
           ),
           const SizedBox(height: 9),
@@ -515,17 +523,24 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                           style: AppTextStyles.labelSmall
                               .copyWith(color: Colors.white70)),
                       const SizedBox(height: 3),
-                      Text(
-                          sub.departureTime == null
-                              ? 'يُحدد مع المشرف'
-                              : _timeLabel(sub.departureTime!),
-                          style: AppTextStyles.titleLarge
-                              .copyWith(color: Colors.white, fontSize: 21)),
+                      if (arrival != null)
+                        Text(_timeLabel(arrival),
+                            style: AppTextStyles.titleLarge
+                                .copyWith(color: Colors.white, fontSize: 21))
+                      else
+                        Text(
+                            active
+                                ? 'أكّد حضورك لتحديد الموعد'
+                                : 'بعد تفعيل الاشتراك',
+                            style: AppTextStyles.bodyLarge.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
-                _pill(active ? 'في الموعد' : statusText,
-                    Colors.white.withOpacity(.14), statusColor),
+                if (!active || arrival != null)
+                  _pill(active ? 'في الموعد' : statusText,
+                      Colors.white.withOpacity(.14), statusColor),
               ],
             ),
           ),
@@ -642,7 +657,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         if (departureTimes.isEmpty)
           _emptyTimeMessage('لم يضف المشرف مواعيد ذهاب لهذا الخط بعد.')
         else
-          Wrap(
+          // Two side by side; a third goes on the next row.
+          LayoutBuilder(builder: (context, constraints) => Wrap(
             spacing: 8,
             runSpacing: 8,
             children: List.generate(departureTimes.length, (index) {
@@ -654,7 +670,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                       ? 'نزول متأخر'
                       : 'موعد الذهاب ${index + 1}';
               return SizedBox(
-                width: (MediaQuery.sizeOf(context).width - 72) / 2,
+                width: ((constraints.maxWidth - 8) / 2).floorToDouble(),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
                   onTap: isLocked
@@ -704,7 +720,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                 ),
               );
             }),
-          ),
+          )),
         const SizedBox(height: 16),
         Text('موعد العودة',
             style: AppTextStyles.titleMedium.copyWith(color: _ink)),
@@ -847,22 +863,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ),
       );
 
-  Widget _timesCard(SubscriptionModel sub) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _cardDecoration(),
-        child: Row(
-          children: [
-            Expanded(
-                child: _timeTile('موعد الذهاب', sub.departureTime ?? 'غير محدد',
-                    LucideIcons.sunrise)),
-            const SizedBox(width: 10),
-            Expanded(
-                child: _timeTile('موعد العودة', sub.returnTimeShown ?? 'غير محدد',
-                    LucideIcons.sunset)),
-          ],
-        ),
-      );
-
   Widget _weeklyRideCard() {
     final today = DateTime.now();
     final saturdayOffset = (today.weekday + 1) % 7;
@@ -927,23 +927,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       ]),
     );
   }
-
-  Widget _timeTile(String label, String time, IconData icon) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: const Color(0xFFF4F8FB),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE7EEF3))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: _teal, size: 19),
-          const SizedBox(height: 9),
-          Text(label,
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: const Color(0xFF718695))),
-          const SizedBox(height: 3),
-          Text(time, style: AppTextStyles.titleMedium.copyWith(color: _ink))
-        ]),
-      );
 
   Widget _supervisorCard(SubscriptionModel sub) => Container(
         padding: const EdgeInsets.all(14),
