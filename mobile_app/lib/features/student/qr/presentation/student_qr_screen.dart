@@ -81,27 +81,32 @@ class StudentQrScreen extends ConsumerWidget {
                       pass, WalletPassRepository.platformFor(defaultTargetPlatform));
                   final showPhone = (pass.phone ?? '').isNotEmpty && !compact;
                   // Height of everything except the QR itself.
-                  final fixed = 20 + (compact ? 40 : 64) + (pass.isOfflineCache ? 44 : 0) +
+                  final fixed = 24 + (compact ? 46 : 78) + (pass.isOfflineCache ? 44 : 0) +
                       32 + 52 + 14 + 22 + 12 + 30 + 14 + 11 +
                       (showPhone ? 4 : 3) * 22 + (showPhone ? 3 : 2) * 9 +
                       (wallet ? 66 : 0) + (compact ? 0 : 34);
                   final qrSide = (box.maxHeight - fixed)
                       .clamp(150.0, (box.maxWidth - 36 - 36 - 22).clamp(150.0, 280.0));
                   return Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-                    child: Column(children: [
-                      SizedBox(
-                        width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      // Title and its line: same right edge as the card, with air between them.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Text('بطاقة الطالب',
-                            style: AppTextStyles.displayMedium.copyWith(color: _ink)),
+                            textAlign: TextAlign.start,
+                            style: AppTextStyles.displayMedium.copyWith(color: _ink, height: 1.25)),
                       ),
-                      if (!compact)
-                        SizedBox(
-                          width: double.infinity,
+                      if (!compact) ...[
+                        const SizedBox(height: 6),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: Text('أظهر الرمز للمشرف عند الصعود.',
-                              style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xFF718695))),
+                              textAlign: TextAlign.start,
+                              style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xFF718695), height: 1.4)),
                         ),
-                      const SizedBox(height: 10),
+                      ],
+                      const SizedBox(height: 14),
                       if (pass.isOfflineCache)
                         Container(
                           width: double.infinity,
@@ -113,10 +118,12 @@ class StudentQrScreen extends ConsumerWidget {
                               style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF8A5A00)),
                               textAlign: TextAlign.center),
                         ),
-                      // The card takes what it needs; anything left stays below it.
-                      Expanded(
+                      // The card takes what it needs, and the wallet button follows
+                      // right under it; anything left stays at the bottom.
+                      Flexible(
                         child: Align(
                           alignment: Alignment.topCenter,
+                          heightFactor: 1,
                           // A last resort on very small screens: never overflow.
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
@@ -217,7 +224,7 @@ class StudentQrScreen extends ConsumerWidget {
                         ),
                       ),
                       if (wallet) ...[
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         AddToWalletButton(pass: pass),
                       ],
                       if (!compact) ...[
