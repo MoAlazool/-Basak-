@@ -128,7 +128,7 @@ void main() {
     await _shot(tester, '8-expanded');
   }, skip: _dir == null);
 
-  for (final size in const [Size(402, 874), Size(375, 667)]) {
+  for (final size in const [Size(402, 874), Size(375, 667), Size(430, 932)]) {
     testWidgets('draw the student card at ${size.width.toInt()}x${size.height.toInt()}', (tester) async {
       await tester.runAsync(_fonts);
       tester.view.physicalSize = size * 2;
@@ -149,12 +149,22 @@ void main() {
             locale: const Locale('ar'),
             supportedLocales: const [Locale('ar')],
             localizationsDelegates: GlobalMaterialLocalizations.delegates,
-            home: const StudentQrScreen(),
+            // Framed as in the app: the floating navigation bar over the page's bottom.
+            home: Scaffold(
+              extendBody: true,
+              body: const StudentQrScreen(),
+              bottomNavigationBar: Container(
+                height: 64,
+                margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
+              ),
+            ),
           ),
         ),
       ));
       await _shot(tester, 'card-${size.height.toInt()}');
       expect(find.byType(Scrollable), findsNothing, reason: 'the card page is fixed');
+      expect(tester.getSize(find.byKey(const Key('student-qr'))).width, greaterThan(150));
       expect(find.text('الكلية'), findsNothing);
     }, skip: _dir == null);
   }
