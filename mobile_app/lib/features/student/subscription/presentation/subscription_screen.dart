@@ -205,7 +205,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           throw Exception('اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.');
         }
         await Gal.putImageBytes(await ReceiptPdf.image(pdf),
-            name: 'basak-receipt-${ReceiptPdf.number(receipt.number)}');
+            name: 'basak-receipt-${receipt.code}');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('تم حفظ الإيصال في الاستوديو.'), backgroundColor: AppColors.success));

@@ -46,7 +46,6 @@ class ReceiptCard extends StatelessWidget {
     return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
 
-  static String number(int value) => value.toString().padLeft(5, '0');
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +70,7 @@ class ReceiptCard extends StatelessWidget {
               ),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('رقم الإيصال', style: _text(11, _muted)),
-                Text(number(r.number),
+                Text(r.code,
                     textDirection: TextDirection.ltr, style: _text(16, _brand, FontWeight.w700)),
               ]),
             ]),
@@ -159,7 +158,7 @@ class ReceiptExport {
   }
 
   static String fileName(SubscriptionReceipt receipt, String extension) =>
-      'basak-receipt-${ReceiptCard.number(receipt.number)}.$extension';
+      'basak-receipt-${receipt.code}.$extension';
 
   /// Opens the system sheet: save to Files, print, or send. [origin] anchors
   /// the sheet on tablets.

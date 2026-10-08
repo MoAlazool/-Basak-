@@ -82,10 +82,13 @@ class SubscriptionRepository {
   /// The receipt issued when [subscriptionId] was approved, if any.
   Future<SubscriptionReceipt?> getSubscriptionReceipt(String subscriptionId) async {
     final row = await OfflineCache.readThrough(
-        'subscription_receipt.$subscriptionId',
+        'subscription_receipt.v2.$subscriptionId',
         () => _client
             .from('subscription_receipts')
-            .select()
+            // Every column a student may read (the running number is not one).
+            .select('subscription_id, receipt_code, company_name, student_name, student_phone, university_name, '
+                'line_name, station_name, period_label, start_date, end_date, amount, payment_method, approved_at, '
+                'company_phone, company_address, company_commercial_register, company_tax_number, company_logo_path')
             .eq('subscription_id', subscriptionId)
             .maybeSingle());
     return row == null

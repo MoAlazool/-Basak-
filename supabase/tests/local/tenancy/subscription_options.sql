@@ -449,6 +449,9 @@ BEGIN
     AND r.station_name = 'Opt station 1' AND r.company_name = 'Opt company x' AND r.university_name = 'جامعة الخيارات u1'
     AND r.option = 'second' AND r.period_label <> '' AND r.start_date IS NOT NULL AND r.approved_at IS NOT NULL
     AND r.student_name = 'Opt student st1', to_jsonb(r)::text);
+  PERFORM pg_temp.ok('its reference for the student does not count the company''s customers',
+    r.receipt_code ~ '^[0-9]{2}-[0-9A-F]{8}$' AND r.receipt_code NOT LIKE '%' || r.receipt_no::text,
+    r.receipt_code);
   PERFORM pg_temp.ok('the receipt carries the company details of that day',
     r.company_phone = '01000000001' AND r.company_address = 'شارع الجامعة' AND r.company_commercial_register = '12345'
     AND r.company_tax_number = '999-888');
@@ -511,6 +514,10 @@ BEGIN
   PERFORM pg_temp.act('st1');
   PERFORM pg_temp.ok('a student reads their own receipt and nobody else''s',
     (SELECT count(*) = 1 AND bool_and(student_id = auth.uid()) FROM public.subscription_receipts));
+  PERFORM pg_temp.ok('with its reference',
+    (SELECT receipt_code ~ '^[0-9]{2}-[0-9A-F]{8}$' FROM public.subscription_receipts));
+  PERFORM pg_temp.ok('but not the running number, which would tell how many customers came before',
+    pg_temp.err('SELECT receipt_no FROM public.subscription_receipts') LIKE '%permission denied%');
   PERFORM pg_temp.denied('a student cannot edit their receipt', 'UPDATE public.subscription_receipts SET amount = 1');
   PERFORM pg_temp.denied('a student cannot delete their receipt', 'DELETE FROM public.subscription_receipts');
   PERFORM pg_temp.denied('a student cannot write a receipt',
@@ -529,6 +536,9 @@ BEGIN
     public.get_subscription_settings(pg_temp.id('co_x'))->'receipt_info'->>'address' = 'ميدان المحطة');
   PERFORM pg_temp.ok('the company reads its own receipts only',
     (SELECT count(*) = 2 AND bool_and(company_id = pg_temp.id('co_x')) FROM public.subscription_receipts));
+  PERFORM pg_temp.ok('and sees both the running number and the reference in its report',
+    (SELECT bool_and(x->>'receipt_no' IS NOT NULL AND x->>'receipt_code' ~ '^[0-9]{2}-')
+     FROM jsonb_array_elements(public.admin_subscription_report('{}')->'rows') x WHERE x->>'paid' = 'true' AND x->>'type' <> 'daily'));
   PERFORM pg_temp.denied('the company admin cannot edit a receipt', 'UPDATE public.subscription_receipts SET amount = 1');
   PERFORM pg_temp.denied('the company admin cannot delete a receipt', 'DELETE FROM public.subscription_receipts');
   PERFORM pg_temp.act('admin_y');
