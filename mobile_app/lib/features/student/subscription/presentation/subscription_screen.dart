@@ -387,6 +387,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               ),
             ]),
             const SizedBox(height: 14),
+            if ((sub.companyName ?? '').isNotEmpty) ...[
+              _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
+              const SizedBox(height: 10),
+            ],
             _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
             const SizedBox(height: 10),
             _summaryLine(LucideIcons.mapPin, 'محطة الصعود', sub.stationName ?? '—'),
@@ -453,10 +457,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     if (receipt == null) {
       return [
         const Divider(height: 18),
-        if ((sub.companyName ?? '').isNotEmpty) ...[
-          _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
-          const SizedBox(height: 8),
-        ],
         if (sub.destination != null) ...[
           _summaryLine(LucideIcons.graduationCap, 'الجامعة', sub.destination!),
           const SizedBox(height: 8),

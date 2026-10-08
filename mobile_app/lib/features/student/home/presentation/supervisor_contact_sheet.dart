@@ -4,6 +4,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/whatsapp_icon.dart';
 
 /// The bus supervisor's contact: call now, chat on WhatsApp, save to the
 /// phone's contacts, or copy the number. Calling and saving hand over to the
@@ -98,71 +99,119 @@ class SupervisorContactSheet extends StatelessWidget {
     }
   }
 
+  /// One of the two main actions: an icon over a word, side by side.
+  Widget _action(
+          {required Key key,
+          required Widget icon,
+          required String label,
+          required Color background,
+          required Color foreground,
+          required VoidCallback onTap}) =>
+      Expanded(
+        child: Material(
+          color: background,
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(18),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                icon,
+                const SizedBox(height: 8),
+                Text(label,
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(color: foreground, fontWeight: FontWeight.w700, height: 1.2)),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  /// A quiet secondary action under the two main ones.
+  Widget _link({required Key key, required IconData icon, required String label, required VoidCallback onTap}) =>
+      Expanded(
+        child: TextButton.icon(
+          key: key,
+          style: TextButton.styleFrom(
+              foregroundColor: _teal, padding: const EdgeInsets.symmetric(vertical: 12)),
+          onPressed: onTap,
+          icon: Icon(icon, size: 17),
+          label: Text(label, style: AppTextStyles.bodyMedium.copyWith(color: _teal, fontWeight: FontWeight.w600)),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final role = (lineName ?? '').trim().isEmpty ? 'مشرف الحافلة' : 'مشرف حافلة خط ${lineName!.trim()}';
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: const Color(0xFFE5F3FA),
-            backgroundImage: photo,
-            child: photo == null ? const Icon(LucideIcons.userRound, color: _teal, size: 28) : null,
-          ),
-          const SizedBox(height: 10),
-          Text(name, textAlign: TextAlign.center, style: AppTextStyles.titleLarge.copyWith(color: _ink)),
-          const SizedBox(height: 2),
-          Text((lineName ?? '').trim().isEmpty ? 'مشرف الحافلة' : 'مشرف حافلة خط ${lineName!.trim()}',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium),
-          const SizedBox(height: 6),
-          Text(phone,
-              textDirection: TextDirection.ltr,
-              style: AppTextStyles.titleMedium.copyWith(color: _teal, letterSpacing: .5)),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
+          // Who it is, on one row.
+          Row(children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: const Color(0xFFE5F3FA),
+              backgroundImage: photo,
+              child: photo == null ? const Icon(LucideIcons.userRound, color: _teal, size: 26) : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, style: AppTextStyles.titleLarge.copyWith(color: _ink)),
+                const SizedBox(height: 2),
+                Text(role, style: AppTextStyles.bodyMedium),
+                const SizedBox(height: 4),
+                Text(phone,
+                    textDirection: TextDirection.ltr,
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(color: _ink, fontWeight: FontWeight.w600, letterSpacing: .4)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 20),
+          Row(children: [
+            _action(
               key: const Key('supervisor-call'),
-              onPressed: () => _call(context),
-              icon: const Icon(LucideIcons.phone, size: 18),
-              label: const Text('اتصال'),
+              icon: const Icon(LucideIcons.phone, size: 24, color: Colors.white),
+              label: 'اتصال',
+              background: _teal,
+              foreground: Colors.white,
+              onTap: () => _call(context),
             ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
+            const SizedBox(width: 12),
+            _action(
               key: const Key('supervisor-whatsapp'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1FA855), foregroundColor: Colors.white),
-              onPressed: () => _whatsapp(context),
-              icon: const Icon(LucideIcons.send, size: 18),
-              label: const Text('محادثة واتساب'),
+              icon: const WhatsAppIcon(size: 24),
+              label: 'واتساب',
+              background: const Color(0xFF25D366),
+              foreground: Colors.white,
+              onTap: () => _whatsapp(context),
             ),
-          ),
+          ]),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
+          Row(children: [
+            _link(
               key: const Key('supervisor-save'),
-              onPressed: () => _save(context),
-              icon: const Icon(LucideIcons.userRoundPlus, size: 18),
-              label: const Text('حفظ في جهات الاتصال'),
+              icon: LucideIcons.userRoundPlus,
+              label: 'حفظ جهة الاتصال',
+              onTap: () => _save(context),
             ),
-          ),
-          TextButton.icon(
-            key: const Key('supervisor-copy'),
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: dialable(phone)));
-              if (!context.mounted) return;
-              Navigator.of(context).pop();
-              _say(context, 'تم نسخ الرقم');
-            },
-            icon: const Icon(LucideIcons.copy, size: 16),
-            label: const Text('نسخ الرقم'),
-          ),
+            Container(width: 1, height: 22, color: const Color(0xFFE3EDF3)),
+            _link(
+              key: const Key('supervisor-copy'),
+              icon: LucideIcons.copy,
+              label: 'نسخ الرقم',
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: dialable(phone)));
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
+                _say(context, 'تم نسخ الرقم');
+              },
+            ),
+          ]),
         ]),
       ),
     );

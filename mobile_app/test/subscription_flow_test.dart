@@ -359,6 +359,9 @@ void main() {
       expect(find.text('الاشتراك الحالي'), findsOneWidget);
       expect(find.text('الاشتراك مفعّل'), findsOneWidget);
       expect(find.text('المبلغ المدفوع'), findsOneWidget);
+      // The company is on the card itself, before any details are opened.
+      expect(find.text('شركة النقل'), findsOneWidget);
+      expect(find.text('المستقبل'), findsOneWidget);
       expect(find.text('المبلغ المطلوب'), findsNothing);
       expect(find.text('30 يناير 2027'), findsOneWidget);
       // Collapsed: no receipt, no payment form, ever.

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/theme/app_theme.dart';
+import 'package:basak_mobile/features/student/home/presentation/supervisor_contact_sheet.dart';
 import 'package:basak_mobile/features/student/subscription/models/payment_method_model.dart';
 import 'package:basak_mobile/features/student/subscription/models/sale_catalog.dart';
 import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
@@ -123,5 +124,36 @@ void main() {
     await tester.tap(find.byKey(const Key('sub-toggle-sub1')));
     tester.view.physicalSize = const Size(402 * 2, 1500 * 2);
     await _shot(tester, '8-expanded');
+  }, skip: _dir == null);
+
+  testWidgets('draw the supervisor sheet', (tester) async {
+    await tester.runAsync(_fonts);
+    tester.view.physicalSize = const Size(402 * 2, 874 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(RepaintBoundary(
+      key: _key,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        locale: const Locale('ar'),
+        supportedLocales: const [Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Scaffold(
+          backgroundColor: const Color(0xFFEAF5FA),
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () => SupervisorContactSheet.show(context,
+                    name: 'أحمد علي محمود', phone: '01012345678', lineName: 'منيه النصر'),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await _shot(tester, '9-supervisor');
   }, skip: _dir == null);
 }
