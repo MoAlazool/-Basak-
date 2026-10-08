@@ -43,12 +43,15 @@ export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout, badges
       </div>
 
       <nav className="space-y-1">
-        {items.map(({ to, name, icon: Icon, end, badge }) => (
+        {items.map(({ to, name, icon: Icon, end, badge, preload }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             title={name}
+            onMouseEnter={preload}
+            onFocus={preload}
+            onTouchStart={preload}
             className={({ isActive }) => `relative flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-semibold transition-all duration-150 ${
               isActive ? 'bg-[#D6EEF9]/80 text-[#3E8FBF] shadow-sm' : 'text-[#5B6B7A] hover:bg-white/60 hover:text-[#1F2937]'
             }`}
@@ -90,8 +93,8 @@ export const MobileNav: React.FC<NavProps> = ({ items, onLogout, badges = {} }) 
       boxShadow: '0 -4px 24px rgba(126,200,227,0.15)',
     }}
   >
-    {items.map(({ to, short, icon: Icon, end, badge }) => (
-      <NavLink key={to} to={to} end={end} className="relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all flex-shrink-0">
+    {items.map(({ to, short, icon: Icon, end, badge, preload }) => (
+      <NavLink key={to} to={to} end={end} onFocus={preload} onTouchStart={preload} onMouseEnter={preload} className="relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all flex-shrink-0">
         {({ isActive }) => (
           <>
             <Icon className={`h-5 w-5 transition-colors ${isActive ? 'text-[#3E8FBF]' : 'text-slate-400'}`} />

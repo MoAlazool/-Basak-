@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+/** The shapes the forms and the audience picker choose from. Loaded by `useLineOptions` (lib/reference.ts). */
 
 export interface UniversityOption { id: string; name: string; }
 
@@ -21,19 +21,3 @@ export interface LineOption {
 
 export interface LineOptions { universities: UniversityOption[]; lines: LineOption[]; }
 
-/**
- * What a form chooses from: the active universities and the company's active
- * lines with their stations and trips. One loader for `keys.company(id, 'lineOptions')`,
- * so every page that needs these shares one cached copy of the same shape.
- */
-export async function loadLineOptions(companyId: string): Promise<LineOptions> {
-  const [uniRes, lineRes] = await Promise.all([
-    supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
-    supabase.from('lines')
-      .select('id,name,company_id,price_termly,price_yearly,price_daily,line_period_prices(option,price),stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
-      .eq('company_id', companyId).eq('is_active', true).order('name'),
-  ]);
-  if (uniRes.error) throw new Error(uniRes.error.message);
-  if (lineRes.error) throw new Error(lineRes.error.message);
-  return { universities: (uniRes.data || []) as UniversityOption[], lines: (lineRes.data || []) as unknown as LineOption[] };
-}

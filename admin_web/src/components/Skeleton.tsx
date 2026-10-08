@@ -88,6 +88,14 @@ export const SkeletonForm: React.FC<{ fields?: number }> = ({ fields = 3 }) => (
   </div>
 );
 
+/** A page whose code is still arriving (first visit only): a heading and a table, inside the frame that stays. */
+export const SkeletonPage: React.FC = () => (
+  <div {...busy} className="space-y-6">
+    <div className="space-y-2"><Skeleton className="h-7 w-64" /><Skeleton className="h-3.5 w-96 max-w-full" /></div>
+    <div className="rounded-2xl border border-slate-100 bg-white shadow-sm"><SkeletonTable rows={5} columns={5} /></div>
+  </div>
+);
+
 /** The whole workspace before its company is known: the sidebar, the four numbers and a panel. */
 export const SkeletonShell: React.FC = () => (
   <div {...busy} className="flex min-h-screen" dir="rtl">

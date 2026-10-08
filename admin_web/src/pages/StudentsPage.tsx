@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { useQueryClient } from '@tanstack/react-query';
-import { keys, unwrap, usePageData } from '../lib/query';
-import { loadLineOptions, type LineOption, type StationOption, type TripOption, type UniversityOption } from '../lib/lineOptions';
+import { keys, STALE, unwrap, usePageData } from '../lib/query';
+import { type LineOption, type StationOption, type TripOption, type UniversityOption } from '../lib/lineOptions';
+import { switchesKey, useLineOptions } from '../lib/reference';
+import { useSignedUrls } from '../lib/signedUrls';
 import { SkeletonTable } from '../components/Skeleton';
 import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
@@ -12,22 +14,13 @@ import { PasswordResetRequests } from '../components/PasswordResetRequests';
 import { MembershipRequests } from '../components/MembershipRequests';
 
 const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) =>
-  url ? <img src={url} alt={name} className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
+  url ? <img src={url} alt={name} width={32} height={32} loading="lazy" decoding="async" className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
 
-/** One request for all photos; a missing file yields no URL instead of a failed request per row. */
 const PAGE_SIZE = 25;
 
-async function signAvatarUrls(paths: string[]): Promise<Record<string, string>> {
-  if (!paths.length) return {};
-  const { data, error } = await supabase.storage.from('student-avatars').createSignedUrls(paths, 600);
-  if (error) {
-    console.warn('Could not sign student photos:', error.message);
-    return {};
-  }
-  const urls: Record<string, string> = {};
-  (data || []).forEach((item) => { if (item.path && item.signedUrl && !item.error) urls[item.path] = item.signedUrl; });
-  return urls;
-}
+/** How many pages there are, once the total is known. */
+const pagesFor = (total: number | undefined, pageSize: number) =>
+  (total === undefined ? undefined : Math.max(1, Math.ceil(total / pageSize)));
 
 interface PurchasablePeriod {
   period_code: string; academic_year: number; label: string; subscription_type: string;
@@ -66,6 +59,12 @@ interface Student {
 }
 
 type LineRef = { name: string };
+
+/** The search box as a PostgREST filter over name, phone and university. */
+const searchFilter = (search: string) => {
+  const term = search.replace(/[%,()]/g, ' ');
+  return `full_name.ilike.%${term}%,phone.ilike.%${term}%,university.ilike.%${term}%`;
+};
 
 const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
 
@@ -117,6 +116,8 @@ export const StudentsPage: React.FC = () => {
 
   // The company's active members, a page at a time, each with their subscriptions to
   // this company only. Searching is done by the database, not over what happens to be loaded.
+  // One row more than a page tells whether there is a next page; the exact total is
+  // asked for apart (below), not on every keystroke and every page change.
   const studentsPage = usePageData(keys.company(company.id, 'students', { search, pageIndex }), async () => {
     let query = supabase
       .from('students')
@@ -125,31 +126,52 @@ export const StudentsPage: React.FC = () => {
         company_students!inner(company_id, status),
         subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name),
           departure_trip:departure_trip_id(label, universities(name)))
-      `, { count: 'exact' })
+      `)
       .eq('company_students.company_id', company.id)
       .eq('company_students.status', 'active')
       .eq('subscriptions.company_id', company.id);
-    if (search) {
-      const term = search.replace(/[%,()]/g, ' ');
-      query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%,university.ilike.%${term}%`);
-    }
-    const { data, error, count } = await query
+    if (search) query = query.or(searchFilter(search));
+    const { data, error } = await query
       .order('created_at', { ascending: false })
-      .range(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE - 1);
+      .range(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE);
     if (error) throw new Error(error.message);
-    return { rows: (data || []) as unknown as Student[], total: count ?? 0 };
+    const rows = (data || []) as unknown as Student[];
+    return { rows: rows.slice(0, PAGE_SIZE), hasNext: rows.length > PAGE_SIZE };
   }, { keepPrevious: true });
   const students = studentsPage.data?.rows ?? [];
-  const totalStudents = studentsPage.data?.total ?? 0;
+  const hasNext = studentsPage.data?.hasNext ?? false;
   const loading = studentsPage.loading;
 
-  // Signed photo links expire, so they are fetched for the rows on screen and never stored.
-  const photoPaths = students.map((st) => st.profile_image_url).filter((x): x is string => !!x);
-  const avatarUrls = usePageData(keys.company(company.id, 'avatars', photoPaths), () => signAvatarUrls(photoPaths),
-    { enabled: photoPaths.length > 0, keepPrevious: true }).data ?? {};
+  // The exact total: at once on first load, and only after typing has stopped for a
+  // moment while searching (counting the matches of every half-typed word is wasted work).
+  const [countSearch, setCountSearch] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCountSearch(search), search ? 700 : 0);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  const countQuery = usePageData(keys.company(company.id, 'students', 'count', countSearch), async () => {
+    let query = supabase.from('students')
+      .select('id, company_students!inner(company_id, status)', { count: 'exact', head: true })
+      .eq('company_students.company_id', company.id)
+      .eq('company_students.status', 'active');
+    if (countSearch) query = query.or(searchFilter(countSearch));
+    const { count, error } = await query;
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  });
+  // Shown only when it belongs to what is being searched for now.
+  const totalStudents = countSearch === search ? countQuery.data : undefined;
 
-  // What the add-student form chooses from.
-  const options = usePageData(keys.company(company.id, 'lineOptions'), () => loadLineOptions(company.id));
+  // Signed photo links are kept per file and reused (lib/signedUrls.ts): a refresh,
+  // a focus or a return to this page neither signs nor downloads the photos again.
+  const avatarUrls = useSignedUrls('student-avatars', students.map((st) => st.profile_image_url));
+
+  // What the add-student form chooses from. Asked for when the form is first
+  // touched, not when the page opens (most visits only read the list); if another
+  // page already loaded it, it is there at once.
+  const [formUsed, setFormUsed] = useState(false);
+  const touchForm = () => { if (!formUsed) setFormUsed(true); };
+  const options = useLineOptions(company.id, formUsed);
   const universities = options.data?.universities ?? [];
   const lines = options.data?.lines ?? [];
 
@@ -168,8 +190,9 @@ export const StudentsPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.data]);
 
-  const fetchInitialData = studentsPage.reload;
   const client = useQueryClient();
+  // After this page's own writes: the page on screen and the total (both mounted) are read again.
+  const fetchInitialData = () => client.invalidateQueries({ queryKey: keys.company(company.id, 'students') });
 
   const universityIdOf = (name: string) => universities.find((university) => university.name === name)?.id;
 
@@ -220,13 +243,14 @@ export const StudentsPage: React.FC = () => {
   // Payable periods and the daily switch come from the database. Both are
   // cached like every other read of the workspace (and shared with the lines
   // page), so reopening this page asks for neither again.
-  const periodsQuery = usePageData(keys.company(company.id, 'lineOptions', 'periods', selectedLineId || 'none'), async () =>
+  const periodsQuery = usePageData(keys.company(company.id, 'periods', selectedLineId || 'none'), async () =>
     selectedLineId
       ? unwrap<PurchasablePeriod[]>(supabase.rpc('get_purchasable_periods', { p_line_id: selectedLineId }))
-      : []);
+      : [], { enabled: !!selectedLineId, staleTime: STALE.reference });
   useEffect(() => { setPeriods(periodsQuery.data ?? []); }, [periodsQuery.data]);
-  const switchesQuery = usePageData(keys.company(company.id, 'switches'), () =>
-    unwrap<{ daily_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: company.id })));
+  const switchesQuery = usePageData(switchesKey(company.id), () =>
+    unwrap<{ daily_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: company.id })),
+  { enabled: formUsed, staleTime: STALE.reference });
   const dailyAvailable = switchesQuery.data ? !!switchesQuery.data.daily_effective : true;
 
   const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
@@ -354,7 +378,7 @@ export const StudentsPage: React.FC = () => {
   };
 
   const filteredStudents = students;
-  const pageCount = Math.max(1, Math.ceil(totalStudents / PAGE_SIZE));
+  const pageCount = pagesFor(totalStudents, PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -374,7 +398,7 @@ export const StudentsPage: React.FC = () => {
           <Users className="h-5 w-5 text-blue-600" />
           إضافة طالب جديد للمنظومة
         </h2>
-        <form onSubmit={handleAddStudent} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <form onSubmit={handleAddStudent} onFocusCapture={touchForm} onPointerDownCapture={touchForm} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Full Name */}
           <div>
             <label className="text-xs font-semibold text-slate-500">الاسم بالكامل (ثلاثي أو رباعي)</label>
@@ -413,6 +437,7 @@ export const StudentsPage: React.FC = () => {
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"
               required
             >
+              {universities.length === 0 && <option value="">{options.error ? 'تعذر تحميل الجامعات' : formUsed ? 'جاري التحميل…' : 'اختر الجامعة'}</option>}
               {universities.map((u) => (
                 <option key={u.id} value={u.name}>
                   {u.name}
@@ -518,7 +543,7 @@ export const StudentsPage: React.FC = () => {
             />
           </div>
           <span className="text-xs font-semibold text-slate-400">
-            إجمالي الطلاب: {totalStudents.toLocaleString('ar-EG')}{studentsPage.refreshing ? ' • جاري التحديث…' : ''}
+            إجمالي الطلاب: {totalStudents === undefined ? '…' : totalStudents.toLocaleString('ar-EG')}{studentsPage.refreshing ? ' • جاري التحديث…' : ''}
           </span>
         </div>
 
@@ -641,11 +666,11 @@ export const StudentsPage: React.FC = () => {
             </table>
           </div>
         )}
-        {pageCount > 1 && (
+        {(pageIndex > 0 || hasNext) && (
           <div className="flex items-center justify-between border-t border-slate-100 p-3 text-xs text-slate-500">
             <button disabled={pageIndex === 0} onClick={() => setPageIndex(pageIndex - 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">السابق</button>
-            <span>صفحة {(pageIndex + 1).toLocaleString('ar-EG')} من {pageCount.toLocaleString('ar-EG')}</span>
-            <button disabled={pageIndex >= pageCount - 1} onClick={() => setPageIndex(pageIndex + 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">التالي</button>
+            <span>صفحة {(pageIndex + 1).toLocaleString('ar-EG')}{pageCount ? ` من ${pageCount.toLocaleString('ar-EG')}` : ''}</span>
+            <button disabled={!hasNext} onClick={() => setPageIndex(pageIndex + 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40">التالي</button>
           </div>
         )}
       </div>

@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { FileCheck, Check, X, Eye, AlertOctagon, Clock, Building2, MapPin, Phone, GraduationCap, Search } from 'lucide-react';
-import { createReceiptImageUrl, type PendingReceiptRow } from '../lib/pendingReceipts';
+import { RECEIPTS_BUCKET, type PendingReceiptRow } from '../lib/pendingReceipts';
+import { resignPath, useSignedUrls } from '../lib/signedUrls';
+import { notifyError } from '../lib/toasts';
+import { SkeletonTable } from './Skeleton';
 
 export type { PendingReceiptRow } from '../lib/pendingReceipts';
 
@@ -17,6 +19,11 @@ const formatUpload = (iso: string) => {
 interface PendingReceiptsProps {
   receipts: PendingReceiptRow[];
   loading: boolean;
+  /** How many are waiting in all (the list itself is loaded a part at a time). */
+  total?: number;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   /** Saves the decision. The row disappears at once and returns if the save fails. */
   onReview: (receiptId: string, decision: 'approved' | 'rejected', reason?: string) => Promise<void>;
 }
@@ -24,16 +31,20 @@ interface PendingReceiptsProps {
 export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   receipts,
   loading,
+  total,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   onReview,
 }) => {
   const [rejectModalReceiptId, setRejectModalReceiptId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [thumbnailFailures, setThumbnailFailures] = useState<Record<string, boolean>>({});
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewReceipt, setPreviewReceipt] = useState<PendingReceiptRow | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewRetried, setPreviewRetried] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [reasonError, setReasonError] = useState('');
   const [query, setQuery] = useState('');
 
   const visibleReceipts = useMemo(() => {
@@ -43,29 +54,42 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
         .some((value) => value.toLowerCase().includes(q)));
   }, [receipts, query]);
 
-  const openReceiptPreview = async (row: PendingReceiptRow) => {
-    setPreviewReceipt(row);
-    setPreviewImageUrl(null);
+  // One signing request for the receipts loaded; the links are kept per file, so
+  // re-reading the list, searching or deciding on a receipt signs nothing again
+  // and the browser keeps showing the pictures it already has.
+  const signedUrls = useSignedUrls(RECEIPTS_BUCKET, receipts.map((row) => row.imagePath));
+  const imageUrlOf = (row: PendingReceiptRow) => (row.imagePath ? signedUrls[row.imagePath] : undefined) ?? row.legacyImageUrl ?? null;
+
+  const closePreview = () => { setPreviewReceipt(null); setPreviewError(''); };
+  // A link can expire in a tab left open for hours: sign that one file again, once.
+  const retryPreview = async (row: PendingReceiptRow) => {
     setPreviewError('');
-    setPreviewLoading(true);
+    setPreviewRetried(true);
+    if (!row.imagePath) { setPreviewError('تعذر فتح الملف. تحقق من أن صورة الإيصال ما زالت محفوظة.'); return; }
     try {
-      // Create a fresh URL at click time so previews still work after a tab has
-      // been open long enough for the list's original signed URL to expire.
-      const url = await createReceiptImageUrl(row.imagePath || row.imageUrl);
-      setPreviewImageUrl(url);
+      const url = await resignPath(RECEIPTS_BUCKET, row.imagePath);
+      if (!url) setPreviewError('تعذر فتح الملف. تحقق من أن صورة الإيصال ما زالت محفوظة.');
+      else setThumbnailFailures((failed) => ({ ...failed, [row.id]: false }));
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : 'تعذر تحميل صورة الإيصال.');
-    } finally {
-      setPreviewLoading(false);
     }
   };
+  // The preview shows the very link the thumbnail used: no second signing, no second download.
+  const openReceiptPreview = (row: PendingReceiptRow) => {
+    setPreviewReceipt(row);
+    setPreviewRetried(false);
+    setPreviewError(row.imagePath || row.legacyImageUrl ? '' : 'مسار صورة الإيصال غير متاح.');
+    // No link yet (the thumbnail's file was missing, or signing has not answered): ask for this one now.
+    if (row.imagePath && !signedUrls[row.imagePath]) void retryPreview(row);
+  };
+  const previewUrl = previewReceipt ? imageUrlOf(previewReceipt) : null;
 
   const handleApprove = async (receiptId: string) => {
     try {
       setProcessingId(receiptId);
       await onReview(receiptId, 'approved');
     } catch (err: any) {
-      alert('خطأ أثناء اعتماد الإيصال: ' + err.message);
+      notifyError('تعذر اعتماد الإيصال', err?.message);
     } finally {
       setProcessingId(null);
     }
@@ -76,7 +100,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
     if (!rejectModalReceiptId) return;
     const cleanReason = rejectionReason.trim();
     if (!cleanReason) {
-      alert('سبب الرفض إلزامي ولا يمكن إتمام الرفض بدونه.');
+      setReasonError('سبب الرفض إلزامي ولا يمكن إتمام الرفض بدونه.');
       return;
     }
     const receiptId = rejectModalReceiptId;
@@ -86,7 +110,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       setRejectionReason('');
       await onReview(receiptId, 'rejected', cleanReason);
     } catch (err: any) {
-      alert('خطأ أثناء رفض الإيصال: ' + err.message);
+      notifyError('تعذر رفض الإيصال', err?.message);
     } finally {
       setProcessingId(null);
     }
@@ -108,7 +132,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
           </div>
         </div>
         <span className="pill-pending">
-          {receipts.length} إيصالات قيد الانتظار
+          {Math.max(total ?? 0, receipts.length)} إيصالات قيد الانتظار
         </span>
       </div>
 
@@ -124,7 +148,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       {/* Table */}
       <div className="mt-4 overflow-x-auto">
         {loading ? (
-          <div className="py-12 text-center text-sm text-[#5B6B7A]">جاري تحميل الإيصالات المعلقة...</div>
+          <SkeletonTable rows={6} columns={6} />
         ) : receipts.length === 0 ? (
           <div className="py-12 text-center">
             <div className="h-12 w-12 rounded-full bg-[#DDF3E6] text-[#2E9E5B] flex items-center justify-center mx-auto mb-2">
@@ -162,15 +186,19 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          onClick={() => void openReceiptPreview(row)}
-                          className="h-10 w-10 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center cursor-pointer hover:border-[#7EC8E3] group"
+                          onClick={() => openReceiptPreview(row)}
+                          className="h-10 w-10 flex-shrink-0 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center cursor-pointer hover:border-[#7EC8E3] group"
                           title="عرض صورة الإيصال"
                           aria-label={`عرض إيصال ${row.studentName}`}
                         >
-                          {row.imageUrl && !thumbnailFailures[row.id] ? (
+                          {imageUrlOf(row) && !thumbnailFailures[row.id] ? (
                             <img
-                              src={row.imageUrl}
+                              src={imageUrlOf(row) ?? undefined}
                               alt=""
+                              width={40}
+                              height={40}
+                              loading="lazy"
+                              decoding="async"
                               className="h-full w-full object-cover"
                               onError={() => setThumbnailFailures((failed) => ({ ...failed, [row.id]: true }))}
                             />
@@ -239,6 +267,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                           onClick={() => {
                             setRejectModalReceiptId(row.id);
                             setRejectionReason('');
+                            setReasonError('');
                           }}
                           disabled={isProcessing}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#DC2626] text-white text-xs font-bold hover:bg-[#b91c1c] transition shadow-sm"
@@ -256,6 +285,15 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
         )}
       </div>
 
+      {hasMore && !loading && onLoadMore && (
+        <div className="mt-4 text-center">
+          <button type="button" onClick={onLoadMore} disabled={loadingMore}
+            className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-xs font-bold text-[#3E8FBF] hover:bg-slate-50 disabled:opacity-60">
+            {loadingMore ? 'جاري التحميل…' : 'عرض المزيد من الإيصالات'}
+          </button>
+        </div>
+      )}
+
       {/* Mandatory Rejection Reason Modal */}
       {rejectModalReceiptId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -271,10 +309,12 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
             <textarea
               rows={3}
               value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
+              onChange={(e) => { setRejectionReason(e.target.value); setReasonError(''); }}
+              aria-invalid={!!reasonError}
               placeholder="اكتب سبب الرفض هنا (مثال: صورة التحويل غير واضحة، المبلغ غير مطابق، رقم العملية مقطوع)..."
               className="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-[#7EC8E3] focus:outline-none"
             />
+            {reasonError && <p role="alert" className="mt-2 text-xs font-bold text-rose-600">{reasonError}</p>}
 
             <div className="mt-4 flex justify-end gap-2.5">
               <button
@@ -297,44 +337,42 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       {/* Image Preview Modal */}
       {previewReceipt && (
         <div
-          onClick={() => {
-            setPreviewReceipt(null);
-            setPreviewImageUrl(null);
-            setPreviewError('');
-          }}
+          onClick={closePreview}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
         >
-          <div className="glass-panel p-4 max-w-lg w-full bg-white">
+          <div className="glass-panel p-4 max-w-lg w-full bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-2">
               <div>
                 <span className="text-sm font-bold text-[#1F2937]">إيصال {previewReceipt.studentName}</span>
                 <p className="text-[11.5px] text-[#5B6B7A]">{previewReceipt.companyName} • {previewReceipt.lineName} • {previewReceipt.periodLabel || typeLabels[previewReceipt.subscriptionType] || previewReceipt.subscriptionType} • {previewReceipt.price.toLocaleString('ar-EG')} ج.م • رُفع {formatUpload(previewReceipt.createdAt).day} {formatUpload(previewReceipt.createdAt).time}</p>
               </div>
-              <button onClick={() => setPreviewReceipt(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={closePreview} className="text-slate-400 hover:text-slate-600" aria-label="إغلاق">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="h-80 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-slate-200">
-              {previewLoading ? (
-                <span className="text-sm text-slate-500">جاري تحميل صورة الإيصال...</span>
-              ) : previewError ? (
+              {previewError ? (
                 <div className="px-6 text-center text-sm text-rose-700" role="alert">
                   <p>تعذر عرض صورة الإيصال: {previewError}</p>
-                  <button className="mt-3 font-bold underline" onClick={() => void openReceiptPreview(previewReceipt)}>
+                  <button className="mt-3 font-bold underline" onClick={() => void retryPreview(previewReceipt)}>
                     إعادة المحاولة
                   </button>
                 </div>
-              ) : previewImageUrl ? (
+              ) : previewUrl ? (
                 <img
-                  src={previewImageUrl}
+                  key={previewUrl}
+                  src={previewUrl}
                   alt="إيصال التحويل"
+                  decoding="async"
                   className="h-full w-full object-contain"
                   onError={() => {
-                    setPreviewImageUrl(null);
-                    setPreviewError('تعذر فتح الملف. تحقق من أن صورة الإيصال ما زالت محفوظة.');
+                    if (previewRetried) setPreviewError('تعذر فتح الملف. تحقق من أن صورة الإيصال ما زالت محفوظة.');
+                    else void retryPreview(previewReceipt);
                   }}
                 />
-              ) : null}
+              ) : (
+                <span className="text-sm text-slate-500" role="status">جاري تحميل صورة الإيصال...</span>
+              )}
             </div>
           </div>
         </div>

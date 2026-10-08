@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DollarSign, RotateC
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
+import { useLineNames, useUniversities } from '../lib/reference';
 import { SkeletonTable } from '../components/Skeleton';
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -51,21 +52,16 @@ export const ReportsPage: React.FC = () => {
   const loading = reportPage.loading;
   const error = reportPage.error;
 
-  const optionsPage = usePageData(keys.company(company.id, 'reports', 'options'), async () => {
-    const [{ data: u }, { data: l }, { data: r }] = await Promise.all([
-      supabase.from('universities').select('id, name').order('name'),
-      supabase.from('lines').select('id, name').eq('company_id', company.id).order('name'),
-      // This company's resets, plus any older platform-wide one that still applies to it.
-      supabase.from('report_resets').select('id, scope, reset_at, note, undone_at')
-        .or(`company_id.eq.${company.id},company_id.is.null`).order('reset_at', { ascending: false }).limit(10),
-    ]);
-    return { universities: (u || []) as Option[], lines: (l || []) as Option[], resets: (r || []) as ResetRow[] };
-  });
-  const universities = optionsPage.data?.universities ?? [];
-  const lines = optionsPage.data?.lines ?? [];
-  const resets = optionsPage.data?.resets ?? [];
+  // Filters come from the shared lookups; only the resets belong to this page.
+  const universities: Option[] = useUniversities().data ?? [];
+  const lines: Option[] = useLineNames(company.id).data ?? [];
+  const resetsPage = usePageData(keys.company(company.id, 'reports', 'resets'), () =>
+    // This company's resets, plus any older platform-wide one that still applies to it.
+    unwrap<ResetRow[]>(supabase.from('report_resets').select('id, scope, reset_at, note, undone_at')
+      .or(`company_id.eq.${company.id},company_id.is.null`).order('reset_at', { ascending: false }).limit(10)));
+  const resets = resetsPage.data ?? [];
   const load = reportPage.reload;
-  const loadOptions = optionsPage.reload;
+  const loadOptions = resetsPage.reload;
 
   const set = (patch: Partial<typeof filters>) => setFilters((f) => ({ ...f, ...patch }));
   const t = report?.totals;
@@ -77,7 +73,7 @@ export const ReportsPage: React.FC = () => {
     if (!confirm('إلغاء هذا التصفير؟ ستعود التقارير لاحتساب البيانات السابقة له.')) return;
     const { error: undoError } = await supabase.rpc('admin_undo_report_reset', { p_reset_id: reset.id });
     if (undoError) alert(undoError.message);
-    else { await loadOptions(); await load(); }
+    else await Promise.all([loadOptions(), load()]);
   };
 
   return (
@@ -211,7 +207,7 @@ export const ReportsPage: React.FC = () => {
       {resetScope && (
         <ResetDialog scope={resetScope} companyId={company.id} companyName={company.name}
           onClose={() => setResetScope(null)}
-          onDone={async () => { setResetScope(null); await loadOptions(); await load(); }} />
+          onDone={async () => { setResetScope(null); await Promise.all([loadOptions(), load()]); }} />
       )}
     </div>
   );

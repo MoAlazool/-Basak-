@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Building2, CreditCard, ImagePlus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { Skeleton, SkeletonForm } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { ACCEPTED_IMAGES, uploadWalletArtwork, validateImage, walletArtworkUrl } from '../lib/walletArtwork';
 
@@ -174,7 +177,6 @@ const GooglePreview: React.FC<PreviewProps> = ({ title, background, logo, banner
 /** Each transport company's own Wallet card: identity, design, and rollout to its students' cards. */
 export const WalletCardDesignPage: React.FC = () => {
   const companyId = useCompany().id;
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [logoChange, setLogoChange] = useState<ArtworkChange>(undefined);
   const [bannerChange, setBannerChange] = useState<ArtworkChange>(undefined);
@@ -182,16 +184,35 @@ export const WalletCardDesignPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [rollout, setRollout] = useState<Rollout | null>(null);
 
-  const load = useCallback(async (resetDraft: boolean) => {
-    const { data, error: loadError } = await supabase.rpc('get_wallet_card_settings', { p_company_id: companyId });
-    if (loadError) { setError(`تعذر التحميل: ${loadError.message}`); return null; }
-    const loaded = data as Settings;
-    setSettings(loaded);
-    if (resetDraft) { setDraft(toDraft(loaded)); setLogoChange(undefined); setBannerChange(undefined); }
-    return loaded;
-  }, [companyId]);
+  // Cached like every other page of the workspace: a revisit shows the saved design
+  // at once and checks for changes behind it (the live topic refreshes this key too).
+  const client = useQueryClient();
+  const queryKey = keys.company(companyId, 'walletCard');
+  const fetchSettings = () => unwrap<Settings>(supabase.rpc('get_wallet_card_settings', { p_company_id: companyId }));
+  const page = usePageData(queryKey, fetchSettings);
+  const settings = page.data ?? null;
+  /** What the form started from: a background refresh never overwrites what the admin is editing. */
+  const [base, setBase] = useState<Draft | null>(null);
+  useEffect(() => {
+    if (!settings) return;
+    if (draft && base && JSON.stringify(draft) !== JSON.stringify(base)) return;
+    const fresh = toDraft(settings);
+    setDraft(fresh);
+    setBase(fresh);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
 
-  useEffect(() => { setSettings(null); setDraft(null); setRollout(null); setError(''); void load(true); }, [load]);
+  /** Reads the saved settings again, now (after a save or a rollout). */
+  const load = async (resetDraft: boolean) => {
+    try {
+      const loaded = await client.fetchQuery({ queryKey, queryFn: fetchSettings, staleTime: 0 });
+      if (resetDraft) { setDraft(toDraft(loaded)); setBase(toDraft(loaded)); setLogoChange(undefined); setBannerChange(undefined); }
+      return loaded;
+    } catch (err: any) {
+      setError(`تعذر التحميل: ${err.message}`);
+      return null;
+    }
+  };
 
   const logoFileUrl = useMemo(() => (logoChange ? URL.createObjectURL(logoChange) : null), [logoChange]);
   const bannerFileUrl = useMemo(() => (bannerChange ? URL.createObjectURL(bannerChange) : null), [bannerChange]);
@@ -265,7 +286,7 @@ export const WalletCardDesignPage: React.FC = () => {
   const phoneValid = !draft || draft.phone.trim() === '' || PHONE.test(draft.phone.trim());
   const valid = !!draft && HEX.test(draft.background) && HEX.test(draft.foreground) && HEX.test(draft.label)
     && draft.title.trim().length <= 40 && draft.phoneLabel.trim().length <= 30 && phoneValid;
-  const dirty = !!settings && !!draft && (JSON.stringify(draft) !== JSON.stringify(toDraft(settings))
+  const dirty = !!settings && !!draft && (JSON.stringify(draft) !== JSON.stringify(base)
     || logoChange !== undefined || bannerChange !== undefined);
   const busy = saving || !!rollout?.running;
   const update = (patch: Partial<Draft>) => setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -288,6 +309,19 @@ export const WalletCardDesignPage: React.FC = () => {
         </div>
       </div>
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
+      {!error && page.error && !settings && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          تعذر التحميل: {page.error}
+          <button className="mr-3 font-bold underline" onClick={() => void page.reload()}>إعادة المحاولة</button>
+        </div>
+      )}
+      {/* First visit only: the shape of the form while the saved design arrives. Later visits open from the cache. */}
+      {page.loading && (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-6"><SkeletonForm fields={2} /><SkeletonForm fields={3} /></div>
+          <Skeleton className="mx-auto h-[420px] w-full max-w-[320px] rounded-3xl" />
+        </div>
+      )}
       {rollout && (
         <div role="status" className={`rounded-xl border p-4 text-sm ${rollout.failed
           ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>

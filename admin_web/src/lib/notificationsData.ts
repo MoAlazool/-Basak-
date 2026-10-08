@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQueryClient, type InfiniteData, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { keys, unwrap, usePageData } from './query';
-import { loadLineOptions } from './lineOptions';
+import { useLineOptions, usePlatformCompanies, type CompanyOption } from './reference';
 import {
   audienceKey, platformCompanyIds, withCancelled, withoutRow,
   type AudiencePreview, type AudienceSpec, type ComposeResult, type HistoryPage, type HistoryRow, type PlatformComposeResult,
@@ -21,8 +21,7 @@ const historyKey = (companyId: string, filter: StatusFilter) => keys.company(com
 type History = InfiniteData<{ items: HistoryRow[] }, string | null>;
 
 /** The lines (with their trips) and universities the audience is chosen from: the cache other pages already fill. */
-export const useAudienceOptions = (companyId: string) =>
-  usePageData(keys.company(companyId, 'lineOptions'), () => loadLineOptions(companyId));
+export const useAudienceOptions = (companyId: string) => useLineOptions(companyId);
 
 /** A history, newest first, a page at a time: the company's own or the platform's. */
 function useHistoryPages<P extends { items: HistoryRow[]; next_before: string | null }>(
@@ -54,7 +53,7 @@ export function useNotificationHistory(companyId: string, filter: StatusFilter) 
   const { first, ...history } = useHistoryPages(historyKey(companyId, filter), (before) =>
     unwrap<HistoryPage>(supabase.rpc('get_company_notifications_page', {
       p_company_id: companyId, p_before: before, p_limit: PAGE_SIZE, p_status: filter === 'all' ? null : filter,
-    })));
+    })), true);
   /** null until the first page says so. */
   return { ...history, pushConfigured: first ? first.push_configured ?? false : null };
 }
@@ -176,12 +175,7 @@ export const useNotificationActions = (companyId: string) =>
 const platformRoot = keys.platform('notifications');
 const platformHistoryRoot = keys.platform('notifications', 'history');
 
-export interface CompanyOption { id: string; name: string; status?: string; }
-
-/** Every company by name: the lookup the platform pages filter by. */
-export const usePlatformCompanies = () =>
-  usePageData(keys.platform('companyNames'), () =>
-    unwrap<CompanyOption[]>(supabase.from('companies').select('id, name, status').order('name')));
+export { usePlatformCompanies, type CompanyOption };
 
 /** Notifications of every company (or of one), with the platform's push numbers on the first page. */
 export function usePlatformNotificationHistory(filter: StatusFilter, companyId: string) {

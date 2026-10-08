@@ -3,6 +3,7 @@ import { Eye, EyeOff, ShieldCheck, LogIn } from 'lucide-react';
 import { BasakLogo } from '../components/BasakLogo';
 import { supabase } from '../lib/supabase';
 import { AdminProfile } from '../lib/adminScope';
+import { loadAdminProfile } from '../lib/adminProfile';
 
 interface LoginPageProps {
   onLogin: (admin: AdminProfile) => void;
@@ -46,18 +47,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) throw signInError;
-      const { data: admin, error: adminError } = await supabase.from('admins').select('id,email,full_name,role,company_id').eq('id', data.user.id).maybeSingle();
-      if (adminError) throw adminError;
+      const admin = await loadAdminProfile(data.user.id);
       if (!admin) {
         await supabase.auth.signOut();
         throw new Error('هذا الحساب غير مسجل كمسؤول في النظام.');
       }
-      let companyName: string | null = null;
-      if (admin.company_id) {
-        const { data: company } = await supabase.from('companies').select('name').eq('id', admin.company_id).maybeSingle();
-        companyName = company?.name ?? null;
-      }
-      onLogin({ ...admin, role: admin.role, companyName } as AdminProfile);
+      onLogin(admin);
     } catch (err) {
       const message = err instanceof Error ? err.message.toLowerCase() : '';
       if (

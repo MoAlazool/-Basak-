@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
-import { keys, usePageData } from '../lib/query';
+import { useLineNames, useSupervisorLines, useSupervisors, type LineName, type SupervisorRow } from '../lib/reference';
+import { useSignedUrls } from '../lib/signedUrls';
 import { SkeletonRows } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { squareJpeg } from '../lib/images';
@@ -9,31 +10,8 @@ import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Bus, Pencil, Save, X, Ca
 
 const PHOTO_BUCKET = 'supervisor-avatars';
 
-/** One request for all photos; a missing file yields no URL instead of an error. */
-async function signPhotos(paths: string[]): Promise<Record<string, string>> {
-  if (!paths.length) return {};
-  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 600);
-  if (error) {
-    console.warn('Could not sign supervisor photos:', error.message);
-    return {};
-  }
-  const urls: Record<string, string> = {};
-  (data || []).forEach((item) => { if (item.path && item.signedUrl && !item.error) urls[item.path] = item.signedUrl; });
-  return urls;
-}
-
-interface Supervisor {
-  id: string;
-  phone: string;
-  full_name: string;
-  company_id: string;
-  is_active: boolean;
-  created_at: string;
-  /** Path in the 'supervisor-avatars' bucket. */
-  profile_image_url: string | null;
-}
-
-interface LineOption { id: string; name: string; company_id: string; is_active: boolean; }
+type Supervisor = SupervisorRow;
+type LineOption = LineName;
 
 /** Checkbox list of a company's lines. */
 const LinePicker: React.FC<{
@@ -79,36 +57,24 @@ export const SupervisorsPage: React.FC = () => {
   const [savingLines, setSavingLines] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
-  const page = usePageData(keys.company(companyId, 'supervisors'), async () => {
-    const [supRes, lineRes, assignRes] = await Promise.all([
-      supabase.from('supervisors')
-        .select('id, phone, full_name, company_id, is_active, created_at, profile_image_url')
-        .eq('company_id', companyId).order('created_at', { ascending: false }),
-      supabase.from('lines').select('id, name, company_id, is_active').eq('company_id', companyId).order('name'),
-      supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', companyId),
-    ]);
-    if (supRes.error) throw supRes.error;
-    if (lineRes.error) throw lineRes.error;
-    if (assignRes.error) throw assignRes.error;
-    const assignments: Record<string, string[]> = {};
-    (assignRes.data || []).forEach((row) => { (assignments[row.supervisor_id] ||= []).push(row.line_id); });
-    return {
-      supervisors: (supRes.data || []) as unknown as Supervisor[],
-      lines: (lineRes.data || []) as LineOption[],
-      assignments,
-    };
-  });
-  const supervisors = page.data?.supervisors ?? [];
-  const lines = useMemo(() => page.data?.lines ?? [], [page.data]);
-  const assignments = page.data?.assignments ?? {};
-  const loading = page.loading;
-  const pageError = page.error;
-  const fetchData = page.reload;
+  // Three lookups, each cached once and shared (the lines page shows the same supervisors and assignments).
+  const supervisorsPage = useSupervisors(companyId);
+  const linesPage = useLineNames(companyId);
+  const assignmentsPage = useSupervisorLines(companyId);
+  const supervisors = supervisorsPage.data ?? [];
+  const lines = useMemo(() => linesPage.data ?? [], [linesPage.data]);
+  const assignments = useMemo(() => {
+    const byRow: Record<string, string[]> = {};
+    (assignmentsPage.data ?? []).forEach((row) => { (byRow[row.supervisor_id] ||= []).push(row.line_id); });
+    return byRow;
+  }, [assignmentsPage.data]);
+  const loading = supervisorsPage.loading;
+  const pageError = supervisorsPage.error || linesPage.error || assignmentsPage.error;
+  const fetchData = async () => { await Promise.all([supervisorsPage.reload(), assignmentsPage.reload()]); };
 
   const linesById = useMemo(() => new Map(lines.map((line) => [line.id, line])), [lines]);
-  const photoPaths = supervisors.map((s) => s.profile_image_url).filter((x): x is string => !!x);
-  const photos = usePageData(keys.company(companyId, 'avatars', 'supervisors', photoPaths), () => signPhotos(photoPaths),
-    { enabled: photoPaths.length > 0, keepPrevious: true });
+  // Signed once per photo and reused (lib/signedUrls.ts): a focus or a return here does not download them again.
+  const photos = useSignedUrls(PHOTO_BUCKET, supervisors.map((s) => s.profile_image_url));
 
   // The photo the supervisor sees in the app, and the students of their lines.
   const handlePhoto = async (sup: Supervisor, file: File | undefined) => {
@@ -125,8 +91,9 @@ export const SupervisorsPage: React.FC = () => {
         await supabase.storage.from(PHOTO_BUCKET).remove([path]);
         throw rowError;
       }
-      if (sup.profile_image_url) await supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
+      // The new photo shows first; the old file is cleaned up behind it.
       await fetchData();
+      if (sup.profile_image_url) void supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
     } catch (err: any) {
       alert('فشل رفع الصورة: ' + err.message);
     } finally {
@@ -303,8 +270,8 @@ export const SupervisorsPage: React.FC = () => {
                     <td className="p-4 font-semibold text-slate-800">
                       <div className="flex items-center gap-3">
                         <label className="relative shrink-0 cursor-pointer" title="إضافة أو تغيير صورة المشرف">
-                          {s.profile_image_url && photos.data?.[s.profile_image_url] ? (
-                            <img src={photos.data[s.profile_image_url]} alt={s.full_name}
+                          {s.profile_image_url && photos[s.profile_image_url] ? (
+                            <img src={photos[s.profile_image_url]} alt={s.full_name}
                               className="h-10 w-10 rounded-full object-cover" />
                           ) : (
                             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">

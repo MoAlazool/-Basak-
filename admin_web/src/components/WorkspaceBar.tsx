@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Building2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { usePlatformCompanies } from '../lib/reference';
 import { companyStatusLabel, useAdminScope, useCompany } from '../lib/adminScope';
 
 /**
@@ -13,13 +13,9 @@ export const WorkspaceBar: React.FC = () => {
   const company = useCompany();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const isPlatformAdmin = admin.role === 'super_admin';
-
-  useEffect(() => {
-    if (!isPlatformAdmin) return;
-    void supabase.from('companies').select('id, name').order('name').then(({ data }) => setCompanies(data ?? []));
-  }, [isPlatformAdmin]);
+  // The cached lookup the platform pages already use: nothing is asked again per workspace.
+  const companies = usePlatformCompanies(isPlatformAdmin).data ?? [];
 
   if (!isPlatformAdmin && company.status === 'active') return null;
 

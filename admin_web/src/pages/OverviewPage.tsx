@@ -51,7 +51,7 @@ export const OverviewPage: React.FC = () => {
         </div>
       </div>
 
-      {receipts.error ? (
+      {receipts.error && receipts.receipts.length === 0 ? (
         <div role="alert" className="glass-panel p-6 text-rose-700">
           تعذر تحميل الإيصالات: {receipts.error}
           <button className="mr-3 font-bold underline" onClick={() => void receipts.refresh()}>إعادة المحاولة</button>
@@ -60,6 +60,10 @@ export const OverviewPage: React.FC = () => {
         <PendingReceiptsTable
           receipts={receipts.receipts}
           loading={receipts.loading}
+          total={data?.pending_receipts}
+          hasMore={receipts.hasMore}
+          loadingMore={receipts.loadingMore}
+          onLoadMore={receipts.loadMore}
           onReview={receipts.review}
         />
       )}
