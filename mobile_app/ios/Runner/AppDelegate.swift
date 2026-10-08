@@ -28,6 +28,28 @@ import UserNotifications
     }
     engineBridge.pluginRegistry.registrar(forPlugin: "BasakWallet")?
       .register(AddPassButtonFactory(), withId: "basak/add_pass_button")
+
+    // Notifications: the unread count on the app icon, and the way to this
+    // app's page in Settings when notifications were switched off there.
+    let notifications = FlutterMethodChannel(
+      name: "basak/notifications", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    notifications.setMethodCallHandler { call, result in
+      switch call.method {
+      case "setBadge":
+        let count = max(0, call.arguments as? Int ?? 0)
+        if #available(iOS 16.0, *) {
+          UNUserNotificationCenter.current().setBadgeCount(count) { _ in }
+        } else {
+          UIApplication.shared.applicationIconBadgeNumber = count
+        }
+        result(nil)
+      case "openSettings":
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return result(false) }
+        UIApplication.shared.open(url) { opened in result(opened) }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 }
 

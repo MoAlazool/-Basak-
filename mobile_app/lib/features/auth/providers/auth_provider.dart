@@ -8,6 +8,7 @@ import '../../../core/storage/offline_cache.dart';
 import '../../../core/storage/snapshot_store.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
+import '../../notifications/push/push_providers.dart';
 import '../../student/daily_ride/data/vote_reminders.dart';
 import '../../student/qr/data/student_qr_repository.dart';
 
@@ -89,7 +90,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   StreamSubscription<dynamic>? _sessionSubscription;
 
-  AuthNotifier(this._repo) : super(const AuthState(isInitialLoading: true)) {
+  /// Runs while the session is still valid, just before signing out: what
+  /// must be told to the server as this account (detaching its push token).
+  final Future<void> Function()? beforeSignOut;
+
+  AuthNotifier(this._repo, {this.beforeSignOut}) : super(const AuthState(isInitialLoading: true)) {
     _init();
     _watchSession();
   }
@@ -237,6 +242,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> signOut() async {
     try {
+      // Best effort and bounded: signing out never waits for the network.
+      await beforeSignOut?.call().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    try {
       await _repo.signOut();
     } catch (error) {
       // Offline: the local session is already removed; only the server-side
@@ -261,7 +270,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
-  return AuthNotifier(repo);
+  // After signing out this phone must get nothing meant for the account.
+  return AuthNotifier(repo, beforeSignOut: () => ref.read(pushControllerProvider).detach());
 });
 
 /// The signed-in user's id. Every provider holding per-user data watches it,

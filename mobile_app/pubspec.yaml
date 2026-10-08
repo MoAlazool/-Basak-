@@ -16,6 +16,11 @@ dependencies:
   # Backend & Network
   supabase_flutter: ^2.8.0
 
+  # Push notifications (FCM; APNs through FCM on iOS). Configured with
+  # --dart-define, see lib/core/constants/firebase_config.dart.
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
+
   # State Management
   flutter_riverpod: ^2.6.1
 

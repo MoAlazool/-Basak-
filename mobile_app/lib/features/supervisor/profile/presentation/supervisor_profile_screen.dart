@@ -8,6 +8,7 @@ import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../notifications/presentation/notification_preferences_screen.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
 
@@ -67,6 +68,19 @@ class SupervisorProfileScreen extends ConsumerWidget {
             child: Material(
               type: MaterialType.transparency,
               child: Column(children: [
+                ListTile(
+                  leading: const Icon(LucideIcons.bell, color: BasakUi.muted),
+                  title: Text('إعدادات الإشعارات',
+                      style:
+                          AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink)),
+                  subtitle: Text('ما يصلك كإشعار على الهاتف',
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: BasakUi.muted)),
+                  trailing: const Icon(LucideIcons.chevronLeft,
+                      size: 18, color: BasakUi.muted),
+                  onTap: () => NotificationPreferencesScreen.open(context),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(LucideIcons.lock, color: BasakUi.muted),
                   title: Text('تغيير كلمة المرور أو البيانات',

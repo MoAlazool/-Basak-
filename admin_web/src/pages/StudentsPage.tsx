@@ -4,6 +4,7 @@ import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys, unwrap, usePageData } from '../lib/query';
+import { loadLineOptions, type LineOption, type StationOption, type TripOption, type UniversityOption } from '../lib/lineOptions';
 import { SkeletonTable } from '../components/Skeleton';
 import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
@@ -68,28 +69,7 @@ type LineRef = { name: string };
 
 const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
 
-interface University {
-  id: string;
-  name: string;
-}
-
-interface StationOption {
-  id: string; name: string; is_active: boolean; order_index: number;
-}
-
-interface TripOption {
-  id: string; direction: 'departure' | 'return'; label: string; start_time: string;
-  university_id: string | null; is_active: boolean;
-  line_trip_stops: { station_id: string; stop_time: string }[];
-}
-
-interface LineOption {
-  id: string; name: string; company_id: string; price_termly: number; price_yearly: number; price_daily: number;
-  line_period_prices?: { option: string; price: number }[];
-  stations: StationOption[];
-  line_trips: TripOption[];
-}
-
+type University = UniversityOption;
 
 const activeStations = (line?: LineOption) =>
   (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
@@ -169,17 +149,7 @@ export const StudentsPage: React.FC = () => {
     { enabled: photoPaths.length > 0, keepPrevious: true }).data ?? {};
 
   // What the add-student form chooses from.
-  const options = usePageData(keys.company(company.id, 'lineOptions'), async () => {
-    const [uniRes, lineRes] = await Promise.all([
-      supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
-      supabase.from('lines')
-        .select('id,name,company_id,price_termly,price_yearly,price_daily,line_period_prices(option,price),stations(id,name,is_active,order_index),line_trips(id,direction,label,start_time,university_id,is_active,line_trip_stops(station_id,stop_time))')
-        .eq('company_id', company.id).eq('is_active', true).order('name'),
-    ]);
-    if (uniRes.error) throw new Error(uniRes.error.message);
-    if (lineRes.error) throw new Error(lineRes.error.message);
-    return { universities: (uniRes.data || []) as University[], lines: (lineRes.data || []) as unknown as LineOption[] };
-  });
+  const options = usePageData(keys.company(company.id, 'lineOptions'), () => loadLineOptions(company.id));
   const universities = options.data?.universities ?? [];
   const lines = options.data?.lines ?? [];
 

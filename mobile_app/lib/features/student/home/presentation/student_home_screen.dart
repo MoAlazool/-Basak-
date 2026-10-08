@@ -11,7 +11,8 @@ import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/media/signed_photo.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../../core/widgets/greeting_header.dart';
-import '../../../notifications/data/notifications_repository.dart';
+import '../../../notifications/data/notification_feed.dart';
+import '../../../notifications/data/notification_preferences.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/sync/sync_hub.dart';
 import '../../invites/invites.dart';
@@ -152,7 +153,12 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final subscription = ref.read(currentSubscriptionProvider);
     if (settings == null || !subscription.hasValue) return; // not known yet
     final sub = subscription.value;
-    if (sub == null || !sub.isActive || settings.reminderMinutes <= 0) {
+    // No reminders without a running subscription, when the company switched
+    // them off, or when the student did (notification settings).
+    if (sub == null ||
+        !sub.isActive ||
+        settings.reminderMinutes <= 0 ||
+        !ref.read(voteRemindersEnabledProvider)) {
       await VoteReminders.cancelAll();
       return;
     }
@@ -326,6 +332,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final subAsync = ref.watch(currentSubscriptionProvider);
     // Back from the background, or reconnected: read the ride vote again.
     ref.listen(rideStatusTickProvider, (_, __) => _loadTodayRideStatus());
+    // Switched on or off in the notification settings: plan (or cancel) now.
+    ref.listen(voteRemindersEnabledProvider, (_, __) => _planReminders());
     // New vote times may move the ride day; the reminders follow both.
     ref.listen(voteSettingsProvider, (previous, next) {
       if (next.hasValue && previous?.valueOrNull != next.valueOrNull) {

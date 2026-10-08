@@ -4,8 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/storage/snapshot_store.dart';
 import 'package:basak_mobile/core/sync/session.dart';
+import 'package:basak_mobile/core/sync/sync_hub.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
+import 'package:basak_mobile/features/auth/models/user_role.dart';
+import 'package:basak_mobile/features/notifications/data/notification_feed.dart';
+import 'package:basak_mobile/features/notifications/data/notification_preferences.dart';
+import 'package:basak_mobile/features/notifications/data/quick_templates.dart';
 import 'package:basak_mobile/features/student/invites/invites.dart';
+import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
+import 'package:basak_mobile/features/supervisor/data/supervisor_repository.dart';
 
 /// A provider under test: counts server reads and returns whatever `server` holds.
 class _Probe extends SnapshotNotifier<String?> {
@@ -104,6 +111,75 @@ void main() {
     await SnapshotStore.clear();
     expect(await SnapshotStore.read('user-a', 'probe'), isNull);
     expect(await SnapshotStore.read('user-b', 'other'), isNull);
+  });
+
+  group('live events', () {
+    test('every signed-in role listens to its own user topic, next to its role\'s topics', () {
+      expect(SyncScope.topicsFor(userId: 'u1', role: UserRole.student, lineId: 'l1'),
+          {'user:u1', 'student:u1', 'line:l1'});
+      expect(SyncScope.topicsFor(userId: 'u1', role: UserRole.student), {'user:u1', 'student:u1'});
+      expect(SyncScope.topicsFor(userId: 's1', role: UserRole.supervisor, companyId: 'c1'),
+          {'user:s1', 'company:c1'});
+      expect(SyncScope.topicsFor(userId: 's1', role: UserRole.supervisor, companyId: ''), {'user:s1'});
+      expect(SyncScope.topicsFor(userId: 'x', role: UserRole.unknown), {'user:x'});
+      expect(SyncScope.topicsFor(userId: null, role: UserRole.student, lineId: 'l1'), isEmpty);
+    });
+
+    test('a notification arriving, deleted, or read on another phone is a notifications change', () {
+      for (final op in ['INSERT', 'DELETE', 'READ']) {
+        expect(SyncScope.tableOf({'table': 'notifications', 'op': op, 'id': 'n1', 'company_id': 'c1'}),
+            'notifications');
+        // Older clients of the realtime library wrap the body in `payload`.
+        expect(
+            SyncScope.tableOf({
+              'event': 'change',
+              'payload': {'table': 'notifications', 'op': op, 'id': 'n1'},
+            }),
+            'notifications');
+      }
+      expect(SyncScope.tableOf(const {}), '');
+    });
+
+    test('a notifications change re-reads the inbox and nothing else', () {
+      for (final role in [UserRole.student, UserRole.supervisor]) {
+        final invalidated = <ProviderOrFamily>[];
+        SyncScope.invalidateFor(invalidated.add, const {'notifications'}, role, 'u1');
+        expect(invalidated, [notificationFeedProvider], reason: role.name);
+      }
+
+      // Other tables still refresh what they always did, without the inbox.
+      final student = <ProviderOrFamily>[];
+      SyncScope.invalidateFor(student.add, const {'subscriptions'}, UserRole.student, 'u1');
+      expect(student, contains(currentSubscriptionProvider));
+      expect(student, isNot(contains(notificationFeedProvider)));
+
+      final supervisor = <ProviderOrFamily>[];
+      SyncScope.invalidateFor(supervisor.add, const {'supervisor_scan_events'}, UserRole.supervisor, 's1');
+      expect(supervisor, contains(supervisorDashboardProvider));
+      expect(supervisor, isNot(contains(notificationFeedProvider)));
+
+      // A burst touching both refreshes both.
+      final both = <ProviderOrFamily>[];
+      SyncScope.invalidateFor(both.add, const {'notifications', 'supervisors'}, UserRole.supervisor, 's1');
+      expect(both, containsAll([notificationFeedProvider, supervisorDashboardProvider]));
+    });
+
+    test('a saved copy that turned out stale re-reads only its own screen', () {
+      expect(SyncScope.tablesFor('notifications.page'), {'notifications'});
+      expect(SyncScope.tablesFor('notification_preferences'), {'notification_preferences'});
+      expect(SyncScope.tablesFor('notification_templates'), {'notification_templates'});
+      expect(SyncScope.tablesFor('subscriptions'), {'subscriptions'});
+
+      final preferences = <ProviderOrFamily>[];
+      SyncScope.invalidateFor(
+          preferences.add, SyncScope.tablesFor('notification_preferences'), UserRole.student, 'u1');
+      expect(preferences, [notificationPreferencesProvider]);
+
+      final templates = <ProviderOrFamily>[];
+      SyncScope.invalidateFor(
+          templates.add, SyncScope.tablesFor('notification_templates'), UserRole.supervisor, 's1');
+      expect(templates, [quickTemplatesProvider]);
+    });
   });
 
   test('a phone typed on an Arabic keyboard is the same number', () {

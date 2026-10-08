@@ -51,6 +51,10 @@ final subscriptionReceiptDocProvider =
   return ref.watch(subscriptionRepoProvider).getSubscriptionReceipt(id);
 });
 
+/// The subscription a notification was about: its card opens when the
+/// subscriptions tab is shown, then this is cleared.
+final focusedSubscriptionProvider = StateProvider<String?>((ref) => null);
+
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
 
@@ -72,6 +76,26 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// (paying the next period in advance), starting from [_buyingFrom].
   bool _buying = false;
   SubscriptionDraft _buyingFrom = const SubscriptionDraft();
+
+  @override
+  void initState() {
+    super.initState();
+    // Opened by a notification before this tab was ever built.
+    _focus(ref.read(focusedSubscriptionProvider));
+  }
+
+  /// Opens the card of the subscription a notification was about.
+  void _focus(String? subscriptionId) {
+    if (subscriptionId == null) return;
+    _expanded.add(subscriptionId);
+    _collapsedByUser.remove(subscriptionId);
+    _buying = false;
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.read(focusedSubscriptionProvider.notifier).state = null;
+      setState(() {});
+    });
+  }
 
   void _refreshSubscriptions() {
     ref.invalidate(currentSubscriptionProvider);
@@ -233,6 +257,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   @override
   Widget build(BuildContext context) {
     final subsAsync = ref.watch(allSubscriptionsProvider);
+    ref.listen(focusedSubscriptionProvider, (_, id) => _focus(id));
 
     return GlassScaffold(
       canvas: const Color(0xFFEAF5FA),

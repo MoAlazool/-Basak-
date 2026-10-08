@@ -145,6 +145,13 @@ class OfflineCache {
     }
   }
 
+  /// Replaces the saved copy of [key] with what a write just returned, so the
+  /// screen that shows it opens with the new value next time.
+  static Future<void> put(String key, Object? value) async {
+    final userId = _currentUserId();
+    if (userId != null) await _save('$_dataPrefix$userId.$key', value);
+  }
+
   /// A new run of the app (tests), or another account: nothing counts as read yet.
   @visibleForTesting
   static void resetSession() {
@@ -194,7 +201,7 @@ class OfflineCache {
     _fresh.clear();
     try {
       final all = await _storage.readAll();
-      for (final key in all.keys.where((k) => k.startsWith(_prefix))) {
+      for (final key in all.keys.where((k) => k.startsWith(_prefix)).toList()) {
         await _storage.delete(key: key);
       }
     } catch (_) {
@@ -224,7 +231,7 @@ class OfflineCache {
   static Future<void> clearStudentLookups() async {
     try {
       final all = await _storage.readAll();
-      for (final key in all.keys.where((k) => k.startsWith(_studentLookupPrefix))) {
+      for (final key in all.keys.where((k) => k.startsWith(_studentLookupPrefix)).toList()) {
         await _storage.delete(key: key);
       }
     } catch (_) {
