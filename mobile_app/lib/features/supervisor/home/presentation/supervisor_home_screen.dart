@@ -7,6 +7,7 @@ import '../../../../core/widgets/glass_scaffold.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
 import '../../rider_counts/presentation/rider_counts_screen.dart';
+import 'trip_riders_sheet.dart';
 
 /// Tab 1 — overview of the supervisor's assigned line(s): registered students,
 /// per-station breakdown, university trips and today's activity.
@@ -123,7 +124,7 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
           ..._tripTimesSection(data, line),
           if (line.schedules.isNotEmpty) ...[
             const BasakSectionTitle('رحلات الجامعات على الخط'),
-            _schedulesCard(line),
+            _schedulesCard(line, data),
           ],
           BasakSectionTitle('الطلاب حسب المحطة',
               trailing: BasakPill('${line.registeredStudents} طالب', icon: LucideIcons.users)),
@@ -239,9 +240,9 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
         ]),
       );
 
-  /// Students per trip time on the selected line, from the students' ride
-  /// confirmations: e.g. "5:00 م → 5 طلاب عائدون". Today first, then the next
-  /// ride day once its vote has opened.
+  /// Students per trip on the selected line, grouped by the time each student
+  /// chose that day: e.g. "5:00 م → 5 طلاب عائدون". Today first, then the next
+  /// ride day once its vote has opened. A row opens the trip's riders.
   List<Widget> _tripTimesSection(SupervisorDashboard data, SupervisorLine line) {
     final rows = data.tripTimes.where((t) => t.lineId == line.id).toList();
     final days = rows.map((t) => DateUtils.dateOnly(t.rideDate)).toSet().toList()..sort();
@@ -270,32 +271,19 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
   Widget _tripDayCard(String dayLabel, List<SupervisorTripTime> rows) {
     final departures = rows.where((t) => !t.isReturn).toList()..sort((a, b) => a.time.compareTo(b.time));
     final returns = rows.where((t) => t.isReturn).toList()..sort((a, b) => a.time.compareTo(b.time));
-    Widget group(String title, IconData icon, Color color, List<SupervisorTripTime> items, String noun) =>
+    Widget group(String title, IconData icon, Color color, List<SupervisorTripTime> items,
+            (String, String) noun) =>
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(width: 6),
             Text(title, style: AppTextStyles.labelSmall.copyWith(color: color, fontWeight: FontWeight.w800)),
           ]),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           if (items.isEmpty)
             Text('لا أحد', style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted))
           else
-            for (final t in items)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(children: [
-                  Text(BasakUi.time12(t.time),
-                      style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 8),
-                  const Icon(LucideIcons.arrowLeft, size: 14, color: BasakUi.muted),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('${t.students} ${t.students == 1 ? 'طالب' : 'طلاب'} $noun',
-                        style: AppTextStyles.bodyMedium.copyWith(color: BasakUi.ink)),
-                  ),
-                ]),
-              ),
+            for (final t in items) _tripTimeRow(t, dayLabel, color, noun),
         ]);
     return Container(
       padding: const EdgeInsets.all(14),
@@ -303,17 +291,46 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(dayLabel, style: AppTextStyles.titleMedium.copyWith(color: BasakUi.ink)),
         const SizedBox(height: 10),
-        group('رحلات الذهاب', LucideIcons.sunrise, const Color(0xFF07865A), departures, 'ذاهبون'),
+        group('رحلات الذهاب', LucideIcons.sunrise, const Color(0xFF07865A), departures, ('ذاهب', 'ذاهبون')),
         const Divider(height: 22),
-        group('رحلات العودة', LucideIcons.sunset, const Color(0xFFB97812), returns, 'عائدون'),
+        group('رحلات العودة', LucideIcons.sunset, const Color(0xFFB97812), returns, ('عائد', 'عائدون')),
       ]),
     );
   }
 
+  /// [noun]: (one student, several), e.g. ('ذاهب', 'ذاهبون').
+  Widget _tripTimeRow(SupervisorTripTime t, String dayLabel, Color color, (String, String) noun) => InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => TripRidersSheet.show(context, trip: t, dayLabel: dayLabel),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(BasakUi.time12(t.time),
+                    style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
+                if (t.subtitle.isNotEmpty)
+                  Text(t.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Text(t.students == 1 ? '1 طالب ${noun.$1}' : '${t.students} طلاب ${noun.$2}',
+                style: AppTextStyles.bodyMedium.copyWith(color: color, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 4),
+            const Icon(LucideIcons.chevronLeft, size: 18, color: BasakUi.muted),
+          ]),
+        ),
+      );
+
   Widget _heroDivider() =>
       Container(width: 1, height: 34, color: Colors.white.withOpacity(.18));
 
-  Widget _schedulesCard(SupervisorLine line) => Container(
+  /// The line's trips; the pill counts today's riders on each trip by the time
+  /// they chose (falls back to subscriptions on a server without per-trip counts).
+  Widget _schedulesCard(SupervisorLine line, SupervisorDashboard data) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BasakUi.card(),
         child: Column(
@@ -335,16 +352,24 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
                           style: AppTextStyles.bodyLarge
                               .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
                       Text(
-                          'ذهاب ${BasakUi.time12(trip.departureTime)} · عودة ${BasakUi.time12(trip.returnTime)}',
+                          trip.returnTime.isEmpty
+                              ? 'ذهاب ${BasakUi.time12(trip.departureTime)}'
+                              : 'ذهاب ${BasakUi.time12(trip.departureTime)} · عودة ${BasakUi.time12(trip.returnTime)}',
                           style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
                     ]),
                   ),
-                  BasakPill('${trip.registeredStudents} طالب',
-                      background: const Color(0xFFEEF0FF), foreground: const Color(0xFF4F46E5)),
+                  _tripRidersPill(trip, data.ridersOnTrip(trip.id, data.today)),
                 ]),
               ),
           ],
         ),
+      );
+
+  Widget _tripRidersPill(LineUniversityTrip trip, int? ridersToday) => BasakPill(
+        ridersToday == null ? '${trip.registeredStudents} طالب' : '$ridersToday اليوم',
+        background: const Color(0xFFEEF0FF),
+        foreground: const Color(0xFF4F46E5),
+        icon: ridersToday == null ? null : LucideIcons.users,
       );
 
   Widget _stationsCard(SupervisorLine line) {
