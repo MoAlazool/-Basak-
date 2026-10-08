@@ -28,6 +28,8 @@ interface Settings {
   periods: Period[] | null;
   purchasable: (Period & { phase: string; subscription_type: string })[] | null;
   advance_enabled: boolean | null;
+  /** What is printed about the company on its receipts. */
+  receipt_info: { phone: string | null; address: string | null; commercial_register: string | null; tax_number: string | null } | null;
   /** Every option of every line, with the reason when students do not see it. */
   sale_preview: { line_id: string; line: string; is_active: boolean; options: SaleRow[] | null }[] | null;
 }
@@ -62,6 +64,8 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   const admin = useAdminScope();
   const [drafts, setDrafts] = useState<Record<string, Term>>({});
   const [saving, setSaving] = useState(false);
+  const [receiptInfo, setReceiptInfo] = useState({ phone: '', address: '', commercial_register: '', tax_number: '' });
+  const [savingInfo, setSavingInfo] = useState(false);
 
   const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
     unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })));
@@ -74,6 +78,11 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   // The editable copy follows what is saved, whenever that changes.
   useEffect(() => {
     if (settings) setDrafts(Object.fromEntries((settings.terms || []).map((t) => [t.code, { ...t }])));
+    if (settings?.receipt_info) {
+      const info = settings.receipt_info;
+      setReceiptInfo({ phone: info.phone ?? '', address: info.address ?? '',
+        commercial_register: info.commercial_register ?? '', tax_number: info.tax_number ?? '' });
+    }
   }, [settings]);
 
   const setAnnual = async (enabled: boolean, target: string | null) => {
@@ -89,6 +98,18 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
       p_company_id: companyId, p_advance: advance, p_on_sale: onSale,
     });
     if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
+    await load();
+  };
+
+  const saveReceiptInfo = async () => {
+    setSavingInfo(true);
+    const { error: saveError } = await supabase.rpc('set_company_receipt_info', {
+      p_company_id: companyId, p_phone: receiptInfo.phone, p_address: receiptInfo.address,
+      p_commercial_register: receiptInfo.commercial_register, p_tax_number: receiptInfo.tax_number,
+    });
+    setSavingInfo(false);
+    if (saveError) alert('تعذر حفظ بيانات الإيصال: ' + saveError.message);
+    else alert('تم الحفظ. تظهر هذه البيانات على الإيصالات التي تصدر من الآن؛ الإيصالات السابقة لا تتغير.');
     await load();
   };
 
@@ -295,6 +316,40 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {companyId && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-base font-bold text-slate-700">بيانات الشركة على الإيصال</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                تُطبع على إيصال الاشتراك (PDF) الذي يحمّله الطالب بعد اعتماد الدفع. كلها اختيارية؛ السجل التجاري والرقم الضريبي يظهران فقط إذا كتبتهما.
+                الشعار يُؤخذ من تصميم بطاقة المحفظة.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-500">هاتف الشركة
+                  <input dir="ltr" value={receiptInfo.phone} maxLength={30} onChange={(e) => setReceiptInfo({ ...receiptInfo, phone: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">العنوان
+                  <input value={receiptInfo.address} maxLength={200} onChange={(e) => setReceiptInfo({ ...receiptInfo, address: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">رقم السجل التجاري
+                  <input dir="ltr" value={receiptInfo.commercial_register} maxLength={40} onChange={(e) => setReceiptInfo({ ...receiptInfo, commercial_register: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">رقم التسجيل الضريبي
+                  <input dir="ltr" value={receiptInfo.tax_number} maxLength={40} onChange={(e) => setReceiptInfo({ ...receiptInfo, tax_number: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-right text-sm" />
+                </label>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button disabled={savingInfo} onClick={() => void saveReceiptInfo()}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-50">
+                  <Save className="h-4 w-4" /> {savingInfo ? 'جاري الحفظ...' : 'حفظ البيانات'}
+                </button>
+              </div>
             </div>
           )}
 

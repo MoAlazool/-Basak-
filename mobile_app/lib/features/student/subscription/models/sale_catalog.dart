@@ -210,6 +210,13 @@ class SubscriptionReceipt {
   final String? paymentMethod;
   final String approvedAt;
 
+  /// The company as it was when the receipt was issued.
+  final String? companyPhone;
+  final String? companyAddress;
+  final String? companyCommercialRegister;
+  final String? companyTaxNumber;
+  final String? companyLogoPath;
+
   const SubscriptionReceipt({
     required this.subscriptionId,
     required this.number,
@@ -225,6 +232,11 @@ class SubscriptionReceipt {
     required this.amount,
     this.paymentMethod,
     required this.approvedAt,
+    this.companyPhone,
+    this.companyAddress,
+    this.companyCommercialRegister,
+    this.companyTaxNumber,
+    this.companyLogoPath,
   });
 
   factory SubscriptionReceipt.fromJson(Map<String, dynamic> json) => SubscriptionReceipt(
@@ -242,5 +254,10 @@ class SubscriptionReceipt {
         amount: (json['amount'] as num?)?.toDouble() ?? 0,
         paymentMethod: json['payment_method'] as String?,
         approvedAt: json['approved_at'] as String? ?? '',
+        companyPhone: json['company_phone'] as String?,
+        companyAddress: json['company_address'] as String?,
+        companyCommercialRegister: json['company_commercial_register'] as String?,
+        companyTaxNumber: json['company_tax_number'] as String?,
+        companyLogoPath: json['company_logo_path'] as String?,
       );
 }

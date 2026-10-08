@@ -301,10 +301,20 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         const SizedBox(height: 6),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           for (final s in DraftStep.values)
-            Text(_stepNames[s.index],
-                style: AppTextStyles.labelSmall.copyWith(
-                    color: s == step ? _brand : null,
-                    fontWeight: s == step ? FontWeight.bold : null)),
+            Expanded(
+              child: Text(_stepNames[s.index],
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  textAlign: s.index == 0
+                      ? TextAlign.start
+                      : s == DraftStep.review
+                          ? TextAlign.end
+                          : TextAlign.center,
+                  style: AppTextStyles.labelSmall.copyWith(
+                      color: s == step ? _brand : null,
+                      fontWeight: s == step ? FontWeight.bold : null)),
+            ),
         ]),
       ]),
     );

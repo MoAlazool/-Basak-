@@ -101,11 +101,27 @@ void main() {
     await tap('option-both');
     await _shot(tester, '5-review');
 
-    await _open(tester, [fixtures.subscription('pending_payment')], height: 1250);
+    await _open(tester, [fixtures.subscription('pending_payment')], height: 1150);
     await tester.pumpAndSettle();
     await tester.tap(find.text('InstaPay').first);
     await _shot(tester, '6-payment');
-    await _open(tester, [fixtures.subscription('active')], doc: fixtures.receipt, height: 1150);
-    await _shot(tester, '7-approved');
+
+    SubscriptionModel sub(String id, String status, String code, String phase, String start, String end) =>
+        SubscriptionModel.fromJson({
+          'id': id, 'student_id': 'me', 'line_id': 'l1', 'company_id': 'c1', 'station_id': 's2', 'type': 'termly',
+          'status': status, 'price': 8000, 'created_at': start, 'start_date': start, 'end_date': end,
+          'period_code': code, 'academic_year': 2026, 'period_phase': phase,
+          'lines': {'name': 'منيه النصر', 'companies': {'name': 'المستقبل'}}, 'stations': {'name': 'البجلات'},
+          'student': {'university': 'جامعة الدلتا'},
+        });
+    final history = [
+      sub('sub1', 'active', 'second', 'current', '2027-02-01', '2027-06-30'),
+      sub('old1', 'expired', 'first', 'expired', '2026-09-05', '2027-01-30'),
+    ];
+    await _open(tester, history, doc: fixtures.receipt, height: 874);
+    await _shot(tester, '7-history');
+    await tester.tap(find.byKey(const Key('sub-toggle-sub1')));
+    tester.view.physicalSize = const Size(402 * 2, 1500 * 2);
+    await _shot(tester, '8-expanded');
   }, skip: _dir == null);
 }

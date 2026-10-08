@@ -18,6 +18,9 @@ import '../models/payment_method_model.dart';
 import '../../home/presentation/student_home_screen.dart';
 import 'purchase_flow.dart';
 import 'receipt_card.dart';
+import 'receipt_pdf.dart';
+import '../../../../core/network/supabase_service.dart';
+import 'dart:typed_data';
 
 // These stay loaded for the session, so opening the page again is instant. They
 // are refreshed when the server announces a change (SyncHub) and on app resume,
@@ -46,12 +49,6 @@ final subscriptionReceiptDocProvider =
   return ref.watch(subscriptionRepoProvider).getSubscriptionReceipt(id);
 });
 
-String _phaseLabel(SubscriptionModel sub) => sub.isExpired
-    ? 'منتهي'
-    : sub.isUpcoming
-        ? 'الفترة القادمة'
-        : 'الفترة الحالية';
-
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
 
@@ -64,13 +61,18 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isExporting = false;
   XFile? _receiptPreview;
   String? _paymentMethodId;
-  final _receiptKey = GlobalKey();
+  /// One key per subscription card, for sharing its receipt as an image.
+  final Map<String, GlobalKey> _receiptKeys = {};
+
+  /// Cards whose details are open. A card that needs the student to act
+  /// (pay, re-upload) opens by itself; the rest stay compact.
+  final Set<String> _expanded = {};
+  final Set<String> _collapsedByUser = {};
 
   /// Showing the purchase flow while the student already has subscriptions
   /// (paying the next period in advance), starting from [_buyingFrom].
   bool _buying = false;
   SubscriptionDraft _buyingFrom = const SubscriptionDraft();
-  String? _focusedSubId;
 
   void _refreshSubscriptions() {
     ref.invalidate(currentSubscriptionProvider);
@@ -91,7 +93,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     _refreshSubscriptions();
     setState(() {
       _buying = false;
-      _focusedSubId = created.id;
+      _expanded.add(created.id);
       _receiptPreview = null;
       _paymentMethodId = null;
     });
@@ -167,18 +169,41 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     }
   }
 
-  /// Saves or shares the receipt drawn on screen, as a PDF or as an image.
+  /// The company's logo for the PDF, when it can be loaded quickly. The
+  /// receipt is complete without it, so being offline never blocks the PDF.
+  Future<Uint8List?> _companyLogo(String? folder) async {
+    if (folder == null || folder.isEmpty) return null;
+    try {
+      final url = SupabaseService.client.storage.from('wallet-assets').getPublicUrl('$folder/master.png');
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+      final request = await client.getUrl(Uri.parse(url));
+      final response = await request.close().timeout(const Duration(seconds: 6));
+      if (response.statusCode != 200) return null;
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in response.timeout(const Duration(seconds: 6))) {
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saves or shares a receipt: as a real PDF document built from the stored
+  /// receipt, or as an image of its card.
   Future<void> _exportReceipt(SubscriptionReceipt receipt, {required bool asPdf}) async {
     if (_isExporting) return;
     final box = context.findRenderObject() as RenderBox?;
     final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
     setState(() => _isExporting = true);
     try {
-      final png = await ReceiptExport.png(_receiptKey);
       if (asPdf) {
-        final pdf = await ReceiptExport.pdf(png, title: 'إيصال اشتراك ${ReceiptCard.number(receipt.number)}');
-        await ReceiptExport.share(pdf, ReceiptExport.fileName(receipt, 'pdf'), 'application/pdf', origin: origin);
+        final pdf = await ReceiptPdf.build(receipt, logo: await _companyLogo(receipt.companyLogoPath));
+        await ReceiptExport.share(pdf, ReceiptPdf.fileName(receipt), 'application/pdf', origin: origin);
       } else {
+        final key = _receiptKeys[receipt.subscriptionId];
+        if (key == null) return;
+        final png = await ReceiptExport.png(key);
         await ReceiptExport.share(png, ReceiptExport.fileName(receipt, 'png'), 'image/png', origin: origin);
       }
     } catch (e) {
@@ -205,14 +230,13 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             data: (subs) {
               final open = subs.where((s) => !s.isExpired).toList()
                 ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
-              final history = subs.where((s) => s.isExpired).toList();
-              if (_buying || open.isEmpty) {
-                return _buildPurchaseView(open: open);
+              // Newest first: every past subscription keeps its own card.
+              final history = subs.where((s) => s.isExpired).toList()
+                ..sort((a, b) => (b.startDate ?? b.createdAt).compareTo(a.startDate ?? a.createdAt));
+              if (_buying || subs.isEmpty) {
+                return _buildPurchaseView(open: open, hasHistory: history.isNotEmpty);
               }
-              final focused = open.firstWhere((s) => s.id == _focusedSubId,
-                  orElse: () => open.first);
-              return _buildActiveSubDetailView(focused,
-                  open: open, history: history);
+              return _buildSubscriptionsView(open: open, history: history);
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, _) => SingleChildScrollView(
@@ -231,7 +255,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   /// Choosing a subscription. Nothing is saved until the review is confirmed.
-  Widget _buildPurchaseView({required List<SubscriptionModel> open}) => SingleChildScrollView(
+  Widget _buildPurchaseView({required List<SubscriptionModel> open, bool hasHistory = false}) => SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -241,95 +265,243 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             initial: _buyingFrom,
             // A cash day ride is for a student with no subscription at all.
             allowDaily: open.isEmpty,
-            onCancel: open.isEmpty ? null : () => setState(() => _buying = false),
+            onCancel: open.isEmpty && !hasHistory ? null : () => setState(() => _buying = false),
             onCreated: _onCreated,
           ),
         ]),
       );
 
-  Widget _buildActiveSubDetailView(SubscriptionModel sub,
-      {required List<SubscriptionModel> open,
-      required List<SubscriptionModel> history}) {
-    final active = sub.isActive;
+  /// The student's subscriptions over time: the current one(s) first, each
+  /// older one below as its own card. Cards are compact; "عرض التفاصيل" opens
+  /// the full details and the receipt in place.
+  Widget _buildSubscriptionsView(
+      {required List<SubscriptionModel> open, required List<SubscriptionModel> history}) {
+    final active = open.where((s) => s.isActive).toList();
     return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 110),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-              active
-                  ? 'اشتراكك مفعّل'
-                  : sub.isPendingReview
-                      ? 'إيصالك قيد المراجعة'
-                      : 'إتمام الدفع',
-              style: AppTextStyles.displayMedium),
-          if (open.length > 1) ...[
-            const SizedBox(height: 10),
-            _periodTabs(open, sub),
-          ],
-          const SizedBox(height: 12),
-          if (active) ..._approvedState(sub) else ..._paymentState(sub),
-          // Offered once this subscription is paid, not while a payment is open.
-          if (active) _payNextCard(sub),
-          if (history.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            Text('اشتراكات منتهية', style: AppTextStyles.titleMedium),
-            const SizedBox(height: 8),
-            for (final old in history) _historyTile(old),
-          ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('اشتراكاتي', style: AppTextStyles.displayMedium),
+        const SizedBox(height: 12),
+        if (open.isEmpty)
+          _subscribeAgainCard()
+        else ...[
+          _sectionLabel(open.length == 1 ? 'الاشتراك الحالي' : 'الاشتراكات الحالية'),
+          for (final sub in open) _subscriptionCard(sub),
         ],
-      ),
+        if (active.isNotEmpty) _payNextCard(active.first),
+        if (history.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          _sectionLabel(history.length == 1 ? 'اشتراك سابق' : 'اشتراكات سابقة'),
+          for (final old in history) _subscriptionCard(old),
+        ],
+      ]),
     );
   }
 
-  /// Approved: what the student holds and the proof of payment. No amount
-  /// due, no payment methods, no upload.
-  List<Widget> _approvedState(SubscriptionModel sub) {
-    final receipt = sub.isDaily ? null : ref.watch(subscriptionReceiptDocProvider(sub.id)).valueOrNull;
+  Widget _sectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, right: 2),
+        child: Text(text,
+            style: AppTextStyles.titleMedium.copyWith(color: AppColors.textSecondary)),
+      );
+
+  /// Nothing running: the past stays below, and a new subscription starts here.
+  Widget _subscribeAgainCard() => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('لا يوجد اشتراك حالي', style: AppTextStyles.titleMedium),
+          const SizedBox(height: 4),
+          Text('اشترك من جديد لتأكيد رحلاتك واستخدام بطاقتك.',
+              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const Key('subscribe-again'),
+              onPressed: () => setState(() {
+                _buyingFrom = const SubscriptionDraft();
+                _buying = true;
+              }),
+              child: const Text('اشتراك جديد'),
+            ),
+          ),
+        ]),
+      );
+
+  /// The words and colours of a subscription's state.
+  ({String label, Color color, Color background, IconData icon}) _status(SubscriptionModel sub) {
+    if (sub.status == 'expired' || (sub.isExpired && sub.isActive)) {
+      return (label: 'انتهى الاشتراك', color: const Color(0xFF64788A), background: const Color(0xFFEDF1F4), icon: LucideIcons.history);
+    }
+    if (sub.isActive) {
+      return sub.isUpcoming
+          ? (label: 'مفعّل · يبدأ قريباً', color: const Color(0xFF3F51B5), background: const Color(0xFFEEF0FF), icon: LucideIcons.calendarClock)
+          : (label: 'الاشتراك مفعّل', color: const Color(0xFF07865A), background: const Color(0xFFE7F8F0), icon: LucideIcons.circleCheck);
+    }
+    if (sub.isPendingReview) {
+      return (label: 'بانتظار المراجعة', color: const Color(0xFF00658D), background: const Color(0xFFE2F3FB), icon: LucideIcons.hourglass);
+    }
+    if (sub.isRejected) {
+      return (label: 'تم الرفض', color: const Color(0xFFB42335), background: const Color(0xFFFFECEE), icon: LucideIcons.circleX);
+    }
+    if (sub.isExpired) {
+      return (label: 'انتهى دون دفع', color: const Color(0xFF64788A), background: const Color(0xFFEDF1F4), icon: LucideIcons.history);
+    }
+    return (label: 'بانتظار الدفع', color: const Color(0xFFB97812), background: const Color(0xFFFFF4E5), icon: LucideIcons.wallet);
+  }
+
+  bool _needsAction(SubscriptionModel sub) =>
+      !sub.isExpired && !sub.isActive && !sub.isPendingReview;
+
+  /// One subscription: compact by default, with its state always in view.
+  Widget _subscriptionCard(SubscriptionModel sub) {
+    final status = _status(sub);
+    final paid = sub.isActive || sub.status == 'expired';
+    // A card waiting for the student opens by itself, unless they closed it.
+    final open = _expanded.contains(sub.id) || (_needsAction(sub) && !_collapsedByUser.contains(sub.id));
+    return Container(
+      key: Key('sub-card-${sub.id}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Color(0x0B17384A), blurRadius: 15, offset: Offset(0, 5))]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 15, 16, 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Text(sub.periodName, style: AppTextStyles.titleLarge)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: status.background, borderRadius: BorderRadius.circular(16)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(status.icon, size: 14, color: status.color),
+                  const SizedBox(width: 5),
+                  Text(status.label,
+                      style: AppTextStyles.labelSmall.copyWith(color: status.color, fontWeight: FontWeight.bold)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
+            const SizedBox(height: 6),
+            _summaryLine(LucideIcons.mapPin, 'محطة الصعود', sub.stationName ?? '—'),
+            if (sub.endDate != null && !sub.isDaily) ...[
+              const SizedBox(height: 6),
+              _summaryLine(LucideIcons.calendarCheck2, sub.isExpired ? 'انتهى في' : 'صالح حتى',
+                  ReceiptCard.day(sub.endDate)),
+            ],
+            const SizedBox(height: 6),
+            _summaryLine(
+                LucideIcons.wallet,
+                sub.isDaily
+                    ? 'نقداً في الباص'
+                    : paid
+                        ? 'المبلغ المدفوع'
+                        : sub.isPendingReview
+                            ? 'المبلغ'
+                            : 'المبلغ المطلوب',
+                formatMoney(sub.price),
+                labelKey: const Key('amount-label'),
+                valueKey: const Key('amount-value')),
+          ]),
+        ),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: TextButton.icon(
+            key: Key('sub-toggle-${sub.id}'),
+            onPressed: () => setState(() {
+              if (open) {
+                _expanded.remove(sub.id);
+                _collapsedByUser.add(sub.id);
+              } else {
+                _expanded.add(sub.id);
+                _collapsedByUser.remove(sub.id);
+              }
+              _receiptPreview = null;
+            }),
+            icon: Icon(open ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 18),
+            label: Text(open ? 'إخفاء التفاصيل' : 'عرض التفاصيل'),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: !open
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: paid ? _approvedDetails(sub) : _paymentState(sub)),
+                ),
+        ),
+      ]),
+    );
+  }
+
+  /// Approved (running or ended): the full details and the receipt, with the
+  /// PDF and share actions. No amount due, no payment methods, no upload.
+  List<Widget> _approvedDetails(SubscriptionModel sub) {
+    final receiptAsync = sub.isDaily ? null : ref.watch(subscriptionReceiptDocProvider(sub.id));
+    final receipt = receiptAsync?.valueOrNull;
+    if (receipt == null) {
+      return [
+        const Divider(height: 18),
+        if ((sub.companyName ?? '').isNotEmpty) ...[
+          _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
+          const SizedBox(height: 8),
+        ],
+        if (sub.destination != null) ...[
+          _summaryLine(LucideIcons.graduationCap, 'الجامعة', sub.destination!),
+          const SizedBox(height: 8),
+        ],
+        _summaryLine(LucideIcons.calendarDays, 'فترة الاشتراك', sub.periodLabel ?? sub.periodName),
+        if (sub.startDate != null) ...[
+          const SizedBox(height: 8),
+          _summaryLine(LucideIcons.calendarClock, 'يبدأ في', ReceiptCard.day(sub.startDate)),
+        ],
+        if (!sub.isDaily && receiptAsync?.isLoading != true) ...[
+          const SizedBox(height: 10),
+          Text('لا يوجد إيصال لهذا الاشتراك.',
+              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+        ],
+      ];
+    }
+    final key = _receiptKeys.putIfAbsent(sub.id, GlobalKey.new);
     return [
-      if (sub.isUpcoming)
-        _statusMessage(
-          icon: LucideIcons.calendarClock,
-          title: 'تم دفع الفترة القادمة مقدماً',
-          message: 'يبدأ اشتراكك في ${ReceiptCard.day(sub.startDate)}.',
-          color: const Color(0xFF3F51B5),
-          background: const Color(0xFFEEF0FF),
+      RepaintBoundary(
+        key: key,
+        child: ColoredBox(
+          color: Colors.white,
+          child: Padding(padding: const EdgeInsets.all(4), child: ReceiptCard(receipt: receipt)),
         ),
-      if (sub.isUpcoming) const SizedBox(height: 12),
-      if (receipt == null)
-        _subscriptionSummary(sub)
-      else ...[
-        RepaintBoundary(
-          key: _receiptKey,
-          child: ColoredBox(
-            color: Colors.white,
-            child: Padding(padding: const EdgeInsets.all(10), child: ReceiptCard(receipt: receipt)),
-          ),
+      ),
+      const SizedBox(height: 10),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          key: Key('receipt-pdf-${sub.id}'),
+          onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: true),
+          icon: const Icon(LucideIcons.receiptText, size: 18),
+          label: const Text('تحميل الإيصال PDF'),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            key: const Key('receipt-pdf'),
-            onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: true),
-            icon: const Icon(LucideIcons.receiptText, size: 18),
-            label: const Text('تحميل الإيصال PDF'),
-          ),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          key: Key('receipt-image-${sub.id}'),
+          onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: false),
+          icon: const Icon(LucideIcons.image, size: 18),
+          label: const Text('مشاركة كصورة'),
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            key: const Key('receipt-image'),
-            onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: false),
-            icon: const Icon(LucideIcons.image, size: 18),
-            label: const Text('مشاركة كصورة'),
-          ),
-        ),
-      ],
+      ),
     ];
   }
 
@@ -343,8 +515,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final receipts = receiptsAsync.valueOrNull ?? const <ReceiptModel>[];
     final latest = receipts.isEmpty ? null : receipts.first;
     return [
-      _subscriptionSummary(sub),
-      const SizedBox(height: 14),
+      const Divider(height: 18),
       if (sub.isPendingReview) ...[
         _statusMessage(
           icon: LucideIcons.hourglass,
@@ -421,21 +592,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  /// Switch between the current and upcoming subscriptions.
-  Widget _periodTabs(List<SubscriptionModel> open, SubscriptionModel focused) =>
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        for (final s in open)
-          ChoiceChip(
-            label: Text('${_phaseLabel(s)} · ${s.periodName}'),
-            selected: s.id == focused.id,
-            onSelected: (_) => setState(() {
-              _focusedSubId = s.id;
-              _receiptPreview = null;
-              _paymentMethodId = null;
-            }),
-          ),
-      ]);
-
   /// "Subscribe to the next period in advance": shown only when the company
   /// allows it (the catalog then lists it), with that period's own price. It
   /// opens the flow with the same company, line and station filled in.
@@ -482,129 +638,22 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  Widget _historyTile(SubscriptionModel s) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
-          const Icon(LucideIcons.history, size: 18, color: AppColors.textSecondary),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-                '${s.periodLabel ?? s.periodName} · ${s.lineName ?? ''}',
-                style: AppTextStyles.bodyMedium),
-          ),
-          Text('حتى ${ReceiptCard.day(s.endDate)}',
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: AppColors.textSecondary)),
-        ]),
-      );
-
-  /// What this subscription is: the line and the student's university, the
-  /// boarding station, the period and the amount. The amount appears here only.
-  Widget _subscriptionSummary(SubscriptionModel sub) {
-    final active = sub.isActive;
-    return Container(
-        key: const Key('subscription-summary'),
-        padding: const EdgeInsets.all(17),
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                  color: Color(0x0B17384A),
-                  blurRadius: 15,
-                  offset: Offset(0, 5))
-            ]),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-                child: Text(sub.boardingTitle, style: AppTextStyles.titleLarge)),
-            const SizedBox(width: 8),
-            _statusPill(
-                active
-                    ? 'نشط'
-                    : sub.isPendingReview
-                        ? 'قيد المراجعة'
-                        : sub.isRejected
-                            ? 'مرفوض'
-                            : 'بانتظار الدفع',
-                active)
-          ]),
-          const SizedBox(height: 4),
-          Text('محطة الصعود',
-              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          const Divider(height: 22),
-          if (sub.destination != null) ...[
-            _summaryLine(LucideIcons.graduationCap, 'الجامعة', sub.destination!),
-            const SizedBox(height: 10),
-          ],
-          _summaryLine(LucideIcons.busFront, 'الخط', sub.lineName ?? '—'),
-          if ((sub.companyName ?? '').isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
-          ],
-          const SizedBox(height: 10),
-          _summaryLine(LucideIcons.calendarDays, 'فترة الاشتراك', sub.periodName),
-          if (active && sub.endDate != null) ...[
-            const SizedBox(height: 10),
-            _summaryLine(LucideIcons.calendarCheck2, 'صالح حتى', ReceiptCard.day(sub.endDate)),
-          ],
-          const SizedBox(height: 12),
-          Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFF1F6FB),
-                  borderRadius: BorderRadius.circular(13)),
-              child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                          active
-                              ? (sub.isDaily ? 'يُدفع نقداً في الباص' : 'المبلغ المدفوع')
-                              : sub.isPendingReview
-                                  ? 'المبلغ'
-                                  : 'المبلغ المطلوب',
-                          key: const Key('amount-label'),
-                          style: AppTextStyles.bodyMedium),
-                    ),
-                    Text(formatMoney(sub.price),
-                        key: const Key('amount-value'),
-                        style: AppTextStyles.titleLarge
-                            .copyWith(color: const Color(0xFF00658D)))
-                  ])),
-        ]),
-      );
-  }
-
-  Widget _summaryLine(IconData icon, String label, String value) =>
-      Row(children: [
-        Icon(icon, size: 17, color: const Color(0xFF00658D)),
+  Widget _summaryLine(IconData icon, String label, String value, {Key? labelKey, Key? valueKey}) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 16, color: const Color(0xFF00658D))),
         const SizedBox(width: 8),
         SizedBox(
-            width: 96,
+            width: 104,
             child: Text(label,
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: AppColors.textSecondary))),
+                key: labelKey,
+                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary))),
         Expanded(
             child: Text(value,
-                textAlign: TextAlign.end,
-                style:
-                    AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)))
+                key: valueKey,
+                style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600))),
       ]);
-
-  Widget _statusPill(String label, bool active) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-          color: active ? const Color(0xFFE7F8F0) : const Color(0xFFEAF4FB),
-          borderRadius: BorderRadius.circular(16)),
-      child: Text(label,
-          style: AppTextStyles.labelSmall.copyWith(
-              color: active ? const Color(0xFF07865A) : const Color(0xFF00658D),
-              fontWeight: FontWeight.bold)));
 
   Widget _statusMessage(
           {required IconData icon,

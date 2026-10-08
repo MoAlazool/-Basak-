@@ -4,8 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../models/sale_catalog.dart';
@@ -14,8 +12,8 @@ import '../models/sale_catalog.dart';
 ///
 /// Every value comes from the stored receipt ([SubscriptionReceipt]), which the
 /// server writes once at approval and never changes, so the document looks the
-/// same whenever it is opened. The PDF and the image are this very card,
-/// captured as drawn: Arabic is shaped by Flutter, with the app's own font.
+/// same whenever it is opened. Sharing as an image sends this very card; the
+/// PDF is its own print-ready document (see ReceiptPdf), from the same receipt.
 class ReceiptCard extends StatelessWidget {
   final SubscriptionReceipt receipt;
 
@@ -157,20 +155,6 @@ class ReceiptExport {
     image.dispose();
     if (data == null) throw Exception('تعذر تجهيز الإيصال. حاول مرة أخرى.');
     return data.buffer.asUint8List();
-  }
-
-  /// One A4 page holding the same card.
-  static Future<Uint8List> pdf(Uint8List png, {required String title}) async {
-    final doc = pw.Document(title: title, creator: 'Basak');
-    final image = pw.MemoryImage(png);
-    doc.addPage(pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(36),
-      build: (_) => pw.Align(
-          alignment: pw.Alignment.topCenter,
-          child: pw.Image(image, width: 380, fit: pw.BoxFit.contain)),
-    ));
-    return doc.save();
   }
 
   static String fileName(SubscriptionReceipt receipt, String extension) =>

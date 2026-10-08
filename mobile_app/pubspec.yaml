@@ -52,6 +52,11 @@ flutter:
     - assets/images/basak_icon.webp
     # Licenses of the bundled fonts below.
     - assets/fonts/READEX_PRO_OFL.txt
+    - assets/fonts/CAIRO_OFL.txt
+    # Receipts as PDF: the PDF library needs a font with Arabic presentation forms.
+    - assets/fonts/Cairo-Regular.ttf
+    - assets/fonts/Cairo-SemiBold.ttf
+    - assets/fonts/Cairo-Bold.ttf
     - assets/fonts/LUCIDE_FLUTTER_LICENSE.txt
 
   fonts:

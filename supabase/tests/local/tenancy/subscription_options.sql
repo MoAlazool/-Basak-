@@ -432,6 +432,8 @@ RESET ROLE;
 DO $$
 DECLARE v_sub uuid; v_sub_y uuid; v_before jsonb; r record;
 BEGIN
+  UPDATE public.companies SET contact_phone = '01000000001', address = 'شارع الجامعة', commercial_register = '12345', tax_number = '999-888'
+  WHERE id = pg_temp.id('co_x');
   -- st1 pays the second semester by a transfer the admin approves.
   SELECT id INTO v_sub FROM public.subscriptions WHERE student_id = pg_temp.id('st1');
   INSERT INTO t_ids VALUES ('sub1', v_sub);
@@ -447,6 +449,9 @@ BEGIN
     AND r.station_name = 'Opt station 1' AND r.company_name = 'Opt company x' AND r.university_name = 'جامعة الخيارات u1'
     AND r.option = 'second' AND r.period_label <> '' AND r.start_date IS NOT NULL AND r.approved_at IS NOT NULL
     AND r.student_name = 'Opt student st1', to_jsonb(r)::text);
+  PERFORM pg_temp.ok('the receipt carries the company details of that day',
+    r.company_phone = '01000000001' AND r.company_address = 'شارع الجامعة' AND r.company_commercial_register = '12345'
+    AND r.company_tax_number = '999-888');
   SET CONSTRAINTS ALL DEFERRED;
 
   -- st4 is activated by the administration without a transfer.
@@ -479,7 +484,8 @@ BEGIN
   SELECT to_jsonb(x) INTO v_before FROM public.subscription_receipts x WHERE x.subscription_id = v_sub;
   UPDATE public.lines SET name = 'Renamed line' WHERE id = pg_temp.id('line');
   UPDATE public.stations SET name = 'Renamed station' WHERE id = pg_temp.id('s1');
-  UPDATE public.companies SET name = 'Renamed company' WHERE id = pg_temp.id('co_x');
+  UPDATE public.companies SET name = 'Renamed company', contact_phone = '0111', address = 'عنوان جديد', commercial_register = NULL, tax_number = NULL
+  WHERE id = pg_temp.id('co_x');
   UPDATE public.universities SET name = 'Renamed university' WHERE id = pg_temp.id('u1');
   UPDATE public.company_payment_methods SET display_name = 'Renamed method' WHERE id = pg_temp.id('pm_x');
   UPDATE public.line_period_prices SET price = 9999 WHERE line_id = pg_temp.id('line');
@@ -510,7 +516,17 @@ BEGIN
   PERFORM pg_temp.denied('a student cannot write a receipt',
     format('INSERT INTO public.subscription_receipts (subscription_id, company_id, student_id, receipt_no, company_name, student_name, line_name, period_label, amount, approved_at)
             VALUES (%L, %L, %L, 99, ''x'', ''x'', ''x'', ''x'', 1, now())', gen_random_uuid(), pg_temp.id('co_x'), pg_temp.id('st1')));
+  PERFORM pg_temp.denied('a student cannot change what is printed about a company',
+    format('SELECT public.set_company_receipt_info(%L, ''1'', ''x'', ''1'', ''1'')', pg_temp.id('co_x')));
+  PERFORM pg_temp.act('admin_y');
+  PERFORM pg_temp.denied('another company''s admin cannot either',
+    format('SELECT public.set_company_receipt_info(%L, ''1'', ''x'', ''1'', ''1'')', pg_temp.id('co_x')));
   PERFORM pg_temp.act('admin_x');
+  PERFORM pg_temp.ok('the company''s admin sets its receipt details',
+    public.set_company_receipt_info(pg_temp.id('co_x'), '01022223333', ' ميدان المحطة ', '55-A', '')
+      = '{"phone": "01022223333", "address": "ميدان المحطة", "commercial_register": "55-A", "tax_number": null}'::jsonb);
+  PERFORM pg_temp.ok('and the settings page reads them back',
+    public.get_subscription_settings(pg_temp.id('co_x'))->'receipt_info'->>'address' = 'ميدان المحطة');
   PERFORM pg_temp.ok('the company reads its own receipts only',
     (SELECT count(*) = 2 AND bool_and(company_id = pg_temp.id('co_x')) FROM public.subscription_receipts));
   PERFORM pg_temp.denied('the company admin cannot edit a receipt', 'UPDATE public.subscription_receipts SET amount = 1');

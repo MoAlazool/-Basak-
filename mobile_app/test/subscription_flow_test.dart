@@ -275,17 +275,17 @@ void main() {
     });
   });
 
-  group('after confirming', () {
-    Future<void> open(WidgetTester tester, SubscriptionModel sub, {SubscriptionReceipt? doc}) async {
-      tester.view.physicalSize = const Size(1170, 4200);
+  group('the subscriptions page', () {
+    Future<void> open(WidgetTester tester, List<SubscriptionModel> subs, {Map<String, SubscriptionReceipt> docs = const {}}) async {
+      tester.view.physicalSize = const Size(1170, 6000);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(ProviderScope(
         overrides: [
-          allSubscriptionsProvider.overrideWith((ref) async => [sub]),
+          allSubscriptionsProvider.overrideWith((ref) async => subs),
           saleCatalogProvider.overrideWith((ref) async => catalog()),
           subscriptionReceiptsProvider.overrideWith((ref, id) async => <ReceiptModel>[]),
-          subscriptionReceiptDocProvider.overrideWith((ref, id) async => doc),
+          subscriptionReceiptDocProvider.overrideWith((ref, id) async => docs[id]),
           paymentMethodsProvider.overrideWith((ref, id) async => [
                 PaymentMethodModel.fromJson({
                   'id': 'm1', 'company_id': 'c1', 'method_type': 'instapay', 'display_name': 'InstaPay',
@@ -301,19 +301,23 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('payment: the amount once, one block of notes, and no way to change the selection', (tester) async {
-      await open(tester, subscription('pending_payment'));
-      expect(find.text('إتمام الدفع'), findsOneWidget);
-      // The boarding station is the headline; the line is a row under it.
+    Future<void> toggle(WidgetTester tester, String id) async {
+      await tester.tap(find.byKey(Key('sub-toggle-$id')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('waiting for payment: the card is open, the amount once, one block of notes, no change of selection', (tester) async {
+      await open(tester, [subscription('pending_payment')]);
+      expect(find.text('بانتظار الدفع'), findsOneWidget);
+      expect(find.text('الفصل الأول'), findsOneWidget);
       expect(find.text('البجلات'), findsOneWidget);
       expect(find.text('منية النصر'), findsOneWidget);
-      expect(find.byKey(const Key('next-period')), findsNothing);
       expect(find.text('المبلغ المطلوب'), findsOneWidget);
       expect(find.text('8,000 ج.م'), findsOneWidget);
+      // It needs the student, so it is already open.
       expect(find.byKey(const Key('payment-notes')), findsOneWidget);
       expect(find.textContaining('صورة واضحة'), findsOneWidget);
-      // The method's own note joins the same block once the method is chosen.
-      expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsNothing);
+      expect(find.byKey(const Key('next-period')), findsNothing);
       await tester.tap(find.text('InstaPay').first);
       await tester.pumpAndSettle();
       expect(find.text('اكتب اسم الطالب في الملاحظات.'), findsOneWidget);
@@ -323,51 +327,106 @@ void main() {
       expect(find.byKey(const Key('flow-back')), findsNothing);
       expect(find.textContaining('تعديل'), findsNothing);
       expect(find.textContaining('تغيير'), findsNothing);
+      // The student may fold it away.
+      await toggle(tester, 'sub1');
+      expect(find.byKey(const Key('payment-notes')), findsNothing);
+      expect(find.text('بانتظار الدفع'), findsOneWidget);
     });
 
-    testWidgets('rejected: re-upload for the same subscription, still no change of selection', (tester) async {
-      await open(tester, subscription('rejected'));
+    testWidgets('rejected: says so, and offers re-upload for the same subscription', (tester) async {
+      await open(tester, [subscription('rejected')]);
+      expect(find.text('تم الرفض'), findsOneWidget);
       expect(find.text('تم رفض الإيصال'), findsOneWidget);
       expect(find.text('إيصال التحويل'), findsOneWidget);
       expect(find.textContaining('تغيير'), findsNothing);
-      expect(find.byKey(const Key('flow-back')), findsNothing);
     });
 
-    testWidgets('under review: no payment methods, no change of selection', (tester) async {
-      await open(tester, subscription('pending_review'));
-      expect(find.text('إيصالك قيد المراجعة'), findsOneWidget);
+    testWidgets('under review: compact, with no payment form', (tester) async {
+      await open(tester, [subscription('pending_review')]);
+      expect(find.text('بانتظار المراجعة'), findsOneWidget);
       expect(find.text('المبلغ المطلوب'), findsNothing);
       expect(find.byKey(const Key('payment-methods')), findsNothing);
       expect(find.byKey(const Key('payment-notes')), findsNothing);
-      expect(find.textContaining('تغيير'), findsNothing);
+      await toggle(tester, 'sub1');
+      expect(find.text('استلمنا إيصالك'), findsOneWidget);
+      expect(find.byKey(const Key('payment-methods')), findsNothing);
     });
 
-    testWidgets('approved: a different screen with the receipt, never "required amount"', (tester) async {
-      await open(tester, subscription('active'), doc: receipt);
-      expect(find.text('اشتراكك مفعّل'), findsOneWidget);
-      expect(find.text('المبلغ المطلوب'), findsNothing);
+    testWidgets('active: a compact card; the details and the receipt open in place', (tester) async {
+      await open(tester, [subscription('active')], docs: {'sub1': receipt});
+      expect(find.text('الاشتراك الحالي'), findsOneWidget);
+      expect(find.text('الاشتراك مفعّل'), findsOneWidget);
       expect(find.text('المبلغ المدفوع'), findsOneWidget);
-      expect(find.text('8,000 ج.م'), findsOneWidget);
+      expect(find.text('المبلغ المطلوب'), findsNothing);
+      expect(find.text('30 يناير 2027'), findsOneWidget);
+      // Collapsed: no receipt, no payment form, ever.
+      expect(find.byKey(const Key('receipt-pdf-sub1')), findsNothing);
+      expect(find.text('00007'), findsNothing);
       expect(find.byKey(const Key('payment-methods')), findsNothing);
-      expect(find.byKey(const Key('payment-notes')), findsNothing);
       expect(find.text('إيصال التحويل'), findsNothing);
+
+      await toggle(tester, 'sub1');
+      expect(find.text('إخفاء التفاصيل'), findsOneWidget);
       expect(find.text('00007'), findsOneWidget);
+      expect(find.text('طالب تجريبي محلي'), findsOneWidget);
+      expect(find.text('InstaPay'), findsOneWidget);
       expect(find.text('من 5 سبتمبر 2026 إلى 30 يناير 2027'), findsOneWidget);
-      expect(find.byKey(const Key('receipt-pdf')), findsOneWidget);
-      expect(find.byKey(const Key('receipt-image')), findsOneWidget);
+      expect(find.byKey(const Key('receipt-pdf-sub1')), findsOneWidget);
+      expect(find.byKey(const Key('receipt-image-sub1')), findsOneWidget);
+      expect(find.byKey(const Key('payment-methods')), findsNothing);
+
+      await toggle(tester, 'sub1');
+      expect(find.text('00007'), findsNothing);
       // The next period, when the company sells it in advance, with its own price.
       expect(find.text('الفصل الثاني · 8,500 ج.م'), findsOneWidget);
     });
 
-    testWidgets('approved before receipts existed: the summary, without the buttons', (tester) async {
-      await open(tester, subscription('active'));
-      expect(find.text('المبلغ المدفوع'), findsOneWidget);
-      expect(find.text('المبلغ المطلوب'), findsNothing);
-      expect(find.byKey(const Key('receipt-pdf')), findsNothing);
+    testWidgets('several subscriptions over time: the current one first, each older one its own card', (tester) async {
+      SubscriptionModel sub(String id, String status, String code, String phase, String start, String end) =>
+          SubscriptionModel.fromJson({
+            'id': id, 'student_id': 'me', 'line_id': 'l1', 'company_id': 'c1', 'station_id': 's2', 'type': 'termly',
+            'status': status, 'price': 8000, 'created_at': start, 'start_date': start, 'end_date': end,
+            'period_code': code, 'academic_year': 2026, 'period_phase': phase,
+            'lines': {'name': 'منية النصر', 'companies': {'name': 'المستقبل'}}, 'stations': {'name': 'البجلات'},
+            'student': {'university': 'جامعة الدلتا'},
+          });
+      await open(tester, [
+        sub('old1', 'expired', 'first', 'expired', '2025-09-05', '2026-01-30'),
+        sub('now', 'active', 'second', 'current', '2027-02-01', '2027-06-30'),
+        sub('old2', 'expired', 'summer', 'expired', '2026-07-01', '2026-09-01'),
+      ], docs: {
+        'old1': const SubscriptionReceipt(subscriptionId: 'old1', number: 3, companyName: 'المستقبل', studentName: 'طالب',
+            lineName: 'خط قديم', periodLabel: 'الفصل الدراسي الأول 2025/2026', amount: 7000, approvedAt: '2025-09-01T10:00:00Z'),
+      });
+      expect(find.text('الاشتراك الحالي'), findsOneWidget);
+      expect(find.text('اشتراكات سابقة'), findsOneWidget);
+      expect(find.text('الاشتراك مفعّل'), findsOneWidget);
+      expect(find.text('انتهى الاشتراك'), findsNWidgets(2));
+      // Current first, then the past, newest first.
+      double y(String id) => tester.getTopLeft(find.byKey(Key('sub-card-$id'))).dy;
+      expect(y('now'), lessThan(y('old2')));
+      expect(y('old2'), lessThan(y('old1')));
+      // All compact; an old one opens to its own receipt, as it was issued.
+      expect(find.text('إخفاء التفاصيل'), findsNothing);
+      await toggle(tester, 'old1');
+      expect(find.text('00003'), findsOneWidget);
+      expect(find.text('خط قديم'), findsOneWidget);
+      expect(find.byKey(const Key('receipt-pdf-old1')), findsOneWidget);
+      expect(find.byKey(const Key('receipt-pdf-now')), findsNothing);
+    });
+
+    testWidgets('only past subscriptions: they stay, and a new one starts from a button', (tester) async {
+      await open(tester, [subscription('expired')]);
+      expect(find.text('لا يوجد اشتراك حالي'), findsOneWidget);
+      expect(find.text('اشتراك سابق'), findsOneWidget);
+      expect(find.text('انتهى الاشتراك'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('subscribe-again')));
+      await tester.pumpAndSettle();
+      expect(find.text('الخطوة 1 من 5'), findsOneWidget);
     });
   });
 
-  testWidgets('the receipt is captured as drawn and wrapped in a PDF', (tester) async {
+  testWidgets('the receipt card can be shared as an image', (tester) async {
     final key = GlobalKey();
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -378,13 +437,8 @@ void main() {
     ));
     expect(find.text('المستقبل'), findsOneWidget);
     expect(find.text('طالب تجريبي محلي'), findsOneWidget);
-    expect(find.text('الفصل الدراسي الأول 2026/2027'), findsOneWidget);
-    final pdf = await tester.runAsync(() async {
-      final png = await ReceiptExport.png(key);
-      expect(png.sublist(1, 4), 'PNG'.codeUnits);
-      return ReceiptExport.pdf(png, title: 'إيصال');
-    });
-    expect(String.fromCharCodes(pdf!.sublist(0, 5)), '%PDF-');
-    expect(ReceiptExport.fileName(receipt, 'pdf'), 'basak-receipt-00007.pdf');
+    final png = await tester.runAsync(() => ReceiptExport.png(key));
+    expect(png!.sublist(1, 4), 'PNG'.codeUnits);
+    expect(ReceiptExport.fileName(receipt, 'png'), 'basak-receipt-00007.png');
   });
 }
