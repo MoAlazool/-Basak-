@@ -555,37 +555,46 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final chosen = methods.where((m) => m.id == _paymentMethodId).firstOrNull;
     final notes = [
       if (methods.isEmpty)
-        'لم تضف شركة النقل وسائل دفع بعد. تواصل مع إدارة الشركة للحصول على بيانات التحويل.'
+        'تواصل مع إدارة الشركة للحصول على بيانات التحويل.'
       else
-        'اختر وسيلة الدفع وحوّل المبلغ كاملاً إلى البيانات الظاهرة تحتها.',
-      'ارفع صورة واضحة للإيصال يظهر فيها رقم العملية وتاريخ التحويل.',
-      'تراجع إدارة الشركة الإيصال يدوياً، وسيصلك إشعار عند اعتماد الاشتراك.',
+        'حوّل المبلغ كاملاً بالوسيلة التي اخترتها.',
+      'ارفع صورة واضحة للإيصال فيها رقم العملية والتاريخ.',
+      'تُراجع الإدارة الإيصال وسيصلك إشعار عند الاعتماد.',
       if ((chosen?.instructions ?? '').trim().isNotEmpty) chosen!.instructions!.trim(),
-      if (attempts > 0 && attempts < 5) 'المتبقي لك ${5 - attempts} من 5 محاولات لرفع الإيصال.',
+      if (attempts > 0 && attempts < 5) 'المتبقي ${5 - attempts} من 5 محاولات لرفع الإيصال.',
     ];
+
     return Container(
       key: const Key('payment-notes'),
       width: double.infinity,
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: BoxDecoration(
-          color: const Color(0xFFFFF9EC), borderRadius: BorderRadius.circular(18)),
+          color: const Color(0xFFFFFBF2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFF3E3C2))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(LucideIcons.info, size: 19, color: Color(0xFFB97812)),
-          const SizedBox(width: 8),
+          const Icon(LucideIcons.info, size: 15, color: Color(0xFFB97812)),
+          const SizedBox(width: 6),
           Text('ملاحظات الدفع',
-              style: AppTextStyles.titleMedium.copyWith(color: const Color(0xFF8A5A0B))),
+              style: AppTextStyles.labelSmall
+                  .copyWith(color: const Color(0xFF8A5A0B), fontWeight: FontWeight.bold)),
         ]),
-        const SizedBox(height: 8),
-        for (final note in notes)
+        const SizedBox(height: 6),
+        for (var i = 0; i < notes.length; i++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 5),
+            padding: const EdgeInsets.only(bottom: 4),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: CircleAvatar(radius: 2.5, backgroundColor: Color(0xFFB97812))),
-              const SizedBox(width: 8),
-              Expanded(child: Text(note, style: AppTextStyles.bodyMedium)),
+              SizedBox(
+                width: 18,
+                child: Text('${i + 1}.',
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: const Color(0xFFB97812), fontWeight: FontWeight.bold)),
+              ),
+              Expanded(
+                child: Text(notes[i],
+                    style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF5E4A1E), height: 1.45)),
+              ),
             ]),
           ),
       ]),
@@ -744,24 +753,26 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             const SizedBox(height: 8),
             if (m.type == 'bank' && m.bankName != null) _payLine('البنك', m.bankName!, copy: false),
             _payLine(
-                switch (m.type) { 'instapay' => 'عنوان InstaPay', 'vodafone_cash' => 'رقم المحفظة', _ => 'رقم الحساب' },
+                switch (m.type) { 'instapay' => 'عنوان إنستاباي', 'vodafone_cash' => 'رقم المحفظة', _ => 'رقم الحساب' },
                 m.payTo),
             if (m.type == 'bank' && m.iban != null) _payLine('IBAN', m.iban!),
-            if (m.accountHolder != null) _payLine('باسم', m.accountHolder!, copy: false),
+            if (m.accountHolder != null) _payLine('بإسم', m.accountHolder!, copy: false),
           ],
         ]),
       ),
     );
   }
 
+  /// "label: value" with the value right beside its label (a number or an
+  /// address reads left to right but still sits next to the label).
   Widget _payLine(String label, String value, {bool copy = true}) => Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(children: [
           Text('$label: ', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          Expanded(
+          Flexible(
             child: Text(value,
-                textDirection: TextDirection.ltr,
-                textAlign: TextAlign.start,
+                textDirection: copy ? TextDirection.ltr : null,
+                textAlign: TextAlign.right,
                 style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700)),
           ),
           if (copy)
