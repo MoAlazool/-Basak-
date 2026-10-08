@@ -62,6 +62,7 @@ abstract final class LucideIcons {
   static const IconData logOut = IconData(57614, fontFamily: 'Lucide');
   static const IconData mapPin = IconData(57617, fontFamily: 'Lucide');
   static const IconData mapPinOff = IconData(58022, fontFamily: 'Lucide');
+  static const IconData megaphone = IconData(57909, fontFamily: 'Lucide');
   static const IconData pencil = IconData(57849, fontFamily: 'Lucide');
   static const IconData phone = IconData(57651, fontFamily: 'Lucide');
   static const IconData qrCode = IconData(57823, fontFamily: 'Lucide');
@@ -71,6 +72,8 @@ abstract final class LucideIcons {
   static const IconData route = IconData(58686, fontFamily: 'Lucide');
   static const IconData scanLine = IconData(57944, fontFamily: 'Lucide');
   static const IconData school = IconData(58339, fontFamily: 'Lucide');
+  static const IconData search = IconData(57681, fontFamily: 'Lucide');
+  static const IconData send = IconData(57682, fontFamily: 'Lucide');
   static const IconData shieldAlert = IconData(57854, fontFamily: 'Lucide');
   static const IconData shieldCheck = IconData(57855, fontFamily: 'Lucide');
   static const IconData smartphone = IconData(57699, fontFamily: 'Lucide');

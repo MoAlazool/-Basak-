@@ -4,8 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// The last good copy of a few screens' data, kept per account in the device's
 /// encrypted storage. The app shows it at once on start and refreshes behind it.
-/// It is never the source of truth and holds nothing that is not already shown,
-/// apart from a few choices made on this phone (vote reminder days off).
+/// It is never the source of truth and holds nothing that is not already shown.
 class SnapshotStore {
   static const _storage = FlutterSecureStorage();
   static const _prefix = 'basak.snapshot.v1.';

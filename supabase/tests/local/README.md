@@ -14,7 +14,9 @@ simulate existing production data) and runs `e2e_full_flow.sql`, which acts as t
 super admin, company admins, supervisors, students, anon and the service role.
 Then `e2e_ride_choices.sql` builds its own line in a rolled-back transaction and
 checks that supervisors see riders by the trip each one chose for the day (per
-trip, station and university, and who has not confirmed yet).
+trip, station and university, and who has not confirmed yet), and
+`e2e_notifications.sql` checks who receives each notification (company, line,
+trip), reading, the dashboard counts, access, and supervisor photos.
 
 ## 2. HTTP (GoTrue + PostgREST + Edge Functions, through supabase-js)
 

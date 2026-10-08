@@ -4,6 +4,9 @@ import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../../core/widgets/greeting_header.dart';
+import '../../../notifications/data/notifications_repository.dart';
+import '../../notifications/supervisor_notifications_screen.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
 import '../../rider_counts/presentation/rider_counts_screen.dart';
@@ -65,7 +68,6 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
   }
 
   Widget _content(SupervisorDashboard data) {
-    final firstName = data.profile.fullName.trim().split(RegExp(r'\s+')).first;
     final lines = data.lines;
     final line = lines.isEmpty
         ? null
@@ -74,14 +76,11 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
     return BasakPage(
       onRefresh: _refresh,
       children: [
-        BasakPageHeader(
-          title: 'أهلاً، $firstName',
-          subtitle: BasakUi.dateLabel(data.today),
-          trailing: const CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.white,
-            child: Icon(LucideIcons.userCheck, color: BasakUi.teal, size: 21),
-          ),
+        GreetingHeader(
+          name: data.profile.fullName,
+          photoUrl: ref.watch(supervisorPhotoUrlProvider).valueOrNull,
+          unread: ref.watch(unreadNotificationsProvider),
+          onNotifications: () => SupervisorNotificationsScreen.open(context),
         ),
         const SizedBox(height: 18),
         if (!data.profile.isActive)

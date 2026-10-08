@@ -111,6 +111,23 @@ class SupervisorDashboardNotifier extends SnapshotNotifier<SupervisorDashboard> 
 final supervisorDashboardProvider =
     AsyncNotifierProvider<SupervisorDashboardNotifier, SupervisorDashboard>(SupervisorDashboardNotifier.new);
 
+/// The supervisor's own photo, added by the company in the dashboard: a
+/// short-lived link, or null (no photo, or it cannot be loaded now).
+final supervisorPhotoUrlProvider = FutureProvider<String?>((ref) async {
+  final userId = ref.watch(sessionUserIdProvider);
+  if (userId == null) return null;
+  try {
+    final client = SupabaseService.client;
+    final row = await OfflineCache.readThrough('supervisor.photo',
+        () => client.from('supervisors').select('profile_image_url').eq('id', userId).maybeSingle());
+    final path = (row as Map?)?['profile_image_url'] as String?;
+    if (path == null || path.isEmpty) return null;
+    return await client.storage.from('supervisor-avatars').createSignedUrl(path, 3600);
+  } catch (_) {
+    return null;
+  }
+});
+
 // Kept per month for the session, so going back to a month does not reload it.
 final supervisorMonthlySummaryProvider =
     FutureProvider.family<SupervisorMonthlySummary, DateTime>((ref, month) {

@@ -312,8 +312,7 @@ class _CheckInResultSheet extends StatelessWidget {
           background: AppColors.errorLight,
           title: 'تم تسجيل حضوره اليوم بالفعل',
           message:
-              'تم تسجيل حضور هذا الطالب اليوم بالفعل$at (رحلة $trip). لا يمكن تسجيله مرة أخرى قبل الغد.\n'
-                  'This student has already been checked in today.'
+              'تم تسجيل حضور هذا الطالب اليوم بالفعل$at (رحلة $trip). لا يمكن تسجيله مرة أخرى قبل الغد.'
         ),
       CheckInOutcome.noActiveSubscription => (
           icon: LucideIcons.creditCard,
@@ -401,6 +400,32 @@ class _CheckInResultSheet extends StatelessWidget {
     );
   }
 
+  static const _amber = Color(0xFFB97812);
+
+  /// Whether the student voted to ride today, and the times they chose.
+  ({String text, Color color}) get _vote {
+    if (!result.hasRideVote) {
+      return switch (result.confirmedRideToday) {
+        true => (text: 'أكد ركوب اليوم', color: AppColors.success),
+        false => (text: 'لم يؤكد', color: _amber),
+        null => (text: 'لم يصوّت', color: _amber),
+      };
+    }
+    final vote = result.rideVote;
+    if (vote == null) return (text: 'لم يصوّت اليوم', color: _amber);
+    if (!vote.isRiding) return (text: 'صوّت أنه لن يركب', color: AppColors.error);
+    final back = vote.isReturning ? 'عودة ${BasakUi.time12(vote.returnTime)}' : 'بدون عودة';
+    if (result.direction == 'return') {
+      return vote.isReturning
+          ? (text: 'أكّد الركوب · $back', color: AppColors.success)
+          : (text: 'أكّد الذهاب فقط، بدون عودة', color: _amber);
+    }
+    return (
+      text: 'أكّد الركوب · ذهاب ${BasakUi.time12(vote.departureTime)} · $back',
+      color: AppColors.success,
+    );
+  }
+
   Widget _studentDetails(ScannedStudentDetails student) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -426,25 +451,17 @@ class _CheckInResultSheet extends StatelessWidget {
           BasakInfoRow(
               icon: LucideIcons.mapPin, label: 'المحطة', value: student.stationName ?? 'غير محدد'),
           BasakInfoRow(
-            icon: LucideIcons.clock3,
-            label: 'الموعد',
-            value: student.departureTime == null
-                ? '—'
-                : 'ذهاب ${BasakUi.time12(student.departureTime)} · عودة ${BasakUi.time12(student.returnTime)}',
-          ),
-          BasakInfoRow(
             icon: LucideIcons.creditCard,
             label: 'الاشتراك',
             value: student.hasActiveSubscription ? 'نشط ومسدد' : 'غير مفعل / معلق',
             valueColor: student.hasActiveSubscription ? AppColors.success : AppColors.error,
           ),
-          if (result.confirmedRideToday != null)
-            BasakInfoRow(
-              icon: LucideIcons.calendarCheck2,
-              label: 'تأكيد الركوب في التطبيق',
-              value: result.confirmedRideToday! ? 'أكد ركوب اليوم' : 'لم يؤكد',
-              valueColor: result.confirmedRideToday! ? AppColors.success : const Color(0xFFB97812),
-            ),
+          BasakInfoRow(
+            icon: LucideIcons.calendarCheck2,
+            label: 'تصويت اليوم',
+            value: _vote.text,
+            valueColor: _vote.color,
+          ),
         ],
       );
 }

@@ -43,15 +43,13 @@ class VoteReminders {
           defaultTargetPlatform == TargetPlatform.iOS);
 
   /// Replaces the planned reminders. [votedDays] are the ride days (dates
-  /// only) the student has already voted for and [daysOff] those they turned
-  /// reminders off for; [validFrom] / [validUntil] bound the subscription.
-  /// Never throws: reminders are a convenience.
+  /// only) the student has already voted for; [validFrom] / [validUntil] bound
+  /// the subscription. Never throws: reminders are a convenience.
   static Future<void> plan({
     required VoteSettings settings,
     required DateTime? validFrom,
     required DateTime? validUntil,
     required Set<DateTime> votedDays,
-    Set<DateTime> daysOff = const {},
   }) =>
       _serial(() async {
         if (!await _ready()) return;
@@ -64,7 +62,7 @@ class VoteReminders {
           final day = DateTime(first.year, first.month, first.day + i);
           if (validFrom != null && day.isBefore(validFrom)) continue;
           if (validUntil != null && day.isAfter(validUntil)) break;
-          if (votedDays.contains(day) || daysOff.contains(day)) continue;
+          if (votedDays.contains(day)) continue;
           for (final at in settings.reminderTimesFor(day)) {
             if (at.isAfter(now)) reminders.add((day: day, at: at));
           }

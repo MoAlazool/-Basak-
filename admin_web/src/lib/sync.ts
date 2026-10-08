@@ -28,6 +28,7 @@ const AFFECTS: Record<string, string[]> = {
   companies: ['company', 'overview', 'settings'],
   company_invites: ['invites', 'students'],
   student_correction_requests: ['corrections', 'students'],
+  notifications: ['notifications'],
 };
 
 /** Joins a private topic. The database refuses listeners the topic is not meant for. */

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/auth/models/user_role.dart';
 import '../../features/auth/providers/auth_provider.dart';
+import '../../features/notifications/data/notifications_repository.dart';
 import '../../features/student/home/presentation/student_home_screen.dart';
 import '../../features/student/invites/invites.dart';
 import '../../features/student/qr/presentation/student_qr_screen.dart';
@@ -130,6 +131,7 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
 
   void _invalidateFor(Set<String> tables) {
     final role = ref.read(authStateProvider).role;
+    if (tables.contains('notifications')) ref.invalidate(myNotificationsProvider);
     if (role == UserRole.student) {
       const subscriptionTables = {'subscriptions', 'receipts', 'company_students', 'lines', 'stations', 'line_trips', 'supervisor_lines'};
       if (tables.any(subscriptionTables.contains)) {
@@ -154,6 +156,7 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
       ref.invalidate(supervisorDashboardProvider);
       ref.invalidate(tripManifestProvider);
       ref.invalidate(offeredSubscriptionTypesProvider);
+      if (tables.contains('supervisors')) ref.invalidate(supervisorPhotoUrlProvider);
       if (tables.contains('supervisor_scan_events')) ref.invalidate(supervisorMonthlySummaryProvider);
     }
   }
@@ -166,14 +169,14 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     _lastFullRefresh = now;
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
-      _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students'});
+      _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students', 'notifications'});
       // Company settings (annual / daily switches, vote times) send no event to students.
       ref.invalidate(purchasablePeriodsProvider);
       ref.invalidate(dailySubscriptionEnabledProvider);
       ref.invalidate(voteSettingsProvider);
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {
-      _invalidateFor(const {'supervisor_scan_events'});
+      _invalidateFor(const {'supervisor_scan_events', 'notifications', 'supervisors'});
     }
     _retune();
   }
