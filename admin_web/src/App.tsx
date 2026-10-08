@@ -12,6 +12,7 @@ import { CompanyAdminsPage } from './pages/CompanyAdminsPage';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 import { LinesPage } from './pages/LinesPage';
 import { SupervisorsPage } from './pages/SupervisorsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { CompanySettingsPage, PlatformDefaultsPage } from './pages/SubscriptionSettingsPage';
@@ -194,6 +195,7 @@ const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> = ({ ad
           <Route path="receipts" element={<ReceiptsPage />} />
           <Route path="lines" element={<LinesPage />} />
           <Route path="supervisors" element={<SupervisorsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="payment-methods" element={<PaymentMethodsPage />} />
           <Route path="wallet-card" element={<WalletCardDesignPage />} />

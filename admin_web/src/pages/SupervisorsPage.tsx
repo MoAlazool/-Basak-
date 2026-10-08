@@ -4,7 +4,23 @@ import { useCompany } from '../lib/adminScope';
 import { keys, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
-import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Bus, Pencil, Save, X } from 'lucide-react';
+import { squareJpeg } from '../lib/images';
+import { UserCheck, Plus, CheckCircle, XCircle, Trash2, Bus, Pencil, Save, X, Camera } from 'lucide-react';
+
+const PHOTO_BUCKET = 'supervisor-avatars';
+
+/** One request for all photos; a missing file yields no URL instead of an error. */
+async function signPhotos(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 600);
+  if (error) {
+    console.warn('Could not sign supervisor photos:', error.message);
+    return {};
+  }
+  const urls: Record<string, string> = {};
+  (data || []).forEach((item) => { if (item.path && item.signedUrl && !item.error) urls[item.path] = item.signedUrl; });
+  return urls;
+}
 
 interface Supervisor {
   id: string;
@@ -13,6 +29,8 @@ interface Supervisor {
   company_id: string;
   is_active: boolean;
   created_at: string;
+  /** Path in the 'supervisor-avatars' bucket. */
+  profile_image_url: string | null;
 }
 
 interface LineOption { id: string; name: string; company_id: string; is_active: boolean; }
@@ -59,11 +77,12 @@ export const SupervisorsPage: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLines, setEditingLines] = useState<string[]>([]);
   const [savingLines, setSavingLines] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const page = usePageData(keys.company(companyId, 'supervisors'), async () => {
     const [supRes, lineRes, assignRes] = await Promise.all([
       supabase.from('supervisors')
-        .select('id, phone, full_name, company_id, is_active, created_at')
+        .select('id, phone, full_name, company_id, is_active, created_at, profile_image_url')
         .eq('company_id', companyId).order('created_at', { ascending: false }),
       supabase.from('lines').select('id, name, company_id, is_active').eq('company_id', companyId).order('name'),
       supabase.from('supervisor_lines').select('supervisor_id, line_id').eq('company_id', companyId),
@@ -87,6 +106,44 @@ export const SupervisorsPage: React.FC = () => {
   const fetchData = page.reload;
 
   const linesById = useMemo(() => new Map(lines.map((line) => [line.id, line])), [lines]);
+  const photoPaths = supervisors.map((s) => s.profile_image_url).filter((x): x is string => !!x);
+  const photos = usePageData(keys.company(companyId, 'avatars', 'supervisors', photoPaths), () => signPhotos(photoPaths),
+    { enabled: photoPaths.length > 0, keepPrevious: true });
+
+  // The photo the supervisor sees in the app, and the students of their lines.
+  const handlePhoto = async (sup: Supervisor, file: File | undefined) => {
+    if (!file) return;
+    try {
+      setUploadingId(sup.id);
+      const image = await squareJpeg(file);
+      const path = `${sup.id}/${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET)
+        .upload(path, image, { contentType: 'image/jpeg', upsert: false });
+      if (uploadError) throw uploadError;
+      const { error: rowError } = await supabase.from('supervisors').update({ profile_image_url: path }).eq('id', sup.id);
+      if (rowError) {
+        await supabase.storage.from(PHOTO_BUCKET).remove([path]);
+        throw rowError;
+      }
+      if (sup.profile_image_url) await supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
+      await fetchData();
+    } catch (err: any) {
+      alert('فشل رفع الصورة: ' + err.message);
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const handleRemovePhoto = async (sup: Supervisor) => {
+    if (!sup.profile_image_url || !confirm(`إزالة صورة المشرف "${sup.full_name}"؟`)) return;
+    const { error } = await supabase.from('supervisors').update({ profile_image_url: null }).eq('id', sup.id);
+    if (error) {
+      alert('فشل إزالة الصورة: ' + error.message);
+      return;
+    }
+    await supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
+    void fetchData();
+  };
 
   const handleAddSupervisor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,7 +225,7 @@ export const SupervisorsPage: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-slate-800">إدارة المشرفين</h1>
         <p className="text-sm text-slate-500">
-          الشركة ← الخط ← المشرف. يرى المشرف في التطبيق الخطوط المسندة إليه فقط. يدخل المشرف برقم الهاتف وكلمة المرور، وتُحفظ مشفّرة فلا تظهر بعد الإنشاء: سلّمها له عند إضافته
+          الشركة ← الخط ← المشرف. يرى المشرف في التطبيق الخطوط المسندة إليه فقط. يدخل المشرف برقم الهاتف وكلمة المرور، وتُحفظ مشفّرة فلا تظهر بعد الإنشاء: سلّمها له عند إضافته. صورة المشرف تظهر له في التطبيق ولطلاب خطوطه
         </p>
       </div>
 
@@ -245,8 +302,32 @@ export const SupervisorsPage: React.FC = () => {
                   <tr key={s.id} className="align-top hover:bg-slate-50/80">
                     <td className="p-4 font-semibold text-slate-800">
                       <div className="flex items-center gap-3">
-                        <UserCheck className="h-5 w-5 text-slate-400" />
-                        {s.full_name}
+                        <label className="relative shrink-0 cursor-pointer" title="إضافة أو تغيير صورة المشرف">
+                          {s.profile_image_url && photos.data?.[s.profile_image_url] ? (
+                            <img src={photos.data[s.profile_image_url]} alt={s.full_name}
+                              className="h-10 w-10 rounded-full object-cover" />
+                          ) : (
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                              <UserCheck className="h-5 w-5" />
+                            </span>
+                          )}
+                          <span className="absolute -bottom-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow">
+                            <Camera className="h-3 w-3" />
+                          </span>
+                          <input type="file" accept="image/*" className="hidden" disabled={uploadingId === s.id}
+                            onChange={(e) => { void handlePhoto(s, e.target.files?.[0]); e.target.value = ''; }} />
+                        </label>
+                        <div>
+                          {s.full_name}
+                          {uploadingId === s.id ? (
+                            <p className="text-[11px] font-normal text-blue-600">جاري رفع الصورة...</p>
+                          ) : s.profile_image_url ? (
+                            <button onClick={() => void handleRemovePhoto(s)}
+                              className="block text-[11px] font-normal text-rose-500 hover:underline">إزالة الصورة</button>
+                          ) : (
+                            <p className="text-[11px] font-normal text-slate-400">اضغط الصورة لإضافتها</p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="p-4 text-slate-600 font-mono text-xs">{s.phone}</td>
