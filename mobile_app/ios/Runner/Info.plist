@@ -10,6 +10,8 @@
 	<string>يستخدم باصك الكاميرا لمسح بطاقة الطالب ضوئياً والتحقق من بيانات الاشتراك.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>لحفظ رقم مشرف الحافلة في جهات الاتصال عندما تطلب ذلك.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>لحفظ إيصال الاشتراك كصورة في الصور عندما تطلب ذلك.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>يستخدم باصك الصورة التي تختارها لإضافتها إلى ملفك الشخصي.</string>
 	<key>CFBundleDisplayName</key>

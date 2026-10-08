@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 
 /// GlassScaffold provides subtle background color blooms / gradients
@@ -29,8 +30,21 @@ class GlassScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
-    return Scaffold(
-      backgroundColor: canvas ?? AppColors.background,
+    final background = canvas ?? AppColors.background;
+    // Android draws its own status and navigation bars: make them the page's
+    // colour with dark icons, so no strip of another colour shows at the top
+    // or the bottom. (iOS takes the icon brightness from the same setting.)
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: background,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+      child: Scaffold(
+      backgroundColor: background,
       extendBody: extendBody,
       extendBodyBehindAppBar: true,
       appBar: appBar,
@@ -104,6 +118,7 @@ class GlassScaffold extends StatelessWidget {
       ),
       bottomNavigationBar: bottomNavigationBar,
       floatingActionButton: floatingActionButton,
+      ),
     );
   }
 }

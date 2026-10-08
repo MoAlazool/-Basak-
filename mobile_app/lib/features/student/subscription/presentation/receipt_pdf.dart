@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/sale_catalog.dart';
 
@@ -45,6 +46,15 @@ class ReceiptPdf {
   static String number(int value) => value.toString().padLeft(5, '0');
 
   static String fileName(SubscriptionReceipt receipt) => 'basak-receipt-${number(receipt.number)}.pdf';
+
+  /// The same document as a picture: the first page of the PDF drawn at print
+  /// quality, so the image is the receipt itself and not a photo of the screen.
+  static Future<Uint8List> image(Uint8List pdf, {double dpi = 200}) async {
+    await for (final page in Printing.raster(pdf, pages: const [0], dpi: dpi)) {
+      return page.toPng();
+    }
+    throw Exception('تعذر تجهيز صورة الإيصال.');
+  }
 
   static Future<pw.Font> _font(String weight) async =>
       pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-$weight.ttf'));

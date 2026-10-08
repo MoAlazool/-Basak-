@@ -112,98 +112,102 @@ class StudentQrScreen extends ConsumerWidget {
                               boxShadow: const [
                                 BoxShadow(color: Color(0x1117384A), blurRadius: 18, offset: Offset(0, 7))
                               ]),
-                          child: Column(children: [
-                            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                              CircleAvatar(
-                                  radius: 24,
-                                  backgroundColor: const Color(0xFFE4F2F9),
-                                  backgroundImage:
-                                      pass.profileImageUrl == null ? null : avatarImage(pass.profileImageUrl!),
-                                  child: pass.profileImageUrl == null
-                                      ? const Icon(LucideIcons.userRound, color: _teal)
-                                      : null),
-                              const SizedBox(width: 11),
-                              Flexible(
-                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(pass.fullName ?? 'الطالب',
-                                    style: AppTextStyles.titleLarge.copyWith(color: _ink),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                                Text(pass.university ?? 'الجامعة المسجلة',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695)))
-                              ])),
-                            ]),
-                            const SizedBox(height: 10),
-                            // The code: a square as large as the space left.
-                            Expanded(
-                              child: LayoutBuilder(builder: (context, area) {
-                                final side = (area.maxWidth < area.maxHeight ? area.maxWidth : area.maxHeight)
-                                    .clamp(120.0, 340.0);
-                                return Center(
-                                  child: Container(
-                                    width: side,
-                                    height: side,
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(color: const Color(0xFFE7EEF3))),
-                                    child: QrImageView(
-                                      key: const Key('student-qr'),
-                                      data: pass.qrValue!,
-                                      version: QrVersions.auto,
-                                      padding: EdgeInsets.zero,
-                                      backgroundColor: Colors.white,
-                                      eyeStyle: const QrEyeStyle(
-                                          eyeShape: QrEyeShape.square, color: Color(0xFF102A3A)),
-                                      dataModuleStyle: const QrDataModuleStyle(
-                                          dataModuleShape: QrDataModuleShape.square, color: Color(0xFF102A3A)),
-                                    ),
+                          // Everything on the card grows and shrinks together: the
+                          // design is drawn for a card 500 high and scaled to the
+                          // height this phone gives it, so the code keeps its
+                          // proportion to the name, the status and the details.
+                          child: LayoutBuilder(builder: (context, card) {
+                            final rows = compact ? 3 : 4;
+                            final k = (card.maxHeight / (410 + rows * 28)).clamp(0.72, 1.22);
+                            final qrSide = (230 * k).clamp(150.0, card.maxWidth);
+                            return MediaQuery(
+                              data: MediaQuery.of(context).copyWith(
+                                  textScaler: TextScaler.linear(
+                                      (MediaQuery.textScalerOf(context).scale(1) * k).clamp(0.8, 1.3))),
+                              child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                  CircleAvatar(
+                                      radius: 24 * k,
+                                      backgroundColor: const Color(0xFFE4F2F9),
+                                      backgroundImage:
+                                          pass.profileImageUrl == null ? null : avatarImage(pass.profileImageUrl!),
+                                      child: pass.profileImageUrl == null
+                                          ? Icon(LucideIcons.userRound, color: _teal, size: 24 * k)
+                                          : null),
+                                  SizedBox(width: 11 * k),
+                                  Flexible(
+                                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(pass.fullName ?? 'الطالب',
+                                        style: AppTextStyles.titleLarge.copyWith(color: _ink),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
+                                    Text(pass.university ?? 'الجامعة المسجلة',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695)))
+                                  ])),
+                                ]),
+                                Container(
+                                  width: qrSide,
+                                  height: qrSide,
+                                  padding: EdgeInsets.all(11 * k),
+                                  decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(color: const Color(0xFFE7EEF3))),
+                                  child: QrImageView(
+                                    key: const Key('student-qr'),
+                                    data: pass.qrValue!,
+                                    version: QrVersions.auto,
+                                    padding: EdgeInsets.zero,
+                                    backgroundColor: Colors.white,
+                                    eyeStyle: const QrEyeStyle(
+                                        eyeShape: QrEyeShape.square, color: Color(0xFF102A3A)),
+                                    dataModuleStyle: const QrDataModuleStyle(
+                                        dataModuleShape: QrDataModuleShape.square, color: Color(0xFF102A3A)),
                                   ),
-                                );
-                              }),
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-                                decoration: BoxDecoration(
-                                    color: active ? const Color(0xFFE7F8F0) : const Color(0xFFFFF4E5),
-                                    borderRadius: BorderRadius.circular(18)),
-                                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                  Icon(active ? LucideIcons.circleCheck : LucideIcons.clock3,
-                                      size: 16,
-                                      color: active ? const Color(0xFF07865A) : const Color(0xFFB56900)),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                      active
-                                          ? 'الاشتراك نشط'
-                                          : pass.subscriptionStatus == 'rejected'
-                                              ? 'الإيصال مرفوض'
-                                              : 'الاشتراك غير نشط',
-                                      style: AppTextStyles.labelSmall.copyWith(
-                                          color: active ? const Color(0xFF07865A) : const Color(0xFFB56900),
-                                          fontWeight: FontWeight.bold))
-                                ])),
-                            const SizedBox(height: 10),
-                            const Divider(height: 1),
-                            const SizedBox(height: 10),
-                            _detailRow(
-                                'الخط',
-                                pass.lineName == null
-                                    ? 'لا يوجد اشتراك'
-                                    : SubscriptionModel.routeLabel(pass.lineName, pass.university),
-                                LucideIcons.busFront),
-                            const SizedBox(height: 7),
-                            _detailRow('محطة الصعود', pass.stationName ?? '—', LucideIcons.mapPin),
-                            const SizedBox(height: 7),
-                            _detailRow('نوع الاشتراك', _typeLabel(pass.subscriptionType), LucideIcons.ticket),
-                            if ((pass.phone ?? '').isNotEmpty && !compact) ...[
-                              const SizedBox(height: 7),
-                              _detailRow('رقم الهاتف', pass.phone!, LucideIcons.phone),
-                            ],
-                          ]),
+                                ),
+                                Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 13 * k, vertical: 6 * k),
+                                    decoration: BoxDecoration(
+                                        color: active ? const Color(0xFFE7F8F0) : const Color(0xFFFFF4E5),
+                                        borderRadius: BorderRadius.circular(18)),
+                                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(active ? LucideIcons.circleCheck : LucideIcons.clock3,
+                                          size: 16 * k,
+                                          color: active ? const Color(0xFF07865A) : const Color(0xFFB56900)),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                          active
+                                              ? 'الاشتراك نشط'
+                                              : pass.subscriptionStatus == 'rejected'
+                                                  ? 'الإيصال مرفوض'
+                                                  : 'الاشتراك غير نشط',
+                                          style: AppTextStyles.labelSmall.copyWith(
+                                              color: active ? const Color(0xFF07865A) : const Color(0xFFB56900),
+                                              fontWeight: FontWeight.bold))
+                                    ])),
+                                Column(mainAxisSize: MainAxisSize.min, children: [
+                                  const Divider(height: 1),
+                                  SizedBox(height: 10 * k),
+                                  _detailRow(
+                                      'الخط',
+                                      pass.lineName == null
+                                          ? 'لا يوجد اشتراك'
+                                          : SubscriptionModel.routeLabel(pass.lineName, pass.university),
+                                      LucideIcons.busFront, k),
+                                  SizedBox(height: 7 * k),
+                                  _detailRow('محطة الصعود', pass.stationName ?? '—', LucideIcons.mapPin, k),
+                                  SizedBox(height: 7 * k),
+                                  _detailRow('نوع الاشتراك', _typeLabel(pass.subscriptionType), LucideIcons.ticket, k),
+                                  if ((pass.phone ?? '').isNotEmpty && !compact) ...[
+                                    SizedBox(height: 7 * k),
+                                    _detailRow('رقم الهاتف', pass.phone!, LucideIcons.phone, k),
+                                  ],
+                                ]),
+                              ]),
+                            );
+                          }),
                         ),
                       ),
                       if (AddToWalletButton.canOffer(
@@ -234,7 +238,7 @@ class StudentQrScreen extends ConsumerWidget {
 }
 
   /// The value sits right beside its label and wraps when it is long.
-  static Widget _detailRow(String label, String value, IconData icon) =>
+  static Widget _detailRow(String label, String value, IconData icon, [double k = 1]) =>
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
           padding: const EdgeInsets.only(top: 3),
@@ -242,12 +246,16 @@ class StudentQrScreen extends ConsumerWidget {
         ),
         const SizedBox(width: 8),
         SizedBox(
-          width: 96,
+          // Wide enough for the longest label at the card's scale.
+          width: 100 * k,
           child: Text(label,
+              maxLines: 1,
               style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695), height: 1.6)),
         ),
         Expanded(
             child: Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 // A phone number reads left to right but stays beside its label.
                 textAlign: TextAlign.right,
                 textDirection: RegExp(r'^[0-9+ ]+$').hasMatch(value) ? TextDirection.ltr : null,

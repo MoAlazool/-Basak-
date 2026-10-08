@@ -19,6 +19,7 @@ import '../../home/presentation/student_home_screen.dart';
 import 'purchase_flow.dart';
 import 'receipt_card.dart';
 import 'receipt_pdf.dart';
+import 'package:gal/gal.dart';
 import '../../../../core/network/supabase_service.dart';
 import 'dart:typed_data';
 
@@ -61,9 +62,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isExporting = false;
   XFile? _receiptPreview;
   String? _paymentMethodId;
-  /// One key per subscription card, for sharing its receipt as an image.
-  final Map<String, GlobalKey> _receiptKeys = {};
-
   /// Cards whose details are open. A card that needs the student to act
   /// (pay, re-upload) opens by itself; the rest stay compact.
   final Set<String> _expanded = {};
@@ -189,22 +187,37 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     }
   }
 
-  /// Saves or shares a receipt: as a real PDF document built from the stored
-  /// receipt, or as an image of its card.
+  /// The receipt as a real PDF document built from the stored receipt: opened
+  /// in the share sheet as a PDF, or saved straight to the phone's photos as a
+  /// picture of that same document.
   Future<void> _exportReceipt(SubscriptionReceipt receipt, {required bool asPdf}) async {
     if (_isExporting) return;
     final box = context.findRenderObject() as RenderBox?;
     final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
     setState(() => _isExporting = true);
     try {
+      final pdf = await ReceiptPdf.build(receipt, logo: await _companyLogo(receipt.companyLogoPath));
       if (asPdf) {
-        final pdf = await ReceiptPdf.build(receipt, logo: await _companyLogo(receipt.companyLogoPath));
         await ReceiptExport.share(pdf, ReceiptPdf.fileName(receipt), 'application/pdf', origin: origin);
       } else {
-        final key = _receiptKeys[receipt.subscriptionId];
-        if (key == null) return;
-        final png = await ReceiptExport.png(key);
-        await ReceiptExport.share(png, ReceiptExport.fileName(receipt, 'png'), 'image/png', origin: origin);
+        // No sheet and no file to deal with: it goes to the photo library.
+        if (!await Gal.hasAccess() && !await Gal.requestAccess()) {
+          throw Exception('اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.');
+        }
+        await Gal.putImageBytes(await ReceiptPdf.image(pdf),
+            name: 'basak-receipt-${ReceiptPdf.number(receipt.number)}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('تم حفظ الإيصال في الاستوديو.'), backgroundColor: AppColors.success));
+        }
+      }
+    } on GalException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.type == GalExceptionType.accessDenied
+                ? 'اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.'
+                : 'تعذر حفظ الصورة في الاستوديو. حاول مرة أخرى.'),
+            backgroundColor: AppColors.error));
       }
     } catch (e) {
       if (mounted) {
@@ -474,15 +487,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ],
       ];
     }
-    final key = _receiptKeys.putIfAbsent(sub.id, GlobalKey.new);
     return [
-      RepaintBoundary(
-        key: key,
-        child: ColoredBox(
-          color: Colors.white,
-          child: Padding(padding: const EdgeInsets.all(4), child: ReceiptCard(receipt: receipt)),
-        ),
-      ),
+      ReceiptCard(receipt: receipt),
       const SizedBox(height: 10),
       SizedBox(
         width: double.infinity,
@@ -500,7 +506,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           key: Key('receipt-image-${sub.id}'),
           onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: false),
           icon: const Icon(LucideIcons.image, size: 18),
-          label: const Text('مشاركة كصورة'),
+          label: const Text('حفظ كصورة في الاستوديو'),
         ),
       ),
     ];
