@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
+import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
 import {
   ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
   Plus, Power, Save, Trash2, UserCheck, Wand2, X,
@@ -23,7 +24,9 @@ interface LineRow {
   stations: StationRow[];
   line_trips: TripRow[];
   line_universities: { university_id: string }[];
+  line_period_prices: { option: SaleOption; price: number; is_enabled: boolean }[];
 }
+type PriceDraft = Record<SaleOption, { price: string; enabled: boolean }>;
 interface Option { id: string; name: string }
 
 /** Editor state — stations by position; trip stop times keyed by station key. */
@@ -36,7 +39,9 @@ interface LineDraft {
   id?: string; company_id: string; name: string; origin_name: string; destination_university_id: string;
   /** Universities served by the line (shared route, stored once). */
   university_ids: string[];
-  price_termly: string; price_yearly: string; price_daily: string; is_active: boolean;
+  /** One price and one switch per subscription option. */
+  prices: PriceDraft;
+  price_daily: string; is_active: boolean;
   stations: StationDraft[]; trips: TripDraft[];
 }
 
@@ -103,7 +108,12 @@ const draftFromLine = (line: LineRow): LineDraft => {
     university_ids: (line.line_universities ?? []).map((u) => u.university_id).length
       ? (line.line_universities ?? []).map((u) => u.university_id)
       : (line.destination_university_id ? [line.destination_university_id] : []),
-    price_termly: String(line.price_termly), price_yearly: String(line.price_yearly), price_daily: String(line.price_daily),
+    prices: Object.fromEntries(SALE_OPTIONS.map((o) => {
+      const row = (line.line_period_prices ?? []).find((p) => p.option === o);
+      return [o, row ? { price: String(row.price), enabled: row.is_enabled }
+        : { price: String(o === 'both' ? line.price_yearly : line.price_termly), enabled: o === 'first' || o === 'second' }];
+    })) as PriceDraft,
+    price_daily: String(line.price_daily),
     is_active: line.is_active, stations,
     trips: (line.line_trips ?? []).filter((t) => t.is_active)
       .sort((a, b) => a.direction.localeCompare(b.direction) || a.start_time.localeCompare(b.start_time))
@@ -119,7 +129,11 @@ const draftFromLine = (line: LineRow): LineDraft => {
 
 const emptyDraft = (companyId: string): LineDraft => ({
   company_id: companyId, name: '', origin_name: '', destination_university_id: '', university_ids: [],
-  price_termly: '3500', price_yearly: '6500', price_daily: '50', is_active: true,
+  prices: {
+    first: { price: '3500', enabled: true }, second: { price: '3500', enabled: true },
+    both: { price: '6500', enabled: false }, summer: { price: '0', enabled: false },
+  },
+  price_daily: '50', is_active: true,
   stations: [{ key: newKey(), name: '' }],
   trips: [emptyTrip('departure', '07:00'), emptyTrip('return', '14:00')],
 });
@@ -141,7 +155,8 @@ export const LinesPage: React.FC = () => {
         .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
           is_active, stations(id, name, order_index, is_active),
           line_trips(id, direction, label, start_time, arrival_time, university_id, is_active,
-            line_trip_stops(station_id, stop_time)), line_universities(university_id)`)
+            line_trip_stops(station_id, stop_time)), line_universities(university_id),
+          line_period_prices(option, price, is_enabled)`)
         .eq('company_id', company.id).order('name'),
       supabase.from('universities').select('id, name').eq('is_active', true).order('name'),
       supabase.from('supervisors').select('id, full_name').eq('company_id', company.id).order('full_name'),
@@ -259,8 +274,9 @@ export const LinesPage: React.FC = () => {
                       <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{dep.length} رحلة ذهاب</span>
                       <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">{ret.length} رحلة عودة</span>
                       <span>{[
-                        `ترم ${line.price_termly} ج.م`,
-                        switches && !switches.annual_effective ? 'سنوي معطّل' : `سنوي ${line.price_yearly} ج.م`,
+                        ...SALE_OPTIONS.map((o) => (line.line_period_prices ?? []).find((p) => p.option === o))
+                          .filter((p) => p?.is_enabled && !(p.option === 'both' && switches && !switches.annual_effective))
+                          .map((p) => `${optionName[p!.option]} ${p!.price} ج.م`),
                         switches && !switches.daily_effective ? 'يومي معطّل' : `يومي ${line.price_daily} ج.م`,
                       ].join(' · ')}</span>
                       <span className="inline-flex items-center gap-1"><UserCheck className="h-3.5 w-3.5" />{sups.length ? sups.join('، ') : 'بدون مشرف (من صفحة المشرفين)'}</span>
@@ -375,16 +391,36 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
 
   // A subscription type the company (or the platform) has switched off: its
   // price is locked here; the saved price stays as it was.
-  const [offered, setOffered] = useState({ annual: true, daily: true });
+  const [offered, setOffered] = useState({ daily: true });
+  // The company is the ceiling: an option it does not sell stays off for students
+  // whatever the line says, so it is shown greyed here with the reason.
+  const [companySells, setCompanySells] = useState<Record<SaleOption, boolean> | null>(null);
   useEffect(() => {
     if (!d.company_id) return;
     let live = true;
     void supabase.rpc('get_subscription_switches', { p_company_id: d.company_id }).then(({ data }) => {
-      const s = data as { annual_effective?: boolean; daily_effective?: boolean } | null;
-      if (live && s) setOffered({ annual: !!s.annual_effective, daily: !!s.daily_effective });
+      const s = data as { daily_effective?: boolean } | null;
+      if (live && s) setOffered({ daily: !!s.daily_effective });
+    });
+    void supabase.rpc('get_subscription_settings', { p_company_id: d.company_id }).then(({ data }) => {
+      const rows = ((data as { sale_periods?: SaleRow[] } | null)?.sale_periods ?? []);
+      if (live && data) {
+        setCompanySells(Object.fromEntries(SALE_OPTIONS.map((o) => {
+          const row = rows.find((r) => r.option === o);
+          return [o, !!row && row.reason !== 'company_not_selling' && row.reason !== 'company_inactive'];
+        })) as Record<SaleOption, boolean>);
+      }
     });
     return () => { live = false; };
   }, [d.company_id]);
+  const patchPrice = (o: SaleOption, p: Partial<PriceDraft[SaleOption]>) =>
+    setD((cur) => ({ ...cur, prices: { ...cur.prices, [o]: { ...cur.prices[o], ...p } } }));
+  const priceOf = (o: SaleOption) => Number(d.prices[o].price) || 0;
+  const bothWarning = !d.prices.both.enabled || priceOf('both') <= 0 ? null
+    : priceOf('both') < Math.max(priceOf('first'), priceOf('second'))
+      ? 'سعر الفصلين معاً أقل من سعر فصل واحد. راجع السعر.'
+      : priceOf('both') > priceOf('first') + priceOf('second')
+        ? 'سعر الفصلين معاً أكبر من مجموع الفصلين. راجع السعر.' : null;
 
   const patchTrip = (key: string, p: Partial<TripDraft>) =>
     setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
@@ -426,6 +462,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const save = async () => {
     setError('');
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
+    const noPrice = SALE_OPTIONS.find((o) => d.prices[o].enabled && priceOf(o) <= 0);
+    if (noPrice) { setError(`اكتب سعر «${optionName[noPrice]}» أو عطّله.`); return; }
     const noStops = d.trips.find((t) => t.direction === 'departure' && !Object.values(t.times).some(Boolean));
     if (noStops) {
       setTab('departure');
@@ -443,11 +481,13 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     const payload = {
       id: d.id ?? null,
       company_id: d.company_id,
-      name: d.name.trim(),
+      // The short name defaults to where the line starts.
+      name: d.name.trim() || d.origin_name.trim(),
       origin_name: d.origin_name.trim(),
       destination_university_id: d.destination_university_id || d.university_ids[0] || null,
       university_ids: d.university_ids,
-      price_termly: Number(d.price_termly), price_yearly: Number(d.price_yearly), price_daily: Number(d.price_daily),
+      // Older clients read these two; the per-option prices below are what is sold.
+      price_termly: priceOf('first'), price_yearly: priceOf('both'), price_daily: Number(d.price_daily),
       is_active: d.is_active,
       stations: stations.map((s) => ({ id: s.id ?? null, name: s.name })),
       trips: d.trips.map((t) => ({
@@ -461,9 +501,13 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
       })),
     };
     setSaving(true);
-    const { error: rpcError } = await supabase.rpc('save_line', { p_line: payload });
+    const { data: lineId, error: rpcError } = await supabase.rpc('save_line', { p_line: payload });
+    if (rpcError) { setSaving(false); setError(rpcError.message); return; }
+    const { error: priceError } = await supabase.from('line_period_prices').upsert(
+      SALE_OPTIONS.map((o) => ({ line_id: lineId as string, option: o, price: priceOf(o), is_enabled: d.prices[o].enabled })),
+      { onConflict: 'line_id,option' });
     setSaving(false);
-    if (rpcError) setError(rpcError.message);
+    if (priceError) setError('تم حفظ الخط لكن تعذر حفظ الأسعار: ' + priceError.message);
     else onSaved();
   };
 
@@ -483,8 +527,9 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-slate-700">١. بيانات الخط</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="text-xs font-semibold text-slate-500">اسم الخط
-                <input value={d.name} onChange={(e) => patch({ name: e.target.value })} placeholder="مثال: منية النصر - جامعة الدلتا" className={`mt-1 ${input}`} />
+              <label className="text-xs font-semibold text-slate-500">اسم الخط المختصر
+                <input value={d.name} onChange={(e) => patch({ name: e.target.value })} placeholder={d.origin_name || 'مثال: منية النصر'} className={`mt-1 ${input}`} />
+                <span className="mt-1 block text-[11px] font-normal text-slate-400">بدون أسماء الجامعات: كل طالب يرى جامعته ومحطته تلقائياً.</span>
               </label>
               <label className="text-xs font-semibold text-slate-500">نقطة البداية
                 <input value={d.origin_name} onChange={(e) => patch({ origin_name: e.target.value })} placeholder="مثال: منية النصر" className={`mt-1 ${input}`} />
@@ -517,14 +562,33 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                   })}
                 </div>
               </fieldset>
-              <label className="text-xs font-semibold text-slate-500">سعر الترم (ج.م)
-                <input type="number" min={0} value={d.price_termly} onChange={(e) => patch({ price_termly: e.target.value })} className={`mt-1 ${input}`} />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">سعر السنوي (ج.م)
-                <input type="number" min={0} value={offered.annual ? d.price_yearly : 0} disabled={!offered.annual}
-                  onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
-                {!offered.annual && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك السنوي معطّل من الإعدادات.</span>}
-              </label>
+              <fieldset className="sm:col-span-2 lg:col-span-4">
+                <legend className="text-xs font-semibold text-slate-500">أسعار الاشتراك لهذا الخط</legend>
+                <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {SALE_OPTIONS.map((o) => {
+                    const sold = companySells ? companySells[o] : true;
+                    const on = d.prices[o].enabled;
+                    return (
+                      <div key={o} className={`rounded-xl border p-3 ${!sold ? 'border-slate-200 bg-slate-50' : on ? 'border-blue-200 bg-blue-50/40' : 'border-slate-200'}`}>
+                        <label className="flex cursor-pointer items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                          {optionName[o]}
+                          <input type="checkbox" checked={on} onChange={(e) => patchPrice(o, { enabled: e.target.checked })} aria-label={`بيع ${optionName[o]} على هذا الخط`} />
+                        </label>
+                        <div className="mt-2 flex items-center gap-1">
+                          <input type="number" min={0} value={d.prices[o].price} disabled={!on}
+                            onChange={(e) => patchPrice(o, { price: e.target.value })}
+                            className={`${input} disabled:bg-slate-100 disabled:text-slate-400`} aria-label={`سعر ${optionName[o]}`} />
+                          <span className="text-[11px] text-slate-400">ج.م</span>
+                        </div>
+                        <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                          {!sold ? 'الشركة لا تبيع هذه الفترة (من الإعدادات)، فلن تظهر للطلاب.' : on ? 'يظهر للطلاب في موعده.' : 'معطّل على هذا الخط.'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {bothWarning && <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">{bothWarning}</p>}
+              </fieldset>
               <label className="text-xs font-semibold text-slate-500">سعر اليومي كاش (ج.م)
                 <input type="number" min={0} value={offered.daily ? d.price_daily : 0} disabled={!offered.daily}
                   onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
