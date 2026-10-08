@@ -119,7 +119,7 @@ class ReceiptCard extends StatelessWidget {
                 color: Color(0xFFF7FAFC),
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
                 border: Border(top: BorderSide(color: _line))),
-            child: Text('Powered by Basak',
+            child: Text('Powered by Basak.app',
                 textAlign: TextAlign.center,
                 textDirection: TextDirection.ltr,
                 style: _text(11, _muted)),
