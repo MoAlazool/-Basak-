@@ -23,6 +23,11 @@ class TripModel {
   });
 
   bool get isDeparture => direction == 'departure';
+
+  /// A return trip saved without station times: every stop carries the start
+  /// time (it serves all stations; students board at the university).
+  bool get stopTimesUnset =>
+      !isDeparture && stops.isNotEmpty && stops.values.every((time) => time == startTime);
   String? timeAt(String stationId) => stops[stationId];
 
   static String? _hhmm(dynamic value) {

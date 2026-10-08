@@ -94,8 +94,8 @@ export const SupervisorsPage: React.FC = () => {
       alert('يرجى ملء جميع الحقول المطلوبة.');
       return;
     }
-    if (password.trim().length < 6) {
-      alert('كلمة المرور يجب ألا تقل عن 6 أحرف.');
+    if (password.trim().length < 8) {
+      alert('كلمة المرور يجب ألا تقل عن 8 أحرف.');
       return;
     }
     if (lineIds.length === 0) {
@@ -119,7 +119,7 @@ export const SupervisorsPage: React.FC = () => {
       setPassword('');
       setLineIds([]);
       await fetchData();
-      alert('تمت إضافة المشرف وتعيين خطوطه. سلّمه رقم الهاتف وكلمة المرور لتسجيل الدخول في التطبيق (لا تُحفظ كلمة المرور في النظام).');
+      alert('تمت إضافة المشرف وتعيين خطوطه. يدخل التطبيق برقم الهاتف وكلمة المرور التي كتبتها، فسلّمها له الآن: تُحفظ مشفّرة ولا يمكن عرضها مرة أخرى في لوحة التحكم.');
     } catch (err: any) {
       alert('فشل إضافة المشرف: ' + err.message);
     } finally {
@@ -168,7 +168,7 @@ export const SupervisorsPage: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-slate-800">إدارة المشرفين</h1>
         <p className="text-sm text-slate-500">
-          الشركة ← الخط ← المشرف. يرى المشرف في التطبيق الخطوط المسندة إليه فقط. كلمة المرور تُسلَّم للمشرف ولا تُحفظ في النظام
+          الشركة ← الخط ← المشرف. يرى المشرف في التطبيق الخطوط المسندة إليه فقط. يدخل المشرف برقم الهاتف وكلمة المرور، وتُحفظ مشفّرة فلا تظهر بعد الإنشاء: سلّمها له عند إضافته
         </p>
       </div>
 
@@ -198,7 +198,7 @@ export const SupervisorsPage: React.FC = () => {
 
           <div>
             <label className="text-xs font-semibold text-slate-500">كلمة المرور لتطبيق الهاتف</label>
-            <input type="text" autoComplete="new-password" minLength={6} placeholder="6 أحرف على الأقل" value={password}
+            <input type="text" autoComplete="new-password" minLength={8} placeholder="8 أحرف على الأقل" value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none" required />
           </div>

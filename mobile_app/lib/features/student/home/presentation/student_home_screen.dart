@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/sync/sync_hub.dart';
 import '../../invites/invites.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
+import '../../daily_ride/data/vote_reminders.dart';
+import '../../daily_ride/models/vote_settings.dart';
 import '../../subscription/data/subscription_repository.dart';
 import '../../subscription/models/subscription_model.dart';
 
@@ -32,6 +36,16 @@ class CurrentSubscriptionNotifier extends SnapshotNotifier<SubscriptionModel?> {
 
 final currentSubscriptionProvider =
     AsyncNotifierProvider<CurrentSubscriptionNotifier, SubscriptionModel?>(CurrentSubscriptionNotifier.new);
+
+/// When the student's company runs the ride vote and how often it reminds
+/// (the platform's settings until a subscription is known). Set in the
+/// dashboard; re-read on app resume.
+final voteSettingsProvider = FutureProvider<VoteSettings>((ref) {
+  ref.watch(sessionUserIdProvider);
+  final companyId = ref.watch(
+      currentSubscriptionProvider.select((s) => s.valueOrNull?.companyId));
+  return ref.watch(dailyRideRepoProvider).getVoteSettings(companyId);
+});
 
 class StudentHomeScreen extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToSubscription;
@@ -67,8 +81,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     _loadTodayRideStatus();
     _votingWindowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
-      final targetDate =
-          ref.read(dailyRideRepoProvider).rideDateForCurrentWindow();
+      final targetDate = _vote.rideDateFor(DateTime.now());
       final loadedDate = _loadedRideDate;
       if (loadedDate == null ||
           loadedDate.year != targetDate.year ||
@@ -87,10 +100,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     super.dispose();
   }
 
+  /// The vote settings in force (the original 4 PM → 6 AM until loaded).
+  VoteSettings get _vote =>
+      ref.read(voteSettingsProvider).valueOrNull ?? VoteSettings.fallback;
+
   Future<void> _loadTodayRideStatus() async {
     try {
-      final rideDate =
-          ref.read(dailyRideRepoProvider).rideDateForCurrentWindow();
+      final rideDate = _vote.rideDateFor(DateTime.now());
       final saturdayOffset = (rideDate.weekday + 1) % 7;
       final saturday = DateTime(rideDate.year, rideDate.month, rideDate.day)
           .subtract(Duration(days: saturdayOffset));
@@ -113,13 +129,55 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     } catch (_) {
       // The dashboard stays usable when the ride-status service is offline.
     }
+    await _planReminders();
+  }
+
+  /// Reminders for the coming ride days not voted for yet (see VoteReminders).
+  /// [justVoted] counts as voted even if the server copy is not re-read yet.
+  Future<void> _planReminders({DateTime? justVoted}) async {
+    if (!mounted) return;
+    final settings = ref.read(voteSettingsProvider).valueOrNull;
+    final subscription = ref.read(currentSubscriptionProvider);
+    if (settings == null || !subscription.hasValue) return; // not known yet
+    final sub = subscription.value;
+    if (sub == null || !sub.isActive || settings.reminderMinutes <= 0) {
+      await VoteReminders.cancelAll();
+      return;
+    }
+    try {
+      final first = settings.rideDateFor(DateTime.now());
+      final voted = await ref.read(dailyRideRepoProvider).getRideStatusesForRange(
+          first, DateTime(first.year, first.month, first.day + 6));
+      await VoteReminders.plan(
+        settings: settings,
+        validFrom: DateTime.tryParse(sub.startDate ?? ''),
+        validUntil: DateTime.tryParse(sub.endDate ?? ''),
+        votedDays: {...voted.keys, if (justVoted != null) justVoted},
+      );
+    } catch (_) {
+      // Offline with nothing saved: the previous plan stays.
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    ref.invalidate(currentSubscriptionProvider);
+    final user = ref.read(authStateProvider).user;
+    if (user != null) {
+      ref.invalidate(studentProfileSummaryProvider(user.id));
+    }
+    await _loadTodayRideStatus();
+    try {
+      await ref.read(currentSubscriptionProvider.future);
+    } catch (_) {}
   }
 
   Future<void> _confirmRide(SubscriptionModel sub,
       {required bool isRiding}) async {
     final repository = ref.read(dailyRideRepoProvider);
-    if (!repository.isVotingOpen()) {
-      _showRideMessage('التصويت متاح من الساعة ٤ مساءً حتى ٦ صباح يوم الرحلة.',
+    final vote = _vote;
+    final now = DateTime.now();
+    if (!vote.isOpenAt(now)) {
+      _showRideMessage('التصويت مغلق الآن. ${vote.windowSentence}',
           isError: true);
       return;
     }
@@ -148,7 +206,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       returning: _selectedReturnTime,
       week: _weeklyRideStatuses,
     );
-    final rideDate = repository.rideDateForCurrentWindow();
+    final rideDate = vote.rideDateFor(now);
     final rideDay = DateTime(rideDate.year, rideDate.month, rideDate.day);
     setState(() {
       _isSavingRide = true;
@@ -173,6 +231,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _selectedReturnTime = result.returnTime;
         _isSavingRide = false;
       });
+      // Voted (riding or not): no more reminders for this ride.
+      unawaited(_planReminders(justVoted: rideDay));
       _showRideMessage(isRiding
           ? 'تم تأكيد حضورك ومواعيد رحلتك ليوم ${_dateLabel(rideDate)}.'
           : 'تم إلغاء تأكيد الحضور.');
@@ -185,7 +245,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _selectedReturnTime = before.returning;
         _weeklyRideStatuses = before.week;
       });
-      _showRideMessage(e.toString(), isError: true);
+      _showRideMessage(errorMessage(e), isError: true);
     }
   }
 
@@ -250,6 +310,23 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final subAsync = ref.watch(currentSubscriptionProvider);
     // Back from the background, or reconnected: read the ride vote again.
     ref.listen(rideStatusTickProvider, (_, __) => _loadTodayRideStatus());
+    // New vote times may move the ride day; the reminders follow both.
+    ref.listen(voteSettingsProvider, (previous, next) {
+      if (next.hasValue && previous?.valueOrNull != next.valueOrNull) {
+        _loadTodayRideStatus();
+      }
+    });
+    ref.listen(currentSubscriptionProvider, (previous, next) {
+      final before = previous?.valueOrNull, after = next.valueOrNull;
+      if (next.hasValue &&
+          (previous?.hasValue != true ||
+              before?.id != after?.id ||
+              before?.status != after?.status)) {
+        _planReminders();
+      }
+    });
+    final vote = ref.watch(voteSettingsProvider).valueOrNull ??
+        VoteSettings.fallback;
     final user = ref.watch(authStateProvider).user;
     final profileAsync = user == null
         ? const AsyncValue<Map<String, dynamic>?>.data(null)
@@ -263,9 +340,14 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     return GlassScaffold(
       body: ColoredBox(
         color: _canvas,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
+        child: RefreshIndicator(
+          color: _teal,
+          onRefresh: _handleRefresh,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               sliver: SliverList.list(
@@ -289,14 +371,14 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                   const SizedBox(height: 22),
                   _sectionTitle('تأكيد حضور الرحلة',
                       trailing: _pill(
-                          ref.read(dailyRideRepoProvider).isVotingOpen()
-                              ? 'مفتوح حتى ٦ ص'
-                              : 'يفتح ٤ م',
+                          vote.isOpenAt(now)
+                              ? 'مفتوح حتى ${vote.closesLabel}'
+                              : 'يفتح ${vote.opensLabel}',
                           const Color(0xFFEAF4FB),
                           _teal)),
                   const SizedBox(height: 10),
                   subAsync.valueOrNull?.isActive == true
-                      ? _rideCard(subAsync.valueOrNull!)
+                      ? _rideCard(subAsync.valueOrNull!, vote)
                       : _lockedRideCard(),
                   if (subAsync.valueOrNull?.isActive == true) ...[
                     const SizedBox(height: 22),
@@ -324,8 +406,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _header(String firstName, DateTime now, String? avatarUrl) => Row(
         children: [
@@ -346,7 +429,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           CircleAvatar(
             radius: 22,
             backgroundColor: Colors.white,
-            backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+            backgroundImage: avatarUrl == null ? null : avatarImage(avatarUrl),
             child: avatarUrl == null
                 ? const Icon(LucideIcons.userRound, color: _teal, size: 21)
                 : null,
@@ -432,7 +515,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                           style: AppTextStyles.labelSmall
                               .copyWith(color: Colors.white70)),
                       const SizedBox(height: 3),
-                      Text(sub.departureTime ?? 'يُحدد مع المشرف',
+                      Text(
+                          sub.departureTime == null
+                              ? 'يُحدد مع المشرف'
+                              : _timeLabel(sub.departureTime!),
                           style: AppTextStyles.titleLarge
                               .copyWith(color: Colors.white, fontSize: 21)),
                     ],
@@ -505,7 +591,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ),
       );
 
-  Widget _rideCard(SubscriptionModel sub) {
+  Widget _rideCard(SubscriptionModel sub, VoteSettings vote) {
     final departureTimes =
         _availableTimes(sub.departureTimes, sub.departureTime);
     final returnTimes = _availableTimes(sub.returnTimes, sub.returnTime);
@@ -515,9 +601,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final selectedReturn = returnTimes.contains(_selectedReturnTime)
         ? _selectedReturnTime
         : returnTimes.firstOrNull;
-    final repository = ref.read(dailyRideRepoProvider);
-    final isLocked = !repository.isVotingOpen();
-    final rideDate = repository.rideDateForCurrentWindow();
+    final now = DateTime.now();
+    final isLocked = !vote.isOpenAt(now);
+    final rideDate = vote.rideDateFor(now);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -540,7 +626,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ]),
         const SizedBox(height: 5),
         Text(
-            'اختر موعد الذهاب والعودة. التصويت من ٤ مساءً حتى ٦ صباح يوم الرحلة.',
+            'اختر موعد الذهاب والعودة. ${vote.windowSentence}',
             style: AppTextStyles.labelSmall
                 .copyWith(color: const Color(0xFF718695))),
         const SizedBox(height: 16),
@@ -632,7 +718,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             children: returnTimes.map((time) {
               final selected = time == selectedReturn;
               return ChoiceChip(
-                label: Text(_timeLabel(time)),
+                label: Text(_timeLabel(sub.returnShown(time))),
                 selected: selected,
                 onSelected: isLocked
                     ? null
@@ -675,7 +761,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                 borderRadius: BorderRadius.circular(13)),
             child: Text(
                 'حضورك مؤكد: ${_timeLabel(selectedDeparture ?? sub.departureTime ?? '')}'
-                '${_isReturningToday && selectedReturn != null ? ' والعودة ${_timeLabel(selectedReturn)}' : ' بدون عودة'}',
+                '${_isReturningToday && selectedReturn != null ? ' والعودة ${_timeLabel(sub.returnShown(selectedReturn))}' : ' بدون عودة'}',
                 style: AppTextStyles.labelSmall
                     .copyWith(color: const Color(0xFF087A56))),
           ),
@@ -713,7 +799,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             padding: const EdgeInsets.only(top: 7),
             child: Center(
                 child: Text(
-                    'التصويت مغلق الآن. يفتح من ٤ مساءً حتى ٦ صباح يوم الرحلة.',
+                    'التصويت مغلق الآن. ${vote.windowSentence}',
                     textAlign: TextAlign.center,
                     style: AppTextStyles.labelSmall
                         .copyWith(color: const Color(0xFF8A6670)))),
@@ -771,7 +857,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
                     LucideIcons.sunrise)),
             const SizedBox(width: 10),
             Expanded(
-                child: _timeTile('موعد العودة', sub.returnTime ?? 'غير محدد',
+                child: _timeTile('موعد العودة', sub.returnTimeShown ?? 'غير محدد',
                     LucideIcons.sunset)),
           ],
         ),

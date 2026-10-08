@@ -11,9 +11,11 @@ export interface CompanyNumbers {
   pending_receipts: number;
   revenue: number;
   riders_today: number;
-  /** The day students are confirming for right now (tomorrow, from 4 pm), and how many have. */
+  /** The day students are confirming for right now (tomorrow, once its vote opens), and how many have. */
   next_ride_date: string;
   riders_next: number;
+  /** When the company's vote closes (HH:MM). */
+  vote_closes_at?: string;
   riders_week: { date: string; riders: number }[];
   lines: number;
   active_lines: number;
@@ -33,6 +35,7 @@ export interface PlatformNumbers {
   riders_today: number;
   next_ride_date: string;
   riders_next: number;
+  vote_closes_at?: string;
   riders_week: { date: string; riders: number }[];
   lines: number;
   supervisors: number;
@@ -74,9 +77,19 @@ const dayName = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'numeri
  * The line under "riding today": confirmations for the next ride, which is the
  * number that moves while students vote in the evening.
  */
-export function nextRideHint(numbers: { riders_today: number; riders_next: number; next_ride_date: string; riders_week: { date: string }[] } | null): string {
+export function nextRideHint(numbers: { riders_today: number; riders_next: number; next_ride_date: string; vote_closes_at?: string; riders_week: { date: string }[] } | null): string {
   if (!numbers) return '';
   const today = numbers.riders_week[numbers.riders_week.length - 1]?.date;
-  if (!numbers.next_ride_date || numbers.next_ride_date === today) return 'التأكيد مفتوح لرحلة اليوم حتى ٦ ص';
+  if (!numbers.next_ride_date || numbers.next_ride_date === today) {
+    return numbers.vote_closes_at ? `التأكيد مفتوح لرحلة اليوم حتى ${clockLabel(numbers.vote_closes_at)}` : 'التأكيد مفتوح لرحلة اليوم';
+  }
   return `لرحلة ${dayName.format(new Date(`${numbers.next_ride_date}T00:00:00Z`))}: ${numbers.riders_next.toLocaleString('ar-EG')} مؤكد حتى الآن`;
+}
+
+/** "16:30" -> "٤:٣٠ م" */
+export function clockLabel(hhmm: string): string {
+  const [h, m] = hhmm.slice(0, 5).split(':').map(Number);
+  const hour = (h % 12 === 0 ? 12 : h % 12).toLocaleString('ar-EG');
+  const minute = m ? `:${m.toLocaleString('ar-EG', { minimumIntegerDigits: 2 })}` : '';
+  return `${hour}${minute} ${h < 12 ? 'ص' : 'م'}`;
 }

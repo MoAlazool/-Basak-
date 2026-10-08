@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
-import { keys, usePageData } from '../lib/query';
+import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonRows } from '../components/Skeleton';
 import {
   ArrowDown, ArrowUp, Bus, ChevronDown, ChevronUp, Clock, Copy, Flag, GraduationCap, MapPin, Pencil,
@@ -52,6 +52,14 @@ const addMinutes = (t: string, minutes: number) => {
   const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
+/**
+ * Return trips may leave every station time empty: the trip then serves all the
+ * line's stations and students see when it leaves the university. It is saved
+ * with each stop at the start time (what the app and the server match on), and
+ * read back as "no times set".
+ */
+const stopTimesUnset = (direction: Direction, start: string, stopTimes: string[]) =>
+  direction === 'return' && stopTimes.length > 0 && stopTimes.every((t) => hhmm(t) === hhmm(start));
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
 const activeStations = (line: LineRow) =>
@@ -62,6 +70,30 @@ const tripsOf = (line: LineRow, direction: Direction) =>
 const emptyTrip = (direction: Direction, start = ''): TripDraft => ({
   key: newKey(), direction, label: '', start_time: start, arrival_time: '', university_id: '', is_active: true, times: {},
 });
+
+/**
+ * save_line's timing rules, checked while typing: stops in route order and not
+ * before the start, and the arrival not before the last stop. `route` is the
+ * trip's stations in travel order.
+ */
+const tripProblem = (trip: TripDraft, route: StationDraft[]): string | null => {
+  if (!trip.start_time) return null;
+  let prev = trip.start_time;
+  let prevLabel = 'موعد الانطلاق';
+  for (const s of route) {
+    const time = trip.times[s.key];
+    if (!time) continue;
+    if (time < prev) {
+      return `موعد محطة «${s.name || 'بدون اسم'}» (${fmt12(time)}) قبل ${prevLabel} (${fmt12(prev)}). المواعيد يجب أن تكون بترتيب المسار.`;
+    }
+    prev = time;
+    prevLabel = `محطة «${s.name || 'بدون اسم'}»`;
+  }
+  if (trip.arrival_time && trip.arrival_time < prev) {
+    return `موعد الوصول (${fmt12(trip.arrival_time)}) قبل ${prevLabel} (${fmt12(prev)}). عدّل موعد الوصول أو امسحه، أو صحّح موعد المحطة.`;
+  }
+  return null;
+};
 
 const draftFromLine = (line: LineRow): LineDraft => {
   const stations = activeStations(line).map((s) => ({ key: s.id, id: s.id, name: s.name }));
@@ -78,7 +110,9 @@ const draftFromLine = (line: LineRow): LineDraft => {
       .map((t) => ({
         key: t.id, id: t.id, direction: t.direction, label: t.label || '', start_time: hhmm(t.start_time),
         arrival_time: hhmm(t.arrival_time), university_id: t.university_id || '', is_active: t.is_active,
-        times: Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
+        times: stopTimesUnset(t.direction, t.start_time, (t.line_trip_stops ?? []).map((s) => s.stop_time))
+          ? {}
+          : Object.fromEntries((t.line_trip_stops ?? []).map((s) => [s.station_id, hhmm(s.stop_time)])),
       })),
   };
 };
@@ -97,6 +131,10 @@ export const LinesPage: React.FC = () => {
   const [draft, setDraft] = useState<LineDraft | null>(null);
   const [busyLine, setBusyLine] = useState<string | null>(null);
 
+  // Same cache entry as the settings page: switching a type off shows here at once.
+  const switches = usePageData(keys.company(company.id, 'switches'), () =>
+    unwrap<{ annual_effective: boolean; daily_effective: boolean }>(
+      supabase.rpc('get_subscription_switches', { p_company_id: company.id }))).data;
   const page = usePageData(keys.company(company.id, 'lines'), async () => {
     const [lineRes, uniRes, supRes, assignRes] = await Promise.all([
       supabase.from('lines')
@@ -220,7 +258,11 @@ export const LinesPage: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{dep.length} رحلة ذهاب</span>
                       <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">{ret.length} رحلة عودة</span>
-                      <span>ترم {line.price_termly} · سنوي {line.price_yearly} · يومي {line.price_daily} ج.م</span>
+                      <span>{[
+                        `ترم ${line.price_termly} ج.م`,
+                        switches && !switches.annual_effective ? 'سنوي معطّل' : `سنوي ${line.price_yearly} ج.م`,
+                        switches && !switches.daily_effective ? 'يومي معطّل' : `يومي ${line.price_daily} ج.م`,
+                      ].join(' · ')}</span>
                       <span className="inline-flex items-center gap-1"><UserCheck className="h-3.5 w-3.5" />{sups.length ? sups.join('، ') : 'بدون مشرف (من صفحة المشرفين)'}</span>
                     </div>
                   </div>
@@ -281,6 +323,7 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trips.map((trip) => {
             const times = Object.fromEntries((trip.line_trip_stops ?? []).map((s) => [s.station_id, s.stop_time]));
+            const unset = stopTimesUnset(trip.direction, trip.start_time, Object.values(times));
             return (
               <div key={trip.id} className="rounded-2xl border-r-4 border-emerald-400 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -298,7 +341,7 @@ const Timetable: React.FC<{ line: LineRow; uniName: (id?: string | null) => stri
                       <span className={`absolute -right-[23px] h-3 w-3 rounded-full border-2 ${times[s.id] ? 'border-emerald-500 bg-white' : 'border-slate-200 bg-slate-100'}`} />
                       <span className="text-slate-700">{s.name}</span>
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${times[s.id] ? 'bg-emerald-50 text-emerald-700' : 'text-slate-300'}`}>
-                        {times[s.id] ? fmt12(times[s.id]) : 'لا يقف'}
+                        {times[s.id] ? (unset ? 'يمر' : fmt12(times[s.id])) : 'لا يقف'}
                       </span>
                     </li>
                   ))}
@@ -329,6 +372,20 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const [error, setError] = useState('');
 
   const patch = (p: Partial<LineDraft>) => setD((cur) => ({ ...cur, ...p }));
+
+  // A subscription type the company (or the platform) has switched off: its
+  // price is locked here; the saved price stays as it was.
+  const [offered, setOffered] = useState({ annual: true, daily: true });
+  useEffect(() => {
+    if (!d.company_id) return;
+    let live = true;
+    void supabase.rpc('get_subscription_switches', { p_company_id: d.company_id }).then(({ data }) => {
+      const s = data as { annual_effective?: boolean; daily_effective?: boolean } | null;
+      if (live && s) setOffered({ annual: !!s.annual_effective, daily: !!s.daily_effective });
+    });
+    return () => { live = false; };
+  }, [d.company_id]);
+
   const patchTrip = (key: string, p: Partial<TripDraft>) =>
     setD((cur) => ({ ...cur, trips: cur.trips.map((t) => (t.key === key ? { ...t, ...p } : t)) }));
   const routeFor = (direction: Direction) => (direction === 'departure' ? d.stations : [...d.stations].reverse());
@@ -355,8 +412,12 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     const times: Record<string, string> = {};
     routeFor(trip.direction).forEach((s, i) => { times[s.key] = addMinutes(trip.start_time, step * (i + 1)); });
     const arrival = addMinutes(trip.start_time, step * (d.stations.length + 1));
-    patchTrip(trip.key, { times, arrival_time: trip.direction === 'departure' ? arrival : trip.arrival_time || arrival });
+    const lastStop = addMinutes(trip.start_time, step * d.stations.length);
+    // A return trip keeps its own arrival, unless it now falls before the last stop.
+    const keepArrival = trip.direction === 'return' && trip.arrival_time && trip.arrival_time >= lastStop;
+    patchTrip(trip.key, { times, arrival_time: keepArrival ? trip.arrival_time : arrival });
   };
+
 
   const duplicate = (trip: TripDraft) => setD((cur) => ({
     ...cur, trips: [...cur.trips, { ...trip, key: newKey(), id: undefined, label: '', times: { ...trip.times } }],
@@ -365,6 +426,18 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const save = async () => {
     setError('');
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
+    const noStops = d.trips.find((t) => t.direction === 'departure' && !Object.values(t.times).some(Boolean));
+    if (noStops) {
+      setTab('departure');
+      setError(`رحلة الذهاب ${fmt12(noStops.start_time)}: حدد موعد مرورها على المحطات، فالطلاب يركبون منها.`);
+      return;
+    }
+    const badTrip = d.trips.find((t) => tripProblem(t, routeFor(t.direction)));
+    if (badTrip) {
+      setTab(badTrip.direction);
+      setError(`${badTrip.direction === 'departure' ? 'رحلة الذهاب' : 'رحلة العودة'} ${fmt12(badTrip.start_time)}: ${tripProblem(badTrip, routeFor(badTrip.direction))}`);
+      return;
+    }
     const stations = d.stations.map((s) => ({ ...s, name: s.name.trim() }));
     const indexOf = new Map(stations.map((s, i) => [s.key, i]));
     const payload = {
@@ -380,8 +453,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
       trips: d.trips.map((t) => ({
         id: t.id ?? null, direction: t.direction, label: t.label.trim(), start_time: t.start_time,
         arrival_time: t.arrival_time || null, university_id: t.university_id || null, is_active: t.is_active,
-        stops: Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
-          .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
+        stops: t.direction === 'return' && !Object.values(t.times).some(Boolean)
+          // No times set: the trip serves every station (see stopTimesUnset).
+          ? stations.map((_, i) => ({ station_index: i, time: t.start_time }))
+          : Object.entries(t.times).filter(([key, time]) => time && indexOf.has(key))
+            .map(([key, time]) => ({ station_index: indexOf.get(key), time })),
       })),
     };
     setSaving(true);
@@ -445,10 +521,14 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 <input type="number" min={0} value={d.price_termly} onChange={(e) => patch({ price_termly: e.target.value })} className={`mt-1 ${input}`} />
               </label>
               <label className="text-xs font-semibold text-slate-500">سعر السنوي (ج.م)
-                <input type="number" min={0} value={d.price_yearly} onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input}`} />
+                <input type="number" min={0} value={offered.annual ? d.price_yearly : 0} disabled={!offered.annual}
+                  onChange={(e) => patch({ price_yearly: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
+                {!offered.annual && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك السنوي معطّل من الإعدادات.</span>}
               </label>
               <label className="text-xs font-semibold text-slate-500">سعر اليومي كاش (ج.م)
-                <input type="number" min={0} value={d.price_daily} onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input}`} />
+                <input type="number" min={0} value={offered.daily ? d.price_daily : 0} disabled={!offered.daily}
+                  onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
+                {!offered.daily && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك اليومي معطّل من الإعدادات.</span>}
               </label>
             </div>
           </section>
@@ -517,6 +597,11 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       </select>
                     </label>
                   </div>
+                  {tab === 'return' && !Object.values(trip.times).some(Boolean) && (
+                    <p className="rounded-xl bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
+                      بدون مواعيد محطات: الرحلة تمر على كل المحطات، والطالب يرى موعد الانطلاق من الجامعة. مواعيد المحطات هنا اختيارية.
+                    </p>
+                  )}
                   <div className="space-y-1.5">
                     {routeFor(tab).map((s) => (
                       <div key={s.key} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
@@ -531,6 +616,9 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                       </div>
                     ))}
                   </div>
+                  {tripProblem(trip, routeFor(tab)) && (
+                    <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{tripProblem(trip, routeFor(tab))}</p>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="flex gap-2">
                       <button onClick={() => autoFill(trip)} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700"><Wand2 className="h-3 w-3" /> تعبئة تلقائية</button>
@@ -555,7 +643,7 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 </p>
               );
             })()}
-            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
+            <p className="text-[11px] text-slate-400">المواعيد يجب أن تكون بترتيب المسار. اترك موعد محطة فارغاً إذا كانت الرحلة لا تقف عندها. في رحلات العودة يمكن ترك كل مواعيد المحطات فارغة: تمر الرحلة على كل المحطات. الرحلة المخصصة لجامعة تظهر لطلاب هذه الجامعة فقط.</p>
           </section>
         </div>
 

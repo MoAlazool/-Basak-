@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
+import '../../../../core/storage/offline_cache.dart';
 import '../models/station_rider_count_model.dart';
 
 class RiderCountsRepository {
@@ -9,7 +10,8 @@ class RiderCountsRepository {
   Future<List<StationRiderCountModel>> getAssignedStationRiderCounts({
     required DateTime targetDate,
   }) async {
-    final assigned = await _client.rpc('get_supervisor_assigned_line_ids');
+    final assigned = await OfflineCache.readThrough('supervisor.line_ids',
+        () => _client.rpc('get_supervisor_assigned_line_ids'));
     final lineIds = (assigned as List<dynamic>)
         .map((row) => row['line_id'] as String)
         .toSet()
@@ -32,13 +34,15 @@ class RiderCountsRepository {
   }) async {
     final dateStr = targetDate.toIso8601String().substring(0, 10);
 
-    final response = await _client.rpc(
-      SupabaseRpcs.getLineRiderCounts,
-      params: {
-        'p_line_id': lineId,
-        'p_ride_date': dateStr,
-      },
-    );
+    final response = await OfflineCache.readThrough(
+        'rider_counts.$lineId.$dateStr',
+        () => _client.rpc(
+              SupabaseRpcs.getLineRiderCounts,
+              params: {
+                'p_line_id': lineId,
+                'p_ride_date': dateStr,
+              },
+            ));
 
     return (response as List<dynamic>)
         .map((e) => StationRiderCountModel.fromJson(e as Map<String, dynamic>))

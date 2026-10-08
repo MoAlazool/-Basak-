@@ -1,8 +1,6 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../../../../core/storage/offline_cache.dart';
 import '../models/scanned_student_details.dart';
@@ -28,7 +26,7 @@ class QrScannerRepository {
       if (me != null) await OfflineCache.saveStudentLookup(me, qr, details);
       return ScannedStudentDetails.fromJson(details);
     } catch (error) {
-      if (!_isNetworkFailure(error)) rethrow;
+      if (!isNetworkFailure(error)) rethrow;
       final me = _client.auth.currentUser?.id;
       final cached = me == null ? null : await OfflineCache.readStudentLookup(me, qr);
       if (cached != null) {
@@ -36,19 +34,5 @@ class QrScannerRepository {
       }
       rethrow;
     }
-  }
-
-  bool _isNetworkFailure(Object error) {
-    if (error is SocketException || error is TimeoutException || error is HttpException) {
-      return true;
-    }
-    final message = error.toString().toLowerCase();
-    return message.contains('failed host lookup') ||
-        message.contains('network is unreachable') ||
-        message.contains('connection refused') ||
-        message.contains('socketexception') ||
-        message.contains('clientexception') ||
-        message.contains('timed out') ||
-        message.contains('timeout');
   }
 }

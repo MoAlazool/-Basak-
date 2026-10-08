@@ -22,8 +22,8 @@ Deno.serve(async (request: Request) => {
     const periodCode = String(body.periodCode ?? '').trim() || null;
     const academicYear = Number.isInteger(Number(body.academicYear)) && body.academicYear !== null && body.academicYear !== undefined
       ? Number(body.academicYear) : null;
-    if (fullName.split(/\s+/).length < 4 || phone.length < 10 || !university || password.length < 6 || !lineId || !stationId || !['termly', 'yearly', 'daily'].includes(subscriptionType)) {
-      return jsonResponse({ error: 'أدخل الاسم الرباعي ورقم الهاتف والجامعة والخط والمحطة وكلمة مرور صحيحة.' }, 400);
+    if (fullName.split(/\s+/).length < 3 || phone.length < 10 || !university || password.length < 8 || !lineId || !stationId || !['termly', 'yearly', 'daily'].includes(subscriptionType)) {
+      return jsonResponse({ error: 'أدخل الاسم ثلاثياً على الأقل ورقم الهاتف والجامعة والخط والمحطة وكلمة مرور من 8 أحرف على الأقل.' }, 400);
     }
 
     const { data: line, error: lineError } = await serviceClient.from('lines')

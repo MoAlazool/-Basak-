@@ -80,6 +80,24 @@ FROM public.subscriptions WHERE id = 'd0000000-0000-0000-0000-000000000001';
 INSERT INTO auth.users (id, email) VALUES ('c0000000-0000-0000-0000-000000000004', '01100000004@busak.app');
 INSERT INTO public.students (id, phone, full_name, university) VALUES ('c0000000-0000-0000-0000-000000000004', '01100000004', 'Student Four A B', 'جامعة المنصورة');
 
+-- Security review 2026-10-08: a company admin cannot attach a subscription to a
+-- student who is not already linked to their company (that link grants access
+-- to the student's data and password-reset codes).
+SET ROLE authenticated; SELECT t.login(:admin1);
+DO $$ BEGIN
+  PERFORM t.ok('A12 company admin cannot attach an unlinked student to a line',
+    t.err(format($q$INSERT INTO public.subscriptions (student_id, line_id, station_id, type, status, price)
+      VALUES ('c0000000-0000-0000-0000-000000000004', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', %L, 'termly', 'pending_payment', 0)$q$,
+      t.getv('station'))) LIKE '%غير مرتبط بشركتك%');
+END $$;
+RESET ROLE; SELECT set_config('request.jwt.claims', '', false);
+DO $$ BEGIN
+  PERFORM t.ok('A13 helper functions run with a fixed search_path',
+    (SELECT bool_and(proconfig::text LIKE '%search_path=public%') FROM pg_proc
+      WHERE oid IN ('public.is_student()'::regprocedure, 'public.is_supervisor()'::regprocedure))
+    AND to_regprocedure('public.reset_daily_rides_at_1pm()') IS NULL);
+END $$;
+
 -- =============================================================================
 -- B. Supervisor scope and line assignment
 -- =============================================================================
@@ -219,21 +237,21 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- D. QR check-in: once per student per day
+-- D. QR check-in: once per student per day and direction (20261006000001)
 -- =============================================================================
 SELECT t.login(:sup1);
 DO $$
-DECLARE r1 jsonb; r2 jsonb; qr uuid;
+DECLARE r1 jsonb; r2 jsonb; r3 jsonb; qr uuid;
 BEGIN
   SELECT qr_code_value INTO qr FROM public.students WHERE id = 'c0000000-0000-0000-0000-000000000001';
   r1 := public.supervisor_check_in_student(qr, 'departure');
-  r2 := public.supervisor_check_in_student(qr, 'return');
-  PERFORM t.ok('D1 first scan today checks in', r1->>'result' = 'checked_in', r1->>'result');
-  -- One check-in per direction per day: the return trip is its own check-in.
-  PERFORM t.ok('D2 the return trip the same day is a separate check-in', r2->>'result' = 'checked_in', r2->>'message');
   r2 := public.supervisor_check_in_student(qr, 'departure');
-  PERFORM t.ok('D2b a second scan in the same direction is reported as already checked in, with the first time',
+  r3 := public.supervisor_check_in_student(qr, 'return');
+  PERFORM t.ok('D1 first scan today checks in', r1->>'result' = 'checked_in', r1->>'result');
+  PERFORM t.ok('D2 second scan the same day and direction is rejected, keeping the first time',
     r2->>'result' = 'already_checked_in' AND r2->>'checked_in_at' = r1->>'checked_in_at', r2->>'message');
+  PERFORM t.ok('D2b the return trip the same day is a separate check-in',
+    r3->>'result' = 'checked_in', r3->>'result');
   PERFORM t.ok('D3 supervisor cannot insert a check-in row directly',
     t.err(format($q$INSERT INTO public.supervisor_scan_events (supervisor_id, student_id, ride_date, direction, result)
       VALUES (auth.uid(), 'c0000000-0000-0000-0000-000000000001', public.cairo_today() + 1, 'departure', 'checked_in')$q$)) IS NOT NULL);
@@ -248,9 +266,10 @@ END $$;
 RESET ROLE; SELECT set_config('request.jwt.claims', '', false);
 DO $$ BEGIN
   PERFORM t.ok('D5 exactly one check-in row per direction today',
-    (SELECT count(*) = 2 AND count(DISTINCT direction) = 2 FROM public.supervisor_scan_events
-     WHERE student_id = 'c0000000-0000-0000-0000-000000000001'
-       AND ride_date = public.cairo_today() AND result = 'checked_in'));
+    (SELECT count(*) FROM public.supervisor_scan_events WHERE student_id = 'c0000000-0000-0000-0000-000000000001'
+       AND ride_date = public.cairo_today() AND result = 'checked_in') = 2
+    AND (SELECT count(DISTINCT direction) FROM public.supervisor_scan_events WHERE student_id = 'c0000000-0000-0000-0000-000000000001'
+       AND ride_date = public.cairo_today() AND result = 'checked_in') = 2);
   PERFORM t.ok('D6 database rejects a second check-in row even without the RPC',
     t.err($q$INSERT INTO public.supervisor_scan_events (supervisor_id, student_id, ride_date, direction, result)
       VALUES ('b0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', public.cairo_today(), 'return', 'checked_in')$q$) LIKE '%duplicate key%');

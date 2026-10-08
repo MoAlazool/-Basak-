@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
@@ -81,8 +82,21 @@ class ProfileScreen extends ConsumerWidget {
     return GlassScaffold(
       body: ColoredBox(
         color: const Color(0xFFEAF5FA),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: RefreshIndicator(
+          color: AppColors.teal,
+          onRefresh: () async {
+            if (user != null) {
+              ref.invalidate(studentProfileSummaryProvider(user.id));
+            }
+            if (authState.isStudent) {
+              ref.invalidate(currentSubscriptionProvider);
+            }
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -102,7 +116,7 @@ class ProfileScreen extends ConsumerWidget {
                       backgroundColor: const Color(0xFFE2F2F9),
                       backgroundImage: profile?['profile_image_signed_url']
                               is String
-                          ? NetworkImage(
+                          ? avatarImage(
                               profile!['profile_image_signed_url'] as String)
                           : null,
                       child: profile?['profile_image_signed_url'] is String
@@ -246,6 +260,7 @@ class ProfileScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

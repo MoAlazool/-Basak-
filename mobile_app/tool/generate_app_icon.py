@@ -10,7 +10,7 @@ Outputs
     launcher mask (circle, squircle, teardrop) shows the whole mark.
   * Legacy icons (Android 7 and below): circular mipmap-*/ic_launcher.png and
     ic_launcher_round.png.
-  * In-app logo: assets/images/basak_icon.png (circular, transparent corners).
+  * In-app logo: assets/images/basak_icon.webp (circular, transparent corners).
   * iOS AppIcon set (square, opaque: iOS applies its own mask) and web
     favicon / PWA icons (circular + full-bleed maskable).
 """
@@ -99,7 +99,7 @@ for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
         fh.write(xml)
 
 os.makedirs(os.path.join('assets', 'images'), exist_ok=True)
-round_icon.resize((512, 512), Image.LANCZOS).save(os.path.join('assets', 'images', 'basak_icon.png'))
+round_icon.resize((512, 512), Image.LANCZOS).save(os.path.join('assets', 'images', 'basak_icon.webp'), 'WEBP', quality=92, method=6)
 print('icons written; backdrop', top, '->', bottom)
 
 # ---------------------------------------------------------------- iOS

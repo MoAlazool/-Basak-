@@ -1,0 +1,91 @@
+import 'package:flutter/widgets.dart';
+
+/// The Lucide icons this app uses, drawn from the bundled `Lucide` font
+/// (assets/fonts/lucide.ttf, from lucide_icons_flutter 3.1.20, MIT; icons
+/// by Lucide, ISC). Replaces the lucide_icons_flutter package, which also
+/// shipped six weighted font files (~2.9 MB) the app never used.
+/// To add an icon: copy its code point from lucide.dev or that package's
+/// lucide_icons.dart. Unused glyphs are tree-shaken out of release builds.
+abstract final class LucideIcons {
+  static const IconData alertTriangle = IconData(57747, fontFamily: 'Lucide');
+  static const IconData arrowLeft = IconData(57416, fontFamily: 'Lucide');
+  static const IconData arrowRight = IconData(57417, fontFamily: 'Lucide');
+  static const IconData badgeCheck = IconData(57921, fontFamily: 'Lucide');
+  static const IconData badgeHelp = IconData(58491, fontFamily: 'Lucide');
+  static const IconData ban = IconData(57425, fontFamily: 'Lucide');
+  static const IconData bell = IconData(57433, fontFamily: 'Lucide');
+  static const IconData briefcaseBusiness = IconData(58837, fontFamily: 'Lucide');
+  static const IconData building = IconData(57804, fontFamily: 'Lucide');
+  static const IconData building2 = IconData(58000, fontFamily: 'Lucide');
+  static const IconData bus = IconData(57812, fontFamily: 'Lucide');
+  static const IconData busFront = IconData(58619, fontFamily: 'Lucide');
+  static const IconData calendarCheck2 = IconData(58040, fontFamily: 'Lucide');
+  static const IconData calendarClock = IconData(58116, fontFamily: 'Lucide');
+  static const IconData calendarDays = IconData(58041, fontFamily: 'Lucide');
+  static const IconData calendarPlus = IconData(58044, fontFamily: 'Lucide');
+  static const IconData calendarX2 = IconData(58047, fontFamily: 'Lucide');
+  static const IconData camera = IconData(57444, fontFamily: 'Lucide');
+  static const IconData cameraOff = IconData(57445, fontFamily: 'Lucide');
+  static const IconData chartColumn = IconData(58019, fontFamily: 'Lucide');
+  static const IconData check = IconData(57452, fontFamily: 'Lucide');
+  static const IconData chevronDown = IconData(57453, fontFamily: 'Lucide');
+  static const IconData chevronLeft = IconData(57454, fontFamily: 'Lucide');
+  static const IconData chevronRight = IconData(57455, fontFamily: 'Lucide');
+  static const IconData chevronUp = IconData(57456, fontFamily: 'Lucide');
+  static const IconData circle = IconData(57462, fontFamily: 'Lucide');
+  static const IconData circleCheck = IconData(57894, fontFamily: 'Lucide');
+  static const IconData circleX = IconData(57476, fontFamily: 'Lucide');
+  static const IconData clock3 = IconData(57936, fontFamily: 'Lucide');
+  static const IconData copy = IconData(57502, fontFamily: 'Lucide');
+  static const IconData creditCard = IconData(57514, fontFamily: 'Lucide');
+  static const IconData eye = IconData(57530, fontFamily: 'Lucide');
+  static const IconData eyeOff = IconData(57531, fontFamily: 'Lucide');
+  static const IconData fileCheck2 = IconData(57538, fontFamily: 'Lucide');
+  static const IconData flashlight = IconData(57555, fontFamily: 'Lucide');
+  static const IconData graduationCap = IconData(57908, fontFamily: 'Lucide');
+  static const IconData hash = IconData(57583, fontFamily: 'Lucide');
+  static const IconData history = IconData(57845, fontFamily: 'Lucide');
+  static const IconData home = IconData(57589, fontFamily: 'Lucide');
+  static const IconData hourglass = IconData(58006, fontFamily: 'Lucide');
+  static const IconData image = IconData(57590, fontFamily: 'Lucide');
+  static const IconData imagePlus = IconData(57847, fontFamily: 'Lucide');
+  static const IconData info = IconData(57593, fontFamily: 'Lucide');
+  static const IconData keyRound = IconData(58531, fontFamily: 'Lucide');
+  static const IconData landmark = IconData(57914, fontFamily: 'Lucide');
+  static const IconData listChecks = IconData(57808, fontFamily: 'Lucide');
+  static const IconData lock = IconData(57611, fontFamily: 'Lucide');
+  static const IconData lockKeyhole = IconData(58673, fontFamily: 'Lucide');
+  static const IconData logIn = IconData(57613, fontFamily: 'Lucide');
+  static const IconData logOut = IconData(57614, fontFamily: 'Lucide');
+  static const IconData mapPin = IconData(57617, fontFamily: 'Lucide');
+  static const IconData mapPinOff = IconData(58022, fontFamily: 'Lucide');
+  static const IconData pencil = IconData(57849, fontFamily: 'Lucide');
+  static const IconData phone = IconData(57651, fontFamily: 'Lucide');
+  static const IconData qrCode = IconData(57823, fontFamily: 'Lucide');
+  static const IconData receipt = IconData(58323, fontFamily: 'Lucide');
+  static const IconData receiptText = IconData(58796, fontFamily: 'Lucide');
+  static const IconData refreshCw = IconData(57669, fontFamily: 'Lucide');
+  static const IconData route = IconData(58686, fontFamily: 'Lucide');
+  static const IconData scanLine = IconData(57944, fontFamily: 'Lucide');
+  static const IconData school = IconData(58339, fontFamily: 'Lucide');
+  static const IconData shieldAlert = IconData(57854, fontFamily: 'Lucide');
+  static const IconData shieldCheck = IconData(57855, fontFamily: 'Lucide');
+  static const IconData smartphone = IconData(57699, fontFamily: 'Lucide');
+  static const IconData sunrise = IconData(57721, fontFamily: 'Lucide');
+  static const IconData sunset = IconData(57722, fontFamily: 'Lucide');
+  static const IconData switchCamera = IconData(57724, fontFamily: 'Lucide');
+  static const IconData ticket = IconData(57871, fontFamily: 'Lucide');
+  static const IconData trash2 = IconData(57742, fontFamily: 'Lucide');
+  static const IconData triangleAlert = IconData(57747, fontFamily: 'Lucide');
+  static const IconData upload = IconData(57758, fontFamily: 'Lucide');
+  static const IconData user = IconData(57759, fontFamily: 'Lucide');
+  static const IconData userCheck = IconData(57760, fontFamily: 'Lucide');
+  static const IconData userPlus = IconData(57762, fontFamily: 'Lucide');
+  static const IconData userRound = IconData(58472, fontFamily: 'Lucide');
+  static const IconData userRoundPlus = IconData(58476, fontFamily: 'Lucide');
+  static const IconData userX = IconData(57763, fontFamily: 'Lucide');
+  static const IconData users = IconData(57764, fontFamily: 'Lucide');
+  static const IconData wallet = IconData(57860, fontFamily: 'Lucide');
+  static const IconData wifiOff = IconData(57775, fontFamily: 'Lucide');
+  static const IconData x = IconData(57778, fontFamily: 'Lucide');
+}

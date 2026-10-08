@@ -20,8 +20,8 @@ Deno.serve(async (request: Request) => {
     if (!fullName || !/^01[0125][0-9]{8}$/.test(phone)) {
       return jsonResponse({ error: 'أدخل اسم المشرف ورقم هاتف مصري صحيح.' }, 400);
     }
-    if (password.length < 6) {
-      return jsonResponse({ error: 'كلمة المرور يجب ألا تقل عن 6 أحرف.' }, 400);
+    if (password.length < 8) {
+      return jsonResponse({ error: 'كلمة المرور يجب ألا تقل عن 8 أحرف.' }, 400);
     }
     if (lineIds.length === 0) {
       return jsonResponse({ error: 'اختر خطاً واحداً على الأقل يكون المشرف مسؤولاً عنه.' }, 400);

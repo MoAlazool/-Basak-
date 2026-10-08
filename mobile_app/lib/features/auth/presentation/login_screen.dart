@@ -3,11 +3,12 @@ import '../data/auth_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../providers/auth_provider.dart';
 import 'auth_form_styles.dart';
 import 'forgot_password_screen.dart';
 import '../../splash/splash_gate.dart';
+import '../../../core/widgets/app_version_label.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, required this.onSignup});
@@ -144,7 +145,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         BoxShadow(color: Color(0x261F6F8B), blurRadius: 16, offset: Offset(0, 7)),
                       ],
                     ),
-                    child: ClipOval(child: Image.asset('assets/images/basak_icon.png', fit: BoxFit.cover)),
+                    child: ClipOval(
+                        child: Image.asset('assets/images/basak_icon.webp',
+                            fit: BoxFit.cover)),
                   ),
                   const SizedBox(height: 12),
                   const Text('باصك | Basak',
@@ -334,6 +337,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ]),
                     ),
+                  const SizedBox(height: 24),
+                  const AppVersionLabel(),
                 ],
               ),
             ),

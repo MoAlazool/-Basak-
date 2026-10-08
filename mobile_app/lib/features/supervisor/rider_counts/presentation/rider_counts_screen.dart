@@ -1,11 +1,13 @@
 import '../../data/supervisor_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../student/daily_ride/models/vote_settings.dart';
 import '../data/rider_counts_repository.dart';
 import '../models/station_rider_count_model.dart';
 
@@ -19,7 +21,13 @@ class RiderCountsScreen extends ConsumerStatefulWidget {
 }
 
 class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
-  bool _isTomorrowSelected = DateTime.now().hour >= 16;
+  // Tomorrow once its vote has opened (the company's opening time).
+  late bool _isTomorrowSelected = () {
+    final vote = ref.read(supervisorDashboardProvider).valueOrNull?.profile.vote ??
+        VoteSettings.fallback;
+    final now = DateTime.now();
+    return vote.rideDateFor(now).day != now.day;
+  }();
   bool _isLoading = true;
   List<StationRiderCountModel> _counts = [];
   String? _error;
@@ -59,7 +67,7 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = errorMessage(e);
           _isLoading = false;
         });
       }
@@ -77,8 +85,14 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
         _counts.fold<int>(0, (sum, st) => sum + st.returningCount);
 
     return GlassScaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        color: AppColors.teal,
+        onRefresh: _loadCounts,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
           // Header
           SliverToBoxAdapter(
             child: Padding(
@@ -294,6 +308,7 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

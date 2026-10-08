@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/network/supabase_service.dart';
+import '../../../../core/storage/offline_cache.dart';
 
 class ComplaintModel {
   final String id;
@@ -41,22 +43,24 @@ class ComplaintsRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('المستخدم غير مسجل.');
 
-    await _client.from(SupabaseTables.complaints).insert({
-      'student_id': user.id,
-      'title': title.trim(),
-      'message': message.trim(),
-    });
+    await requireOnline(() => _client.from(SupabaseTables.complaints).insert({
+          'student_id': user.id,
+          'title': title.trim(),
+          'message': message.trim(),
+        }));
   }
 
   Future<List<ComplaintModel>> getMyComplaints() async {
     final user = _client.auth.currentUser;
     if (user == null) return [];
 
-    final response = await _client
-        .from(SupabaseTables.complaints)
-        .select()
-        .eq('student_id', user.id)
-        .order('created_at', ascending: false);
+    final response = await OfflineCache.readThrough(
+        'complaints',
+        () => _client
+            .from(SupabaseTables.complaints)
+            .select()
+            .eq('student_id', user.id)
+            .order('created_at', ascending: false));
 
     return (response as List<dynamic>)
         .map((e) => ComplaintModel.fromJson(e as Map<String, dynamic>))

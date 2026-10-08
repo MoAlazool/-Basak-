@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/network/network_errors.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
 import '../../../core/storage/snapshot_store.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
+import '../../student/daily_ride/data/vote_reminders.dart';
 import '../../student/qr/data/student_qr_repository.dart';
 
 final activeUniversitiesProvider =
@@ -20,22 +22,25 @@ final activeCollegesProvider =
 
 final studentProfileSummaryProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
-  final response = await SupabaseService.client
-      .from('students')
-      .select('full_name, phone, university, college, profile_image_url')
-      .eq('id', userId)
-      .maybeSingle();
-  if (response == null) return null;
-  final path = response['profile_image_url'] as String?;
-  if (path == null || path.isEmpty) return response;
-  try {
-    final signed = await SupabaseService.client.storage
-        .from('student-avatars')
-        .createSignedUrl(path, 600);
-    return {...response, 'profile_image_signed_url': signed};
-  } catch (_) {
-    return response;
-  }
+  final cached = await OfflineCache.readThrough('profile.summary', () async {
+    final response = await SupabaseService.client
+        .from('students')
+        .select('full_name, phone, university, college, profile_image_url')
+        .eq('id', userId)
+        .maybeSingle();
+    if (response == null) return null;
+    final path = response['profile_image_url'] as String?;
+    if (path == null || path.isEmpty) return response;
+    try {
+      final signed = await SupabaseService.client.storage
+          .from('student-avatars')
+          .createSignedUrl(path, 600);
+      return {...response, 'profile_image_signed_url': signed};
+    } catch (_) {
+      return response;
+    }
+  });
+  return cached == null ? null : Map<String, dynamic>.from(cached as Map);
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -197,9 +202,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> deleteStudentAccount() async {
     state = state.copyWith(isLoading: true);
     try {
-      await _repo.deleteStudentAccount();
-      await OfflineCache.clearStudentPass();
-      await OfflineCache.clearStudentLookups();
+      await requireOnline(_repo.deleteStudentAccount);
+      await VoteReminders.cancelAll();
+      await OfflineCache.clearAll();
       await SnapshotStore.clear();
       state = const AuthState();
     } catch (e) {
@@ -211,9 +216,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> deleteAccount() async => deleteStudentAccount();
 
   Future<void> signOut() async {
-    await _repo.signOut();
-    await OfflineCache.clearStudentPass();
-    await OfflineCache.clearStudentLookups();
+    try {
+      await _repo.signOut();
+    } catch (error) {
+      // Offline: the local session is already removed; only the server-side
+      // revoke failed, so the student is still signed out on this device.
+      if (!isNetworkFailure(error)) rethrow;
+    }
+    // The next account on this phone must not get this student's reminders.
+    await VoteReminders.cancelAll();
+    await OfflineCache.clearAll();
     await SnapshotStore.clear();
     state = const AuthState();
   }
@@ -231,3 +243,9 @@ final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
   return AuthNotifier(repo);
 });
+
+/// The signed-in user's id. Every provider holding per-user data watches it,
+/// so its cached result is dropped as soon as another user signs in on this
+/// device (or the user signs out) and is never shown to the next person.
+final currentUserIdProvider = Provider<String?>(
+    (ref) => ref.watch(authStateProvider.select((s) => s.user?.id)));

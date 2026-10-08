@@ -26,6 +26,10 @@ BEGIN;
 -- 1. Schema
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.lines ADD COLUMN IF NOT EXISTS origin_name text;
+-- Originally added by a legacy SQL script (removed in 99466d6) that never had a
+-- migration; declared here so a fresh database gets it too. No-op on live.
+ALTER TABLE public.lines ADD COLUMN IF NOT EXISTS destination_university_id uuid
+  REFERENCES public.universities(id) ON DELETE SET NULL;
 UPDATE public.lines SET origin_name = name WHERE origin_name IS NULL OR btrim(origin_name) = '';
 
 CREATE TABLE IF NOT EXISTS public.line_trips (

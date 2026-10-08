@@ -5,7 +5,8 @@ import '../../../../core/media/image_optimizer.dart';
 import '../../../../core/media/picker_errors.dart';
 import '../../../../core/sync/session.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
@@ -49,10 +50,20 @@ final allSubscriptionsProvider =
   ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getSubscriptions();
 });
+// The offered periods and the daily switch follow the company's settings, which
+// send no live event to a student: autoDispose re-reads them each time the
+// picker is shown, and resume / pull to refresh re-read them while it is.
 final purchasablePeriodsProvider =
-    FutureProvider.family<List<PurchasablePeriod>, String>((ref, lineId) async {
+    FutureProvider.autoDispose.family<List<PurchasablePeriod>, String>((ref, lineId) async {
   ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getPurchasablePeriods(lineId);
+});
+
+/// Daily (cash) subscription offered by a company (platform and company switches).
+final dailySubscriptionEnabledProvider =
+    FutureProvider.autoDispose.family<bool, String>((ref, companyId) async {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(subscriptionRepoProvider).isDailySubscriptionEnabled(companyId);
 });
 
 /// A period overlaps an open subscription (the database refuses those).
@@ -102,6 +113,17 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   void _refreshSubscriptions() {
     ref.invalidate(currentSubscriptionProvider);
     ref.invalidate(allSubscriptionsProvider);
+  }
+
+  Future<void> _handleRefresh() async {
+    _refreshSubscriptions();
+    ref.invalidate(allLinesProvider);
+    ref.invalidate(studentCatalogProvider);
+    ref.invalidate(purchasablePeriodsProvider);
+    ref.invalidate(dailySubscriptionEnabledProvider);
+    try {
+      await ref.read(allSubscriptionsProvider.future);
+    } catch (_) {}
   }
 
   List<TripModel> _tripsFor(bool departure) =>
@@ -168,7 +190,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         setState(() => _isLoadingStations = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('تعذر تحميل المحطات: $e'),
+              content: Text('تعذر تحميل المحطات: ${errorMessage(e)}'),
               backgroundColor: AppColors.error),
         );
       }
@@ -192,6 +214,19 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         const SnackBar(content: Text('اختر فترة الاشتراك (الفصل الدراسي).')),
       );
       return;
+    }
+    if (_selectedType == 'daily') {
+      // The company may have switched it off since the picker was shown.
+      final offered = await ref
+          .refresh(dailySubscriptionEnabledProvider(_selectedLine!.companyId).future)
+          .catchError((_) => true); // offline: the server decides
+      if (!offered) {
+        if (!mounted) return;
+        setState(() => _selectedType = 'termly');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('الاشتراك اليومي غير متاح حالياً لدى هذه الشركة.')));
+        return;
+      }
     }
 
     setState(() => _isSubmitting = true);
@@ -233,7 +268,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(e.toString()), backgroundColor: AppColors.error),
+              content: Text(errorMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -297,7 +332,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         setState(() => _isUploadingReceipt = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(e.toString()), backgroundColor: AppColors.error),
+              content: Text(errorMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -311,21 +346,33 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     return GlassScaffold(
       body: ColoredBox(
         color: const Color(0xFFF5F8FD),
-        child: subsAsync.when(
-          data: (subs) {
-            final open = subs.where((s) => !s.isExpired).toList()
-              ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
-            final history = subs.where((s) => s.isExpired).toList();
-            if (_buying || open.isEmpty) {
-              return _buildSubscriptionSelectionView(linesAsync, open: open);
-            }
-            final focused = open.firstWhere((s) => s.id == _focusedSubId,
-                orElse: () => open.first);
-            return _buildActiveSubDetailView(focused,
-                open: open, history: history);
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, _) => Center(child: Text('تعذر تحميل الاشتراك: $err')),
+        child: RefreshIndicator(
+          color: AppColors.teal,
+          onRefresh: _handleRefresh,
+          child: subsAsync.when(
+            data: (subs) {
+              final open = subs.where((s) => !s.isExpired).toList()
+                ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
+              final history = subs.where((s) => s.isExpired).toList();
+              if (_buying || open.isEmpty) {
+                return _buildSubscriptionSelectionView(linesAsync, open: open);
+              }
+              final focused = open.firstWhere((s) => s.id == _focusedSubId,
+                  orElse: () => open.first);
+              return _buildActiveSubDetailView(focused,
+                  open: open, history: history);
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.7,
+                child: Center(child: Text('تعذر تحميل الاشتراك: ${errorMessage(err)}')),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -338,6 +385,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final active = sub.isActive;
     final pendingReview = sub.isPendingReview;
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,7 +642,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               sub.stationName ?? 'غير محددة'),
           const SizedBox(height: 10),
           _summaryLine(LucideIcons.clock3, 'الذهاب / العودة',
-              '${sub.departureTime ?? '—'}  /  ${sub.returnTime ?? '—'}'),
+              '${sub.departureTime ?? '—'}  /  ${sub.returnTimeShown ?? '—'}'),
           const SizedBox(height: 12),
           Container(
               width: double.infinity,
@@ -903,6 +953,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Widget _buildSubscriptionSelectionView(AsyncValue<List<LineModel>> linesAsync,
       {required List<SubscriptionModel> open}) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -930,7 +983,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           // 1. Company → 2. Line (only active, serving the student's university)
           ref.watch(studentCatalogProvider).when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => Text('تعذر تحميل الشركات: $err'),
+            error: (err, _) => Text('تعذر تحميل الشركات: ${errorMessage(err)}'),
             data: (companies) => companies.isEmpty
                 ? Container(
                     width: double.infinity,
@@ -1011,7 +1064,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                           icon: LucideIcons.sunrise),
                     BasakPill(
                         _returnTrip != null
-                            ? 'عودة ${BasakUi.time12(_selectedReturnTime)}'
+                            ? 'عودة ${BasakUi.time12(_returnTrip!.startTime)}'
                             : (_returnOptions.isEmpty ? 'لا توجد رحلة عودة من محطتك' : 'اختر رحلة العودة'),
                         background: const Color(0xFFFFF4E5),
                         foreground: const Color(0xFFB97812),
@@ -1189,12 +1242,14 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final periodsAsync = ref.watch(purchasablePeriodsProvider(line.id));
     return periodsAsync.when(
       loading: () => const LinearProgressIndicator(),
-      error: (e, _) => Text('تعذر تحميل فترات الاشتراك: $e'),
+      error: (e, _) => Text('تعذر تحميل فترات الاشتراك: ${errorMessage(e)}'),
       data: (all) {
         final periods =
             all.where((p) => !open.any((s) => _overlaps(p, s))).toList();
         final annualOffered = periods.any((p) => p.subscriptionType == 'yearly');
-        if (_selectedType == 'yearly' && !annualOffered) {
+        final dailyOffered = ref.watch(dailySubscriptionEnabledProvider(line.companyId)).valueOrNull ?? false;
+        if ((_selectedType == 'yearly' && !annualOffered) ||
+            (_selectedType == 'daily' && !dailyOffered)) {
           WidgetsBinding.instance.addPostFrameCallback(
               (_) => mounted ? setState(() => _selectedType = 'termly') : null);
         }
@@ -1217,7 +1272,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               const SizedBox(width: 10),
               _buildTypeCard('yearly', 'سنوي (فصلان)', line.priceYearly),
             ],
-            if (!_buying) ...[
+            if (!_buying && dailyOffered) ...[
               const SizedBox(width: 10),
               _buildTypeCard('daily', 'يومي (كاش)', line.priceDaily),
             ],

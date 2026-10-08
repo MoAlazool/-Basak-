@@ -258,21 +258,33 @@ export const StudentsPage: React.FC = () => {
     return () => { active = false; };
   }, [selectedLineId]);
 
+  // The daily switch of the line's company (platform AND company).
+  const [dailyAvailable, setDailyAvailable] = useState(true);
+  useEffect(() => {
+    let active = true;
+    if (!selectedLine?.company_id) return;
+    void supabase.rpc('get_subscription_switches', { p_company_id: selectedLine.company_id }).then(({ data }) => {
+      if (active && data) setDailyAvailable(!!(data as { daily_effective?: boolean }).daily_effective);
+    });
+    return () => { active = false; };
+  }, [selectedLine?.company_id]);
+
   const periodsForType = periods.filter((p) => p.subscription_type === subscriptionType);
   const annualAvailable = periods.some((p) => p.subscription_type === 'yearly');
   useEffect(() => {
     if (subscriptionType === 'yearly' && periods.length > 0 && !annualAvailable) setSubscriptionType('termly');
+    if (subscriptionType === 'daily' && !dailyAvailable) setSubscriptionType('termly');
     const keys = periodsForType.map((p) => `${p.period_code}:${p.academic_year}`);
     if (!keys.includes(periodKey)) setPeriodKey(keys[0] || '');
-  }, [periods, subscriptionType]);
+  }, [periods, subscriptionType, dailyAvailable]);
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. Validate 4-part name (Core Rule)
+    // 1. Validate name: at least 3 parts, same rule as the app's sign-up
     const nameParts = fullName.trim().split(/\s+/);
-    if (nameParts.length < 4) {
-      alert('يرجى كتابة الاسم الرباعي كاملاً (4 مقاطع على الأقل) طبقاً لقواعد النظام.');
+    if (nameParts.length < 3) {
+      alert('يرجى كتابة اسم الطالب ثلاثياً على الأقل.');
       return;
     }
 
@@ -295,8 +307,8 @@ export const StudentsPage: React.FC = () => {
       alert('اختر رحلة الذهاب والعودة. إن لم تظهر رحلات، أضفها للخط من صفحة الخطوط.');
       return;
     }
-    if (password.length < 6) {
-      alert('كلمة المرور يجب ألا تقل عن 6 أحرف.');
+    if (password.length < 8) {
+      alert('كلمة المرور يجب ألا تقل عن 8 أحرف.');
       return;
     }
     if (subscriptionType !== 'daily' && !periodKey) {
@@ -402,7 +414,7 @@ export const StudentsPage: React.FC = () => {
         <form onSubmit={handleAddStudent} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Full Name */}
           <div>
-            <label className="text-xs font-semibold text-slate-500">الاسم الرباعي كاملاً</label>
+            <label className="text-xs font-semibold text-slate-500">الاسم بالكامل (ثلاثي أو رباعي)</label>
             <input
               type="text"
               placeholder="مثال: أحمد محمد علي إبراهيم"
@@ -485,7 +497,7 @@ export const StudentsPage: React.FC = () => {
             <select value={subscriptionType} onChange={(e) => setSubscriptionType(e.target.value as 'termly' | 'yearly' | 'daily')} className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm">
               <option value="termly">ترم — {selectedLine?.price_termly ?? '—'} ج.م</option>
               <option value="yearly" disabled={!annualAvailable}>سنوي — {selectedLine?.price_yearly ?? '—'} ج.م{annualAvailable ? '' : ' (غير مفعّل)'}</option>
-              <option value="daily">يومي — {selectedLine?.price_daily ?? '—'} ج.م</option>
+              <option value="daily" disabled={!dailyAvailable}>يومي — {selectedLine?.price_daily ?? '—'} ج.م{dailyAvailable ? '' : ' (غير مفعّل)'}</option>
             </select>
           </div>
 
@@ -508,7 +520,7 @@ export const StudentsPage: React.FC = () => {
             <label className="text-xs font-semibold text-slate-500">كلمة مرور التطبيق</label>
             <input
               type="text"
-              placeholder="6 أحرف على الأقل"
+              placeholder="8 أحرف على الأقل"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none"

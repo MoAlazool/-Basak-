@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
@@ -160,6 +160,18 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
         ),
       );
 
+  /// Prices of the subscription types the company offers right now.
+  String _pricesLabel(SupervisorLine line, String? companyId) {
+    final offered = companyId == null
+        ? null
+        : ref.watch(offeredSubscriptionTypesProvider(companyId)).valueOrNull;
+    return '${[
+      'ترم ${line.priceTermly.toStringAsFixed(0)}',
+      if (offered?.annual ?? false) 'سنوي ${line.priceYearly.toStringAsFixed(0)}',
+      if (offered?.daily ?? false) 'يومي ${line.priceDaily.toStringAsFixed(0)}',
+    ].join(' · ')} ج.م';
+  }
+
   Widget _heroCard(SupervisorLine line, SupervisorDashboard data) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(18),
@@ -211,7 +223,7 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'ترم ${line.priceTermly.toStringAsFixed(0)} · سنوي ${line.priceYearly.toStringAsFixed(0)} · يومي ${line.priceDaily.toStringAsFixed(0)} ج.م',
+              _pricesLabel(line, data.profile.companyId),
               style: AppTextStyles.labelSmall.copyWith(color: Colors.white70),
             ),
           ],

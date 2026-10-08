@@ -1,7 +1,7 @@
 name: basak_mobile
 description: "University Bus Subscription System (باصك - Basak) - Flutter Mobile Client for Students and Supervisors"
 publish_to: "none"
-version: 1.0.8+9
+version: 1.0.3+15
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -21,22 +21,21 @@ dependencies:
 
   # QR Code & Scanning
   qr_flutter: ^4.1.0
-  mobile_scanner: ^7.0.0
+  mobile_scanner: ^7.4.2
 
   # Image & File Handling (Receipt uploads)
   image_picker: ^1.1.2
   image: ^4.2.0
   cached_network_image: ^3.4.1
 
-  # Local Storage & Utilities
+  # Local Storage
   flutter_secure_storage: ^9.2.2
-  intl: ^0.20.2
-  uuid: ^4.5.1
-  url_launcher: ^6.3.0
 
-  # UI Enhancement
-  google_fonts: ^6.2.1
-  lucide_icons_flutter: ^3.1.20
+  # Utilities
+  url_launcher: ^6.3.0
+  package_info_plus: ^9.0.1
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.1
 
 dev_dependencies:
   flutter_test:
@@ -47,5 +46,24 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/basak_icon.png
+    - assets/images/basak_icon.webp
+    # Licenses of the bundled fonts below.
+    - assets/fonts/READEX_PRO_OFL.txt
+    - assets/fonts/LUCIDE_FLUTTER_LICENSE.txt
+
+  fonts:
+    # Bundled so every screen renders in Readex Pro from the first frame, offline too.
+    - family: ReadexPro
+      fonts:
+        - asset: assets/fonts/ReadexPro-Regular.ttf
+        - asset: assets/fonts/ReadexPro-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/ReadexPro-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/ReadexPro-Bold.ttf
+          weight: 700
+    # Icons (lib/core/theme/app_icons.dart); tree-shaken to the used glyphs.
+    - family: Lucide
+      fonts:
+        - asset: assets/fonts/lucide.ttf
 

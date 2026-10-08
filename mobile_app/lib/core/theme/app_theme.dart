@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'app_text_styles.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
@@ -16,8 +16,7 @@ class AppTheme {
       ),
       scaffoldBackgroundColor: AppColors.background,
       // One typeface for the whole app, including text that sets no style.
-      fontFamily: GoogleFonts.readexPro().fontFamily,
-      textTheme: GoogleFonts.readexProTextTheme(),
+      fontFamily: AppTextStyles.fontFamily,
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,

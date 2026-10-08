@@ -7,8 +7,7 @@ class SubscriptionModel {
   final String? companyId;
   final String stationId;
   final String type; // termly | yearly | daily
-  final String
-      status; // pending_payment | pending_review | active | rejected | expired
+  final String status; // pending_payment | pending_review | active | rejected | expired
   final String? startDate;
   final String? endDate;
   final double price;
@@ -19,6 +18,12 @@ class SubscriptionModel {
   final String? returnTime;
   final List<String> departureTimes;
   final List<String> returnTimes;
+
+  /// Start time (HH:mm, when the bus leaves the university) of the return trip
+  /// behind each return stop time at the student's station. Students board the
+  /// return bus at the university, so that is the time they are shown; the
+  /// stop time stays the value saved and checked by the server.
+  final Map<String, String> returnStartTimes;
   final String? supervisorPhone;
   final String? supervisorName;
 
@@ -53,6 +58,7 @@ class SubscriptionModel {
     this.returnTime,
     this.departureTimes = const [],
     this.returnTimes = const [],
+    this.returnStartTimes = const {},
     this.supervisorPhone,
     this.supervisorName,
     this.universityName,
@@ -70,6 +76,19 @@ class SubscriptionModel {
   bool get isRejected => status == 'rejected';
   bool get isDaily => type == 'daily';
 
+  /// A return stop [time] as shown to the student: its trip's start time.
+  String returnShown(String time) => returnStartTimes[_hhmm(time)] ?? time;
+
+  /// [returnTime] as shown to the student (each time replaced by its trip's start).
+  String? get returnTimeShown => returnTime == null || returnTime!.trim().isEmpty
+      ? returnTime
+      : returnTime!.split(RegExp(r'[,،]')).map((t) => returnShown(t.trim())).join('، ');
+
+  static String _hhmm(Object? value) {
+    final text = value?.toString() ?? '';
+    return text.length >= 5 ? text.substring(0, 5) : text;
+  }
+
   factory SubscriptionModel.fromJson(Map<String, dynamic> json) {
     final line = json['lines'] as Map<String, dynamic>?;
     final station = json['stations'] as Map<String, dynamic>?;
@@ -84,7 +103,8 @@ class SubscriptionModel {
         .toList();
     List<String> stopTimes(String direction, dynamic own) => stationTimes([
           ...stops
-              .where((stop) => (stop['line_trips'] as Map<String, dynamic>?)?['direction'] == direction)
+              .where((stop) =>
+                  (stop['line_trips'] as Map<String, dynamic>?)?['direction'] == direction)
               .map((stop) => stop['stop_time']),
           if (own != null) own,
         ]).toSet().toList();
@@ -94,6 +114,19 @@ class SubscriptionModel {
     final availableReturnTimes = stops.isNotEmpty
         ? stopTimes('return', json['return_time'])
         : stationTimes(station?['return_times'] ?? json['return_time']);
+    final returnStartTimes = <String, String>{
+      for (final stop in stops)
+        if ((stop['line_trips'] as Map<String, dynamic>?)?['direction'] == 'return' &&
+            stop['stop_time'] != null &&
+            (stop['line_trips'] as Map<String, dynamic>?)?['start_time'] != null)
+          _hhmm(stop['stop_time']):
+              _hhmm((stop['line_trips'] as Map<String, dynamic>)['start_time']),
+    };
+    // The student's own return trip decides their saved time.
+    final ownReturnStart = (json['return_trip'] as Map<String, dynamic>?)?['start_time'];
+    if (ownReturnStart != null && json['return_time'] != null) {
+      returnStartTimes[_hhmm(json['return_time'])] = _hhmm(ownReturnStart);
+    }
 
     return SubscriptionModel(
       id: json['id'] as String,
@@ -109,14 +142,13 @@ class SubscriptionModel {
       createdAt: json['created_at'] as String,
       lineName: line?['name'] as String?,
       stationName: station?['name'] as String?,
-      departureTime: stationTimesLabel(json['departure_time'] ??
-          station?['departure_times'] ??
-          station?['departure_time']),
-      returnTime: stationTimesLabel(json['return_time'] ??
-          station?['return_times'] ??
-          station?['return_time']),
+      departureTime: stationTimesLabel(
+          json['departure_time'] ?? station?['departure_times'] ?? station?['departure_time']),
+      returnTime: stationTimesLabel(
+          json['return_time'] ?? station?['return_times'] ?? station?['return_time']),
       departureTimes: availableDepartureTimes,
       returnTimes: availableReturnTimes,
+      returnStartTimes: returnStartTimes,
       supervisorPhone: supervisor?['phone'] as String?,
       supervisorName: supervisor?['full_name'] as String?,
       universityName: university?['name'] as String?,
