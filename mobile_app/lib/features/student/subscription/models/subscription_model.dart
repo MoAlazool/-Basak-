@@ -27,6 +27,9 @@ class SubscriptionModel {
   final String? supervisorPhone;
   final String? supervisorName;
 
+  /// The supervisor's photo in 'supervisor-avatars', if the company added one.
+  final String? supervisorPhotoPath;
+
   /// University whose trip this subscription rides on (scheduled lines only).
   final String? universityName;
 
@@ -61,6 +64,7 @@ class SubscriptionModel {
     this.returnStartTimes = const {},
     this.supervisorPhone,
     this.supervisorName,
+    this.supervisorPhotoPath,
     this.universityName,
     this.periodCode,
     this.academicYear,
@@ -151,6 +155,7 @@ class SubscriptionModel {
       returnStartTimes: returnStartTimes,
       supervisorPhone: supervisor?['phone'] as String?,
       supervisorName: supervisor?['full_name'] as String?,
+      supervisorPhotoPath: supervisor?['profile_image_url'] as String?,
       universityName: university?['name'] as String?,
       periodCode: json['period_code'] as String?,
       academicYear: (json['academic_year'] as num?)?.toInt(),

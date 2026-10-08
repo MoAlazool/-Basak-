@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/basak_ui.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
@@ -40,7 +41,7 @@ class SupervisorProfileScreen extends ConsumerWidget {
             data: (data) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _identityCard(data.profile),
+                _identityCard(data.profile, ref.watch(supervisorPhotoUrlProvider).valueOrNull),
                 const BasakSectionTitle('الشركة والتكليف'),
                 _assignmentCard(data),
                 if (data.lines.isNotEmpty) ...[
@@ -117,23 +118,29 @@ class SupervisorProfileScreen extends ConsumerWidget {
         ),
       );
 
-  Widget _identityCard(SupervisorProfile profile) => Container(
+  Widget _identityCard(SupervisorProfile profile, String? photoUrl) => Container(
         padding: const EdgeInsets.all(20),
         decoration: BasakUi.card(radius: 24),
         child: Column(children: [
           Container(
             width: 76,
             height: 76,
-            decoration: const BoxDecoration(
-                gradient: BasakUi.heroGradient, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+                gradient: BasakUi.heroGradient,
+                shape: BoxShape.circle,
+                image: photoUrl == null
+                    ? null
+                    : DecorationImage(image: avatarImage(photoUrl), fit: BoxFit.cover)),
             alignment: Alignment.center,
-            child: Text(
-              profile.fullName.trim().isEmpty
-                  ? 'م'
-                  : profile.fullName.trim().characters.first,
-              style: AppTextStyles.displayMedium
-                  .copyWith(color: Colors.white, fontSize: 30),
-            ),
+            child: photoUrl != null
+                ? null
+                : Text(
+                    profile.fullName.trim().isEmpty
+                        ? 'م'
+                        : profile.fullName.trim().characters.first,
+                    style: AppTextStyles.displayMedium
+                        .copyWith(color: Colors.white, fontSize: 30),
+                  ),
           ),
           const SizedBox(height: 12),
           Text(profile.fullName,

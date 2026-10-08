@@ -403,14 +403,43 @@ enum CheckInOutcome {
   bool get isSuccess => this == checkedIn;
 }
 
+/// The student's ride vote for the day, as seen when scanning their card.
+class RideVote {
+  final bool isRiding;
+  final bool isReturning;
+  final String? departureTime;
+  final String? returnTime;
+
+  const RideVote({
+    required this.isRiding,
+    required this.isReturning,
+    this.departureTime,
+    this.returnTime,
+  });
+
+  factory RideVote.fromJson(Map<String, dynamic> json) => RideVote(
+        isRiding: json['is_riding'] as bool? ?? false,
+        isReturning: json['is_returning'] as bool? ?? false,
+        departureTime: json['departure_time'] as String?,
+        returnTime: json['return_time'] as String?,
+      );
+}
+
 class CheckInResult {
   final CheckInOutcome outcome;
 
-  /// Server explanation, e.g. "This student has already been checked in today."
+  /// Server explanation, e.g. "تم تسجيل الطالب في رحلة الذهاب."
   final String? message;
   final String direction;
   final DateTime? checkedInAt;
   final bool? confirmedRideToday;
+
+  /// The day's vote; null when the student did not vote.
+  final RideVote? rideVote;
+
+  /// Whether the server reported the vote (older servers send only
+  /// [confirmedRideToday]).
+  final bool hasRideVote;
   final ScannedStudentDetails? student;
 
   CheckInResult({
@@ -419,6 +448,8 @@ class CheckInResult {
     required this.direction,
     this.checkedInAt,
     this.confirmedRideToday,
+    this.rideVote,
+    this.hasRideVote = false,
     this.student,
   });
 
@@ -428,6 +459,10 @@ class CheckInResult {
         direction: json['direction'] as String? ?? 'departure',
         checkedInAt: DateTime.tryParse(json['checked_in_at'] as String? ?? '')?.toLocal(),
         confirmedRideToday: json['confirmed_ride_today'] as bool?,
+        rideVote: json['ride_vote'] is Map
+            ? RideVote.fromJson(Map<String, dynamic>.from(json['ride_vote'] as Map))
+            : null,
+        hasRideVote: json.containsKey('ride_vote'),
         student: json['student'] is Map
             ? ScannedStudentDetails.fromJson(Map<String, dynamic>.from(json['student'] as Map))
             : null,

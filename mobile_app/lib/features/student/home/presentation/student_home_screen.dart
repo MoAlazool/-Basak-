@@ -6,13 +6,15 @@ import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/avatar_image.dart';
+import '../../../../core/media/signed_photo.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
+import '../../../../core/widgets/greeting_header.dart';
+import '../../../notifications/data/notifications_repository.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/sync/sync_hub.dart';
 import '../../invites/invites.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
-import '../../daily_ride/data/reminder_days_off.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../subscription/data/subscription_repository.dart';
@@ -58,10 +60,6 @@ class StudentHomeScreen extends ConsumerStatefulWidget {
     required this.onNavigateToSubscription,
     required this.onNavigateToQr,
   });
-
-  /// صباح الخير in the morning, مساء الخير the rest of the day.
-  static String greetingFor(DateTime now) =>
-      now.hour >= 5 && now.hour < 12 ? 'صباح الخير' : 'مساء الخير';
 
   @override
   ConsumerState<StudentHomeScreen> createState() => _StudentHomeScreenState();
@@ -160,13 +158,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       final first = settings.rideDateFor(DateTime.now());
       final voted = await ref.read(dailyRideRepoProvider).getRideStatusesForRange(
           first, DateTime(first.year, first.month, first.day + 6));
-      final daysOff = await ref.read(reminderDaysOffProvider.future);
       await VoteReminders.plan(
         settings: settings,
         validFrom: DateTime.tryParse(sub.startDate ?? ''),
         validUntil: DateTime.tryParse(sub.endDate ?? ''),
         votedDays: {...voted.keys, if (justVoted != null) justVoted},
-        daysOff: daysOff,
       );
     } catch (_) {
       // Offline with nothing saved: the previous plan stays.
@@ -334,10 +330,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         _loadTodayRideStatus();
       }
     });
-    // Days switched on or off on the notifications page.
-    ref.listen(reminderDaysOffProvider, (previous, next) {
-      if (previous?.hasValue == true && next.hasValue) _planReminders();
-    });
     ref.listen(currentSubscriptionProvider, (previous, next) {
       final before = previous?.valueOrNull, after = next.valueOrNull;
       if (next.hasValue &&
@@ -371,11 +363,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               sliver: SliverList.list(
                 children: [
-                  _header(
-                      (name == null || name.isEmpty) ? 'طالبنا' : name,
-                      now,
-                      profileAsync.valueOrNull?['profile_image_signed_url']
-                          as String?),
+                  GreetingHeader(
+                    name: (name == null || name.isEmpty) ? 'طالبنا' : name,
+                    photoUrl: profileAsync.valueOrNull?['profile_image_signed_url']
+                        as String?,
+                    unread: ref.watch(unreadNotificationsProvider),
+                    onNotifications: () => NotificationsScreen.open(context),
+                  ),
                   const SizedBox(height: 18),
                   const InvitesCard(),
                   subAsync.when(
@@ -424,69 +418,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     ),
   );
 }
-
-  /// Photo, greeting and name on the start side; notifications on the other.
-  Widget _header(String name, DateTime now, String? avatarUrl) => Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(2.5),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: Color(0x1A16384A), blurRadius: 12, offset: Offset(0, 4))
-              ],
-            ),
-            child: CircleAvatar(
-              radius: 25,
-              backgroundColor: const Color(0xFFE4F2F9),
-              backgroundImage: avatarUrl == null ? null : avatarImage(avatarUrl),
-              child: avatarUrl == null
-                  ? const Icon(LucideIcons.userRound, color: _teal, size: 23)
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(StudentHomeScreen.greetingFor(now),
-                    style: AppTextStyles.bodyMedium.copyWith(color: _teal)),
-                const SizedBox(height: 2),
-                Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.displayMedium
-                        .copyWith(color: _ink, fontSize: 21)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Semantics(
-            button: true,
-            label: 'الإشعارات',
-            child: Material(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(color: Color(0xFFE3EDF3)),
-              ),
-              child: InkWell(
-                customBorder: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                onTap: () => NotificationsScreen.open(context),
-                child: const SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: Icon(LucideIcons.bell, color: _ink, size: 22),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
 
   Widget _subscriptionCard(SubscriptionModel sub) {
     final active = sub.isActive;
@@ -965,11 +896,20 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         decoration: _cardDecoration(),
         child: Row(
           children: [
-            CircleAvatar(
-                radius: 21,
-                backgroundColor: const Color(0xFFE5F3FA),
-                child:
-                    const Icon(LucideIcons.userRound, color: _teal, size: 20)),
+            Builder(builder: (context) {
+              final photo = sub.supervisorPhotoPath == null
+                  ? null
+                  : ref.watch(signedPhotoProvider(
+                          (bucket: 'supervisor-avatars', path: sub.supervisorPhotoPath!)))
+                      .valueOrNull;
+              return CircleAvatar(
+                  radius: 21,
+                  backgroundColor: const Color(0xFFE5F3FA),
+                  backgroundImage: photo == null ? null : avatarImage(photo),
+                  child: photo == null
+                      ? const Icon(LucideIcons.userRound, color: _teal, size: 20)
+                      : null);
+            }),
             const SizedBox(width: 11),
             Expanded(
                 child: Column(

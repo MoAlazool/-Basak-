@@ -14,7 +14,7 @@ class SubscriptionRepository {
   // period_label / period_phase are computed by the database from academic_terms.
   static const _select = '''
           *, period_label, period_phase,
-          lines(name, supervisors(full_name, phone)),
+          lines(name, supervisors(*)),
           stations(name, departure_times, return_times,
             line_trip_stops(stop_time, line_trips(direction, is_active, start_time))),
           departure_trip:departure_trip_id(label, start_time, universities(name)),
