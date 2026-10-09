@@ -349,7 +349,7 @@ void main() {
       final front = ValueNotifier(false);
       final c = await pumpTab(tester, world, front);
       await rest(tester);
-      expect(find.text('اشتراكاتي'), findsOneWidget, reason: 'the tab is built, behind the home tab');
+      expect(find.text('اشتراكي'), findsOneWidget, reason: 'the tab is built, behind the home tab');
       expect(world.log.of('sale_catalog'), 0, reason: 'built in the background: nothing on sale is shown');
 
       // Changes while the tab is behind: marked stale, read by nobody.

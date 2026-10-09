@@ -1,167 +1,123 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
-import '../models/sale_catalog.dart';
 
-/// The proof of payment as the student sees, saves and shares it.
+import '../../../../core/theme/app_icons.dart';
+import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/basak_ui.dart' show BasakUi;
+import '../models/sale_catalog.dart';
+import 'purchase_flow.dart' show formatMoney;
+
+/// The proof of payment as the student reads it in the app: what was paid,
+/// when and how, then the subscription, the student and the company, each a
+/// group that opens in place.
 ///
 /// Every value comes from the stored receipt ([SubscriptionReceipt]), which the
-/// server writes once at approval and never changes, so the document looks the
-/// same whenever it is opened. Sharing as an image sends this very card; the
-/// PDF is its own print-ready document (see ReceiptPdf), from the same receipt.
+/// server writes once at approval and never changes, so it reads the same
+/// whenever it is opened. The document to save or send is the PDF (see
+/// ReceiptPdf), built from the same receipt.
 class ReceiptCard extends StatelessWidget {
   final SubscriptionReceipt receipt;
 
   const ReceiptCard({super.key, required this.receipt});
 
-  // Fixed colours: the saved document must not follow the phone's theme.
-  static const _ink = Color(0xFF17384A);
-  static const _muted = Color(0xFF718695);
-  static const _brand = Color(0xFF00658D);
-  static const _green = Color(0xFF07865A);
-  static const _line = Color(0xFFE3EDF3);
+  static String money(double value) => formatMoney(value);
 
-  static TextStyle _text(double size, Color color, [FontWeight weight = FontWeight.w400]) =>
-      TextStyle(fontFamily: 'ReadexPro', fontSize: size, color: color, fontWeight: weight, height: 1.5);
-
-  static String money(double value) {
-    final grouped = value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
-    return '$grouped ج.م';
-  }
-
-  /// "8 أكتوبر 2026" from an ISO date or timestamp.
-  static String day(String? iso) {
+  /// "8 أكتوبر 2026" from an ISO date or timestamp; [year] off: "8 أكتوبر".
+  static String day(String? iso, {bool year = true}) {
     final date = iso == null ? null : DateTime.tryParse(iso);
     if (date == null) return iso ?? '—';
-    const months = [
-      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
-    ];
     final local = iso!.length > 10 ? date.toLocal() : date;
-    return '${local.day} ${months[local.month - 1]} ${local.year}';
+    final short = '${local.day} ${BasakUi.arabicMonths[local.month - 1]}';
+    return year ? '$short ${local.year}' : short;
   }
 
+  /// "20 سبتمبر – 14 يناير 2027": the first day without its year.
+  static String span(String? from, String? to) => '${day(from, year: false)} – ${day(to)}';
+
+  /// "الفصل الدراسي الأول 2026/2027" → "الفصل الأول 2026/2027".
+  static String period(String label) => label.replaceFirst('الفصل الدراسي ', 'الفصل ');
 
   @override
   Widget build(BuildContext context) {
     final r = receipt;
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Container(
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _line)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(r.companyName, style: _text(17, _ink, FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text('إيصال اشتراك', style: _text(12, _muted)),
-                ]),
+    final colors = context.colors;
+    final text = context.text;
+    String? filled(String? value) => (value ?? '').trim().isEmpty ? null : value!.trim();
+    final method = filled(r.paymentMethod);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        BasakCard(
+          radius: BasakRadius.sheet,
+          padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s20, vertical: 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const IconPill(icon: LucideIcons.check, label: 'مدفوع ومعتمد', tone: BasakTone.success),
+                  const SizedBox(width: BasakSpace.s12),
+                  Expanded(
+                    child: Text(
+                      r.code,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textDirection: TextDirection.ltr,
+                      textAlign: Directionality.of(context) == TextDirection.rtl ? TextAlign.start : TextAlign.end,
+                      style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400),
+                    ),
+                  ),
+                ],
               ),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('رقم الإيصال', style: _text(11, _muted)),
-                Text(r.code,
-                    textDirection: TextDirection.ltr, style: _text(16, _brand, FontWeight.w700)),
-              ]),
+              const SizedBox(height: BasakSpace.s10),
+              MoneyText(money(r.amount), style: text.amount, unitSize: 16),
+              const SizedBox(height: BasakSpace.s10),
+              Text(
+                [day(r.approvedAt), if (method != null) method].join(' · '),
+                style: text.bodySmall.copyWith(color: colors.ink2),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: BasakSpace.betweenCards),
+        DisclosureGroup(
+          sections: [
+            DisclosureSection(title: 'الاشتراك', rows: [
+              ('الفترة', period(r.periodLabel), false),
+              if (r.startDate != null && r.endDate != null) ('الصلاحية', span(r.startDate, r.endDate), false),
+              ('الخط', r.lineName, false),
+              if (filled(r.stationName) != null) ('محطة الصعود', filled(r.stationName)!, false),
             ]),
-          ),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 18),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-            decoration: BoxDecoration(
-                color: const Color(0xFFE7F8F0), borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              const Icon(LucideIcons.circleCheck, size: 18, color: _green),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Text('تم اعتماد الدفع وتفعيل الاشتراك',
-                      style: _text(13, _green, FontWeight.w600))),
+            DisclosureSection(title: 'الطالب', rows: [
+              ('الاسم', r.studentName, false),
+              if (filled(r.studentPhone) != null) ('الهاتف', filled(r.studentPhone)!, true),
+              if (filled(r.universityName) != null) ('الجامعة', filled(r.universityName)!, false),
             ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
-            child: Column(children: [
-              _row('الطالب', r.studentName),
-              if ((r.studentPhone ?? '').isNotEmpty) _row('رقم الهاتف', r.studentPhone!, ltr: true),
-              if ((r.universityName ?? '').isNotEmpty) _row('الجامعة', r.universityName!),
-              _row('الخط', r.lineName),
-              if ((r.stationName ?? '').isNotEmpty) _row('محطة الصعود', r.stationName!),
-              _row('الفترة', r.periodLabel),
-              if (r.startDate != null && r.endDate != null)
-                _row('الصلاحية', 'من ${day(r.startDate)} إلى ${day(r.endDate)}'),
-              if ((r.paymentMethod ?? '').isNotEmpty) _row('وسيلة الدفع', r.paymentMethod!),
-              _row('تاريخ الاعتماد', day(r.approvedAt)),
+            DisclosureSection(title: 'الشركة', rows: [
+              ('الاسم', r.companyName, false),
+              if (filled(r.companyPhone) != null) ('الهاتف', filled(r.companyPhone)!, true),
+              if (filled(r.companyAddress) != null) ('العنوان', filled(r.companyAddress)!, false),
             ]),
-          ),
-          Container(
-            margin: const EdgeInsets.fromLTRB(18, 6, 18, 14),
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-                color: const Color(0xFFF1F6FB), borderRadius: BorderRadius.circular(13)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Expanded(child: Text('المبلغ المدفوع', style: _text(13, _ink))),
-              Text(money(r.amount), style: _text(19, _brand, FontWeight.w700)),
-            ]),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: const BoxDecoration(
-                color: Color(0xFFF7FAFC),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-                border: Border(top: BorderSide(color: _line))),
-            child: Text('Powered by Basak.app',
-                textAlign: TextAlign.center,
-                textDirection: TextDirection.ltr,
-                style: _text(11, _muted)),
-          ),
-        ]),
-      ),
+          ],
+        ),
+      ],
     );
   }
-
-  Widget _row(String label, String value, {bool ltr = false}) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 104, child: Text(label, style: _text(12, _muted))),
-          Expanded(
-            // A number reads left to right but still sits beside its label.
-            child: Text(value,
-                textAlign: TextAlign.right,
-                textDirection: ltr ? TextDirection.ltr : null,
-                style: _text(13, _ink, FontWeight.w600)),
-          ),
-        ]),
-      );
 }
 
-/// Saving and sharing the receipt shown inside a [RepaintBoundary] with [key].
+/// Handing the receipt's document to the phone: save to Files, print, or send.
 class ReceiptExport {
-  /// The card exactly as drawn, as a PNG (white page around it).
-  static Future<Uint8List> png(GlobalKey key) async {
-    final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) throw Exception('تعذر تجهيز الإيصال. حاول مرة أخرى.');
-    final image = await boundary.toImage(pixelRatio: 3);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    if (data == null) throw Exception('تعذر تجهيز الإيصال. حاول مرة أخرى.');
-    return data.buffer.asUint8List();
-  }
-
   static String fileName(SubscriptionReceipt receipt, String extension) =>
       'basak-receipt-${receipt.code}.$extension';
 
-  /// Opens the system sheet: save to Files, print, or send. [origin] anchors
-  /// the sheet on tablets.
+  /// Opens the system sheet. [origin] anchors the sheet on tablets.
   static Future<void> share(Uint8List bytes, String name, String mimeType, {Rect? origin}) async {
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/$name');

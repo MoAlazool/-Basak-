@@ -1,19 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
+
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/sync/own_changes.dart';
 import '../../../../core/sync/session.dart';
-import '../../qr/presentation/student_qr_screen.dart';
-import 'subscription_screen.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/basak_ui.dart';
+import '../../../../core/theme/app_icons.dart';
+import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/basak_ui.dart' show BasakUi;
+import '../../../../core/widgets/skeleton.dart';
 import '../../home/presentation/student_home_screen.dart';
+import '../../qr/presentation/student_qr_screen.dart';
 import '../models/sale_catalog.dart';
 import '../models/subscription_draft.dart';
 import '../models/subscription_model.dart';
+import 'confirm_sheet.dart';
+import 'station_sheet.dart';
+import 'subscription_screen.dart';
 
 /// Companies, lines, stations and the options on sale for the signed-in
 /// student. It is the largest read of the app (every line that serves the
@@ -69,13 +73,6 @@ final subscriptionCreatorProvider =
   };
 });
 
-const _ink = Color(0xFF17384A);
-const _brand = Color(0xFF00658D);
-const _stepNames = ['الشركة', 'الخط', 'المحطة', 'الفترة', 'المراجعة'];
-const _green = Color(0xFF22C55E);
-const _greenSoft = Color(0xFFE7F8F0);
-const _rail = Color(0xFFBBF7D0);
-
 /// "8,000 ج.م"
 String formatMoney(double value) {
   final digits = value.toStringAsFixed(0);
@@ -83,21 +80,62 @@ String formatMoney(double value) {
   return '$grouped ج.م';
 }
 
-String _money(double value) => formatMoney(value);
+/// The number of an amount without its currency ("8,000"), where the
+/// currency is drawn apart from it.
+String _amount(double value) => formatMoney(value).replaceFirst(RegExp(r'\s*ج\.م$'), '');
 
 /// Periods in the order a student thinks of them, not by date.
 const _optionOrder = ['first', 'second', 'both', 'summer'];
 List<SaleOption> _ordered(List<SaleOption> options) => [...options]
   ..sort((a, b) => _optionOrder.indexOf(a.option).compareTo(_optionOrder.indexOf(b.option)));
 
-/// Company → Line → Boarding station → Period → Review.
+/// "20 سبتمبر 2026"
+String _day(String iso, {bool year = true}) {
+  final date = DateTime.tryParse(iso);
+  if (date == null) return iso;
+  return '${date.day} ${BasakUi.arabicMonths[date.month - 1]}${year ? ' ${date.year}' : ''}';
+}
+
+/// "من 20 سبتمبر 2026 إلى 14 يناير 2027"; the year is said once when both
+/// days share it.
+String _range(SaleOption option) {
+  final from = DateTime.tryParse(option.startDate);
+  final to = DateTime.tryParse(option.endDate);
+  return 'من ${_day(option.startDate, year: from?.year != to?.year)} إلى ${_day(option.endDate)}';
+}
+
+/// "4 خطوط إلى جامعتك"
+String _linesLabel(int count) => switch (count) {
+      1 => 'خط واحد إلى جامعتك',
+      2 => 'خطّان إلى جامعتك',
+      <= 10 => '$count خطوط إلى جامعتك',
+      _ => '$count خطاً إلى جامعتك',
+    };
+
+/// The university without the word "جامعة", as the pass names it.
+String _shortUniversity(String? name) {
+  final short = (name ?? '').trim().replaceFirst(RegExp(r'^(جامعة|جامعه)\s+'), '');
+  return short.isEmpty ? 'جامعتك' : short;
+}
+
+/// The subscribe builder: one screen, "اشتراك جديد — إلى جامعة …".
 ///
-/// The student moves freely backward and forward and can change any choice:
-/// the choices are a [SubscriptionDraft] held here, and nothing is written
-/// until "تأكيد والانتقال للدفع" on the review.
+/// Company → line and boarding station (one gesture, through the station
+/// sheet) → period → review (a sheet). The open step shows its options on the
+/// ground, a chosen one collapses to a row with "تغيير", a future one is
+/// sunken. The student changes any choice freely: the choices are a
+/// [SubscriptionDraft] held here, a later choice that still applies is kept,
+/// and nothing is written until "تأكيد والانتقال للدفع" on the review.
+///
+/// Given a bounded height it is a whole page with its own scroll: above the
+/// tabs ([PurchaseFlowPage], with a way out) the review button is docked at
+/// the bottom; as a tab's own page (no [onCancel]) the button follows the
+/// content and the page leaves room for the tab bar. Inside a scrolling
+/// parent it lays itself out as a column.
 class PurchaseFlow extends ConsumerStatefulWidget {
   /// Choices to start from (e.g. the line and station of the running
-  /// subscription when paying the next period).
+  /// subscription when paying the next period). A complete set opens the
+  /// review at once.
   final SubscriptionDraft initial;
 
   /// Daily cash rides are offered only to a student with no open subscription.
@@ -128,62 +166,176 @@ class PurchaseFlow extends ConsumerStatefulWidget {
 
 class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   late SubscriptionDraft _draft = widget.initial;
-  late DraftStep _step = widget.initial.firstOpenStep;
+
+  /// The step whose options are on screen: company, line (which settles the
+  /// station too) or period (whose review is a sheet).
+  late DraftStep _step = _section(widget.initial.firstOpenStep);
   bool _submitting = false;
+
+  /// A complete set of choices to start from goes straight to the review, once.
+  late bool _reviewOffered = widget.initial.firstOpenStep != DraftStep.review;
 
   /// The catalog as last shown (null: the flow has not been on screen yet).
   AsyncValue<SaleCatalog>? _shown;
 
+  /// The builder's row a draft step belongs to.
+  static DraftStep _section(DraftStep step) => switch (step) {
+        DraftStep.station => DraftStep.line,
+        DraftStep.review => DraftStep.period,
+        _ => step,
+      };
+
+  bool _sells(SaleLine line) =>
+      line.stations.any((s) => s.departures.isNotEmpty) &&
+      (line.options.isNotEmpty || (widget.allowDaily && line.dailyEnabled));
+
+  /// The period of a line that sells exactly one thing: nothing to choose.
+  String? _onlyOption(SaleLine line) =>
+      line.options.length == 1 && !(widget.allowDaily && line.dailyEnabled) ? line.options.single.key : null;
+
   void _go(DraftStep step) {
-    if (_draft.canOpen(step)) setState(() => _step = step);
+    if (_draft.canOpen(step) && !_submitting) setState(() => _step = step);
   }
 
-  void _back() {
-    if (_step.index > 0) {
-      setState(() => _step = DraftStep.values[_step.index - 1]);
+  /// Takes a choice and opens what is still missing after it.
+  void _choose(SubscriptionDraft next) => setState(() {
+        _draft = next;
+        _step = _section(next.firstOpenStep);
+      });
+
+  bool _canStepBack(SaleCatalog catalog, DraftStep step) =>
+      step == DraftStep.period || (step == DraftStep.line && catalog.companies.length > 1);
+
+  /// One step back; from the first one, out of the flow.
+  void _back(SaleCatalog catalog, SubscriptionDraft draft, DraftStep step) {
+    if (_submitting) return;
+    if (step == DraftStep.period && draft.isDaily) {
+      // Back from the cash day to the periods.
+      setState(() => _draft =
+          SubscriptionDraft(companyId: draft.companyId, lineId: draft.lineId, stationId: draft.stationId));
+    } else if (_canStepBack(catalog, step)) {
+      setState(() => _step = step == DraftStep.period ? DraftStep.line : DraftStep.company);
     } else {
       widget.onCancel?.call();
     }
   }
 
-  void _choose(SubscriptionDraft next, DraftStep then) => setState(() {
-        _draft = next;
-        _step = next.canOpen(then) ? then : next.firstOpenStep;
-      });
-
-  Future<void> _confirm(SaleCatalog catalog) async {
-    final request = SubscriptionRequest.from(_draft, catalog);
-    if (request == null || _submitting) return;
-    setState(() => _submitting = true);
-    try {
-      final created = await ref.read(subscriptionCreatorProvider)(request);
-      if (!mounted) return;
-      setState(() => _submitting = false);
-      widget.onCreated(created);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _submitting = false);
-      // The offer may have changed since it was shown: read it again.
-      ref.invalidate(saleCatalogProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage(e)), backgroundColor: AppColors.error));
-    }
+  /// Line and station in one gesture: the stop chosen in the sheet settles both.
+  Future<void> _pickLine(SaleCatalog catalog, SubscriptionDraft draft, SaleLine line) async {
+    final onLine = draft.pickLine(catalog, line.id);
+    final stationId = await StationSheet.show(context, line: line, selected: onLine.stationId);
+    if (stationId == null || !mounted) return;
+    _choose(onLine.pickStation(stationId));
   }
 
+  Future<void> _review(SaleCatalog catalog, SubscriptionDraft draft) async {
+    final request = SubscriptionRequest.from(draft, catalog);
+    final company = catalog.company(draft.companyId);
+    final line = catalog.line(draft.lineId);
+    final station = line?.station(draft.stationId);
+    final option = line?.option(draft.optionKey);
+    if (request == null || company == null || line == null || station == null || option == null || _submitting) {
+      return;
+    }
+    final create = ref.read(subscriptionCreatorProvider);
+    SubscriptionModel? created;
+    Object? failure;
+    var asked = false;
+    final answered = Completer<void>();
+    await ConfirmSheet.show(
+      context,
+      station: station.name,
+      university: _shortUniversity(line.university ?? catalog.universityName),
+      line: line.name,
+      company: company.name,
+      period: option.title,
+      validUntil: option.endDate.isEmpty ? null : _day(option.endDate),
+      amount: option.price,
+      onConfirm: () async {
+        asked = true;
+        if (mounted) setState(() => _submitting = true);
+        try {
+          created = await create(request);
+        } catch (e) {
+          failure = e;
+        } finally {
+          answered.complete();
+        }
+      },
+    );
+    // Closed without confirming: the choices stay as they are.
+    if (!asked) return;
+    await answered.future;
+    _finish(created, failure);
+  }
+
+  /// A cash day has nothing to review or pay here: it is confirmed in place.
+  Future<void> _confirmDaily(SaleCatalog catalog, SubscriptionDraft draft) async {
+    final request = SubscriptionRequest.from(draft, catalog);
+    if (request == null || _submitting) return;
+    setState(() => _submitting = true);
+    SubscriptionModel? created;
+    Object? failure;
+    try {
+      created = await ref.read(subscriptionCreatorProvider)(request);
+    } catch (e) {
+      failure = e;
+    }
+    _finish(created, failure);
+  }
+
+  void _finish(SubscriptionModel? created, Object? failure) {
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (created != null) {
+      widget.onCreated(created);
+      return;
+    }
+    // The offer may have changed since it was shown: read it again.
+    ref.invalidate(saleCatalogProvider);
+    if (failure != null) BasakToast.show(context, errorMessage(failure), kind: BasakToastKind.failure);
+  }
+
+  // Its own Material, so its text and controls read the same whether the
+  // host is a route's Scaffold or a tab's bare page.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Material(type: MaterialType.transparency, child: _content());
+
+  Widget _content() {
     // Watched only while on screen: behind another tab nothing is read, and a
     // change that marks the catalog stale waits until the flow is shown again.
     if (widget.visible) _shown = ref.watch(saleCatalogProvider);
     final catalogAsync = _shown;
-    if (catalogAsync == null) return const PurchaseFlowSkeleton();
+    if (catalogAsync == null) return _waiting(const PurchaseFlowSkeleton());
     return catalogAsync.when(
-      loading: () => const PurchaseFlowSkeleton(),
-      error: (e, _) => _message('تعذر تحميل الشركات والخطوط: ${errorMessage(e)}', retry: true),
+      loading: () => _waiting(const PurchaseFlowSkeleton()),
+      error: (e, _) => _waiting(Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _title(null),
+          InlineError(
+            message: 'تعذر تحميل الشركات والخطوط: ${errorMessage(e)}',
+            onRetry: () => ref.invalidate(saleCatalogProvider),
+          ),
+        ],
+      )),
       data: (catalog) {
         // Whatever was chosen and is no longer offered is dropped.
-        final draft = _draft.reconciled(catalog);
-        final step = draft.canOpen(_step) ? _step : draft.firstOpenStep;
+        var draft = _draft.reconciled(catalog);
+        // One company leaves nothing to choose: it starts chosen and collapsed.
+        final soleCompany = catalog.companies.length == 1;
+        if (draft.companyId == null && soleCompany) {
+          draft = draft.pickCompany(catalog, catalog.companies.single.id);
+        }
+        // So does the one period of a line that sells nothing else.
+        final chosenLine = catalog.line(draft.lineId);
+        if (chosenLine != null && draft.stationId != null && draft.optionKey == null) {
+          final only = _onlyOption(chosenLine);
+          if (only != null) draft = draft.pickOption(only);
+        }
+        var step = draft.canOpen(_step) ? _step : _section(draft.firstOpenStep);
+        if (step == DraftStep.company && soleCompany) step = _section(draft.firstOpenStep);
         if (draft != _draft || step != _step) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -194,583 +346,509 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
             }
           });
         }
-        final canLeave = step == DraftStep.company && widget.onCancel == null;
+        if (!_reviewOffered && widget.visible) {
+          _reviewOffered = true;
+          if (draft.firstOpenStep == DraftStep.review && !draft.isDaily) {
+            final complete = draft;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _review(catalog, complete);
+            });
+          }
+        }
+        final Widget page;
+        if (catalog.companies.isEmpty) {
+          page = _empty(catalog);
+        } else if (step == DraftStep.period && draft.isDaily) {
+          page = _dailyPage(catalog, draft);
+        } else {
+          page = _builder(catalog, draft, step);
+        }
         return PopScope(
-          canPop: canLeave,
+          canPop: widget.onCancel == null && !(catalog.companies.isNotEmpty && _canStepBack(catalog, step)),
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _back();
+            if (!didPop) _back(catalog, draft, step);
           },
-          // Its own Material, so the cards' ink is drawn above the page colour.
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (step == DraftStep.company && widget.onCancel != null)
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  key: const Key('flow-back'),
-                  onPressed: _back,
-                  icon: const Icon(LucideIcons.arrowRight, size: 18),
-                  label: const Text('العودة إلى اشتراكاتي'),
-                ),
-              ),
-            _progress(draft, step),
-            if (step != DraftStep.company)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: OutlinedButton.icon(
-                    key: const Key('flow-back'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _brand,
-                      side: const BorderSide(color: Color(0xFFCFE0EA)),
-                      backgroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      minimumSize: const Size(0, 40),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: _submitting ? null : _back,
-                    icon: const Icon(LucideIcons.arrowRight, size: 17),
-                    label: Text('الخطوة السابقة: ${_stepNames[step.index - 1]}'),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 18),
-            Text('اشتراكي الجامعي',
-                style: AppTextStyles.displayMedium.copyWith(color: _ink)),
-            const SizedBox(height: 6),
-            Text(_subtitles[step.index],
-                style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xFF718695))),
-            const SizedBox(height: 22),
-            if (catalog.companies.isEmpty)
-              _message(
-                  'لا توجد حالياً شركات أو خطوط متاحة لجامعتك'
-                  '${catalog.universityName == null ? '' : ' (${catalog.universityName})'}.',
-                  retry: true)
-            else
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: KeyedSubtree(
-                  key: ValueKey(step),
-                  child: switch (step) {
-                    DraftStep.company => _companyStep(catalog, draft),
-                    DraftStep.line => _lineStep(catalog, draft),
-                    DraftStep.station => _stationStep(catalog, draft),
-                    DraftStep.period => _periodStep(catalog, draft),
-                    DraftStep.review => _reviewStep(catalog, draft),
-                  },
-                ),
-              ),
-          ]),
-          ),
+          child: page,
         );
       },
     );
   }
 
-  static const _subtitles = [
-    'اختر شركة النقل التي تخدم جامعتك.',
-    'اختر خط سير حافلتك.',
-    'اختر المحطة التي ستركب منها.',
-    'اختر مدة اشتراكك.',
-    'راجع اختياراتك قبل الدفع.',
-  ];
-  static const _numerals = ['١', '٢', '٣', '٤', '٥'];
+  // ── Frame ──────────────────────────────────────────────────────────
 
-  // ── Shared pieces ──────────────────────────────────────────────────
-
-  Widget _message(String text, {bool retry = false}) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BasakUi.card(),
-        child: Column(children: [
-          Text(text,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
-          if (retry)
-            TextButton.icon(
-              onPressed: () => ref.invalidate(saleCatalogProvider),
-              icon: const Icon(LucideIcons.refreshCw, size: 16),
-              label: const Text('تحديث'),
-            ),
-        ]),
-      );
-
-  /// "الخطوة ٢ من ٥" with the five dots; a step already reachable can be
-  /// tapped to go straight to it.
-  Widget _progress(SubscriptionDraft draft, DraftStep step) {
-    final n = step.index + 1;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
-      decoration: BoxDecoration(
-          color: Colors.white.withOpacity(.94),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE3EDF3))),
-      child: Column(children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('الخطوة $n من 5',
-              style: AppTextStyles.labelSmall.copyWith(color: _brand, fontWeight: FontWeight.bold)),
-          Text(
-              n == 5
-                  ? 'الخطوة الأخيرة'
-                  : n == 4
-                      ? 'متبقي خطوة واحدة'
-                      : 'متبقي ${5 - n} خطوات',
-              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-        ]),
-        const SizedBox(height: 13),
-        Row(children: [
-          for (final s in DraftStep.values) ...[
-            InkWell(
-              key: Key('flow-step-${s.name}'),
-              customBorder: const CircleBorder(),
-              onTap: draft.canOpen(s) && !_submitting ? () => _go(s) : null,
-              child: CircleAvatar(
-                  radius: 15,
-                  backgroundColor: s.index <= step.index ? _brand : const Color(0xFFE7EEF4),
-                  child: Icon(s.index < step.index ? LucideIcons.check : LucideIcons.circle,
-                      size: 15,
-                      color: s.index <= step.index ? Colors.white : AppColors.textSecondary)),
-            ),
-            if (s != DraftStep.review)
-              Expanded(
-                  child: Container(
-                      height: 2,
-                      color: s.index < step.index ? _brand : const Color(0xFFE7EEF4))),
-          ]
-        ]),
-        const SizedBox(height: 6),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          for (final s in DraftStep.values)
-            Expanded(
-              child: Text(_stepNames[s.index],
-                  maxLines: 1,
-                  overflow: TextOverflow.fade,
-                  softWrap: false,
-                  textAlign: s.index == 0
-                      ? TextAlign.start
-                      : s == DraftStep.review
-                          ? TextAlign.end
-                          : TextAlign.center,
-                  style: AppTextStyles.labelSmall.copyWith(
-                      color: s == step ? _brand : null,
-                      fontWeight: s == step ? FontWeight.bold : null)),
-            ),
-        ]),
-      ]),
-    );
-  }
-
-  /// "٢. اختر الخط", with what was chosen in the step before as a reminder.
-  Widget _stepTitle(DraftStep step, String title, {String? previous}) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${_numerals[step.index]}. $title',
-              style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-          if (previous != null) ...[
-            const SizedBox(height: 3),
-            Text(previous,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          ],
-        ]),
-      );
-
-  // ── 1. Company ─────────────────────────────────────────────────────
-
-  Widget _companyStep(SaleCatalog catalog, SubscriptionDraft draft) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _stepTitle(DraftStep.company, 'اختر شركة النقل'),
-        for (final company in catalog.companies)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: InkWell(
-              key: Key('company-${company.id}'),
-              borderRadius: BorderRadius.circular(18),
-              onTap: () => _choose(draft.pickCompany(catalog, company.id), DraftStep.line),
-              child: Ink(
-                padding: const EdgeInsets.all(16),
-                decoration: draft.companyId == company.id
-                    ? BoxDecoration(
-                        color: const Color(0xFFEAF4FB),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: _brand, width: 1.6))
-                    : BasakUi.card(radius: 18),
-                child: Row(children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: const BoxDecoration(color: BasakUi.softTeal, shape: BoxShape.circle),
-                    child: const Icon(LucideIcons.building2, color: BasakUi.teal),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(company.name, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-                      const SizedBox(height: 3),
-                      Text(
-                          company.lines.length == 1
-                              ? 'خط واحد متاح لجامعتك'
-                              : '${company.lines.length} خطوط متاحة لجامعتك',
-                          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-                    ]),
-                  ),
-                  const Icon(LucideIcons.chevronLeft, color: AppColors.textSecondary),
-                ]),
-              ),
-            ),
-          ),
-      ]);
-
-  // ── 2. Line ────────────────────────────────────────────────────────
-
-  Widget _lineStep(SaleCatalog catalog, SubscriptionDraft draft) {
-    final company = catalog.company(draft.companyId)!;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _stepTitle(DraftStep.line, 'اختر الخط', previous: company.name),
-      for (final line in company.lines) _lineCard(catalog, draft, line),
-    ]);
-  }
-
-  Widget _lineCard(SaleCatalog catalog, SubscriptionDraft draft, SaleLine line) {
-    final selected = draft.lineId == line.id;
-    final sells = line.options.isNotEmpty || (widget.allowDaily && line.dailyEnabled);
-    final from = line.fromPrice;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        key: Key('line-${line.id}'),
-        borderRadius: BorderRadius.circular(18),
-        onTap: sells ? () => _choose(draft.pickLine(catalog, line.id), DraftStep.station) : null,
-        child: Ink(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF4FB) : Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-                color: selected ? _brand : const Color(0xFFE6EEF3), width: selected ? 1.6 : 1),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(selected ? LucideIcons.circleCheck : LucideIcons.busFront,
-                  color: selected ? _brand : AppColors.textSecondary),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: Text(line.name,
-                      style: AppTextStyles.titleMedium.copyWith(color: _ink))),
-              if (from != null) ...[
-                const SizedBox(width: 8),
-                Text('من ${_money(from)}',
-                    style: AppTextStyles.labelSmall
-                        .copyWith(color: _brand, fontWeight: FontWeight.w800)),
+  /// A whole page when the height is bounded, a column inside a scrolling
+  /// parent otherwise. [dock] holds the route's one primary button.
+  Widget _frame({Widget? header, required List<Widget> children, Widget? dock}) => LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.hasBoundedHeight) {
+            // With no way out the builder is a tab's own page (a student who
+            // never subscribed): the tab bar floats over its end, so the
+            // button follows the content instead of sitting in a dock.
+            final tab = widget.onCancel == null;
+            return BasakPage(
+              header: header,
+              spacing: 0,
+              bottomInset: tab ? BasakPage.tabBarClearance : BasakSpace.s24,
+              dock: dock == null || tab ? null : BasakDock(child: dock),
+              children: [
+                ...children,
+                if (dock != null && tab) ...[const SizedBox(height: BasakSpace.s20), dock],
               ],
-            ]),
-            const SizedBox(height: 10),
-            Row(children: [
-              const Icon(LucideIcons.graduationCap, size: 15, color: Color(0xFF3F51B5)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text('إلى ${line.university ?? 'جامعتك'}',
-                    style: AppTextStyles.labelSmall.copyWith(
-                        color: const Color(0xFF3F51B5), fontWeight: FontWeight.w700)),
-              ),
-            ]),
-            const SizedBox(height: 6),
-            Text(
-                line.stations.length == 1
-                    ? 'محطة صعود واحدة: ${line.stations.first.name}'
-                    : '${line.stations.length} محطات صعود: ${line.stations.map((s) => s.name).join(' · ')}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: 10),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              if (line.firstDeparture != null)
-                BasakPill('أول ذهاب ${BasakUi.time12(line.firstDeparture)}',
-                    background: const Color(0xFFE7F8F0),
-                    foreground: const Color(0xFF15803D),
-                    icon: LucideIcons.sunrise),
-              if (line.lastReturn != null)
-                BasakPill('آخر عودة ${BasakUi.time12(line.lastReturn)}',
-                    background: const Color(0xFFFFF4E5),
-                    foreground: const Color(0xFFB97812),
-                    icon: LucideIcons.sunset),
-            ]),
-            if (!sells) ...[
-              const SizedBox(height: 8),
-              Text('الاشتراك في هذا الخط غير متاح الآن.',
-                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-            ],
-          ]),
-        ),
-      ),
-    );
-  }
-
-  // ── 3. Boarding station ────────────────────────────────────────────
-
-  Widget _stationStep(SaleCatalog catalog, SubscriptionDraft draft) {
-    final line = catalog.line(draft.lineId)!;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _stepTitle(DraftStep.station, 'اختر محطة الصعود', previous: line.name),
-      if (line.stations.isEmpty)
-        _message('لا توجد رحلات متاحة لجامعتك على هذا الخط.')
-      else
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-          decoration: BasakUi.card(radius: 22),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            for (var i = 0; i < line.stations.length; i++)
-              _stationRow(draft, line.stations[i],
-                  first: i == 0, last: i == line.stations.length - 1),
-          ]),
-        ),
-      const SizedBox(height: 8),
-      Text('الموعد الظاهر هو وقت مرور الباص على المحطة. موعد كل يوم تختاره من الرئيسية.',
-          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-    ]);
-  }
-
-  /// A stop on the route rail. Under its name, one time per departure trip
-  /// that stops there: a station has no single bus time.
-  Widget _stationRow(SubscriptionDraft draft, SaleStation station,
-      {required bool first, required bool last}) {
-    final selected = draft.stationId == station.id;
-    return InkWell(
-      key: Key('station-${station.id}'),
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _choose(draft.pickStation(station.id), DraftStep.period),
-      child: IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(
-            width: 24,
-            child: Column(children: [
-              Expanded(child: Container(width: 2, color: first ? Colors.transparent : _rail)),
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: selected ? _green : Colors.white,
-                  border: Border.all(color: _green, width: 2.5),
-                ),
-              ),
-              Expanded(child: Container(width: 2, color: last ? Colors.transparent : _rail)),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              decoration: BoxDecoration(
-                color: selected ? _greenSoft : const Color(0xFFF5F8FA),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: selected ? _green : Colors.transparent, width: 1.4),
-              ),
-              child: Row(children: [
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(station.name,
-                        style: AppTextStyles.bodyLarge
-                            .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(station.departures.map((d) => BasakUi.time12(d.time)).join(' · '),
-                        style: AppTextStyles.labelSmall.copyWith(
-                            color: const Color(0xFF15803D), fontWeight: FontWeight.w600)),
-                  ]),
-                ),
-                Icon(selected ? LucideIcons.circleCheck : LucideIcons.circle,
-                    size: 19, color: selected ? const Color(0xFF15803D) : const Color(0xFFB6C3CB)),
-              ]),
+            );
+          }
+          return MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.3,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (header != null) ...[header, const SizedBox(height: BasakSpace.s16)],
+                ...children,
+                if (dock != null) ...[const SizedBox(height: BasakSpace.s20), dock],
+              ],
             ),
+          );
+        },
+      );
+
+  /// Before the catalog is there (or when it could not be read): the way out
+  /// still works.
+  Widget _waiting(Widget child) => PopScope(
+        canPop: widget.onCancel == null,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) widget.onCancel?.call();
+        },
+        child: _frame(header: _close(), children: [child]),
+      );
+
+  /// The round close button of the builder.
+  Widget? _close() => widget.onCancel == null
+      ? null
+      : Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: BasakIconButton(
+            key: const Key('flow-back'),
+            icon: LucideIcons.x,
+            label: 'إغلاق',
+            onPressed: _submitting ? null : widget.onCancel,
           ),
-        ]),
+        );
+
+  /// A back button with the page's name beside it: the pages that are not
+  /// the builder itself (the cash day, an empty catalogue).
+  Widget _backHeader(VoidCallback? onBack) => Builder(builder: (context) {
+        final rtl = Directionality.of(context) == TextDirection.rtl;
+        return Row(
+          children: [
+            if (onBack != null) ...[
+              BasakIconButton(
+                key: const Key('flow-back'),
+                icon: rtl ? LucideIcons.arrowRight : LucideIcons.arrowLeft,
+                label: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: _submitting ? null : onBack,
+              ),
+              const SizedBox(width: BasakSpace.s12),
+            ],
+            Expanded(
+              child: Semantics(
+                header: true,
+                child: Text('اشتراك جديد',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: context.text.sheetTitle),
+              ),
+            ),
+          ],
+        );
+      });
+
+  /// "اشتراك جديد" and where it goes. The university is context, not a step.
+  Widget _title(String? university) => Builder(
+        builder: (context) => Padding(
+          padding: const EdgeInsetsDirectional.only(top: BasakSpace.s4, bottom: BasakSpace.s24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(header: true, child: Text('اشتراك جديد', style: context.text.display)),
+              const SizedBox(height: BasakSpace.s4),
+              Text('إلى ${university ?? 'جامعتك'}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.body.copyWith(color: context.colors.ink2)),
+            ],
+          ),
+        ),
+      );
+
+  static const _gap = SizedBox(height: BasakSpace.s10);
+
+  // ── The builder ────────────────────────────────────────────────────
+
+  Widget _builder(SaleCatalog catalog, SubscriptionDraft draft, DraftStep step) {
+    final company = catalog.company(draft.companyId);
+    final line = company == null ? null : catalog.line(draft.lineId);
+    final station = line?.station(draft.stationId);
+    final option = line?.option(draft.optionKey);
+    final ready = step == DraftStep.period && option != null;
+
+    return _frame(
+      header: _close(),
+      dock: ready
+          ? BasakButton(
+              key: const Key('flow-review'),
+              label: 'مراجعة الاشتراك',
+              onPressed: _submitting ? null : () => _review(catalog, draft),
+            )
+          : null,
+      children: [
+        _title(catalog.universityName),
+
+        // 1 · Company
+        if (step == DraftStep.company)
+          _companies(catalog, draft)
+        else
+          BuilderRow(
+            key: const Key('flow-row-company'),
+            state: BuilderRowState.chosen,
+            step: 1,
+            title: 'شركة النقل',
+            value: company?.name,
+            onChange: catalog.companies.length > 1 ? () => _go(DraftStep.company) : null,
+          ),
+        _gap,
+
+        // 2 · Line and station
+        if (step == DraftStep.line && company != null)
+          _lines(catalog, draft, company)
+        else if (line != null && station != null)
+          BuilderRow(
+            key: const Key('flow-row-line'),
+            state: BuilderRowState.chosen,
+            step: 2,
+            title: 'الخط والمحطة',
+            value: '${line.name} · ${station.name}',
+            onChange: () => _go(DraftStep.line),
+          )
+        else
+          const BuilderRow(state: BuilderRowState.locked, step: 2, title: 'الخط والمحطة'),
+        _gap,
+
+        // 3 · Period
+        if (step == DraftStep.period && line != null)
+          _periods(draft, line)
+        else if (line != null && station != null && draft.optionKey != null)
+          BuilderRow(
+            key: const Key('flow-row-period'),
+            state: BuilderRowState.chosen,
+            step: 3,
+            title: 'الفترة',
+            value: option == null
+                ? 'يوم واحد · ${formatMoney(line.dailyPrice)}'
+                : '${option.title} · ${formatMoney(option.price)}',
+            onChange: () => _go(DraftStep.period),
+          )
+        else
+          const BuilderRow(state: BuilderRowState.locked, step: 3, title: 'الفترة'),
+      ],
+    );
+  }
+
+  Widget _companies(SaleCatalog catalog, SubscriptionDraft draft) => Padding(
+        padding: const EdgeInsetsDirectional.only(bottom: BasakSpace.s6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const BuilderStepHead(step: 1, title: 'شركة النقل'),
+            for (final company in catalog.companies) ...[
+              _gap,
+              CompanyRow(
+                key: Key('company-${company.id}'),
+                name: company.name,
+                caption: _linesLabel(company.lines.length),
+                onTap: () => _choose(draft.pickCompany(catalog, company.id)),
+              ),
+            ],
+          ],
+        ),
+      );
+
+  /// The company's lines as cards that compare by eye. A line that cannot be
+  /// bought now sinks to the end and is not tappable.
+  Widget _lines(SaleCatalog catalog, SubscriptionDraft draft, SaleCompany company) {
+    final onSale = company.lines.where(_sells).toList();
+    final closed = company.lines.where((l) => !_sells(l)).toList();
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(bottom: BasakSpace.s6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const BuilderStepHead(step: 2, title: 'الخط والمحطة'),
+          if (company.lines.isEmpty) ...[
+            _gap,
+            InlineError(
+              message: 'لا توجد رحلات متاحة لجامعتك على هذا الخط.',
+              retryLabel: 'تحديث',
+              onRetry: () => ref.invalidate(saleCatalogProvider),
+            ),
+          ],
+          for (final line in onSale) ...[
+            _gap,
+            LineCard(
+              key: Key('line-${line.id}'),
+              name: line.name,
+              stops: StationSheet.stopsLabel(line.stations.length),
+              fromPrice: _amount(line.fromPrice ?? line.dailyPrice),
+              firstDeparture: BasakUi.time12(line.firstDeparture),
+              lastReturn: BasakUi.time12(line.lastReturn),
+              tag: widget.allowDaily && line.dailyEnabled ? 'يومي متاح' : null,
+              onTap: _submitting ? null : () => _pickLine(catalog, draft, line),
+            ),
+          ],
+          for (final line in closed) ...[
+            _gap,
+            line.stations.any((s) => s.departures.isNotEmpty)
+                ? LineCard.unavailable(
+                    key: Key('line-${line.id}'),
+                    name: line.name,
+                    stops: StationSheet.stopsLabel(line.stations.length),
+                    reason: 'الاشتراك مغلق حالياً',
+                  )
+                : LineCard.unavailable(
+                    key: Key('line-${line.id}'),
+                    name: line.name,
+                    stops: '',
+                    reason: 'لا توجد رحلات متاحة لجامعتك على هذا الخط.',
+                  ),
+          ],
+        ],
       ),
     );
   }
 
-  // ── 4. Period ──────────────────────────────────────────────────────
+  /// What paying both semesters at once saves, when both single prices are
+  /// on sale too.
+  double _saving(SaleLine line, SaleOption option) {
+    if (option.option != 'both') return 0;
+    final first = line.options.where((o) => o.option == 'first').firstOrNull;
+    final second = line.options.where((o) => o.option == 'second').firstOrNull;
+    if (first == null || second == null) return 0;
+    return first.price + second.price - option.price;
+  }
 
-  Widget _periodStep(SaleCatalog catalog, SubscriptionDraft draft) {
-    final line = catalog.line(draft.lineId)!;
-    final station = line.station(draft.stationId)!;
+  /// The one tag a period carries: what the bundle saves, or that the period
+  /// has not started yet.
+  (String, BasakTone)? _periodTag(SaleLine line, SaleOption option) {
+    final saved = _saving(line, option);
+    if (saved > 0) return ('وفّر ${_amount(saved)}', BasakTone.success);
+    if (option.isUpcoming) return ('الفترة القادمة', BasakTone.info);
+    return null;
+  }
+
+  /// One period fills the row, two share it, three sit in one row, four make
+  /// a 2 × 2 grid. The cash day is a quiet row under them.
+  Widget _periods(SubscriptionDraft draft, SaleLine line) {
     final options = _ordered(line.options);
     final daily = widget.allowDaily && line.dailyEnabled;
-    final first = line.option(options.where((o) => o.option == 'first').firstOrNull?.key);
-    final second = line.option(options.where((o) => o.option == 'second').firstOrNull?.key);
-    // What paying both semesters at once saves, when both single prices are on sale.
-    final saving = (first == null || second == null) ? null : first.price + second.price;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _stepTitle(DraftStep.period, 'اختر فترة الاشتراك', previous: station.name),
-      if (options.isEmpty && !daily)
-        _message('لا توجد فترة متاحة للاشتراك الآن على هذا الخط.', retry: true)
-      else ...[
-        if (options.isNotEmpty)
-          IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (var i = 0; i < options.length; i++) ...[
-                if (i > 0) const SizedBox(width: 10),
-                Expanded(child: _optionCard(draft, options[i], pairPrice: saving)),
-              ],
-            ]),
-          ),
-        if (daily) ...[
-          const SizedBox(height: 10),
-          InkWell(
-            key: const Key('option-daily'),
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => _choose(draft.pickOption(SubscriptionDraft.dailyKey), DraftStep.review),
-            child: Ink(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-              decoration: BoxDecoration(
-                  color: draft.isDaily ? const Color(0xFFEAF4FB) : Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: draft.isDaily ? _brand : const Color(0xFFE6EEF3),
-                      width: draft.isDaily ? 1.5 : 1)),
-              child: Row(children: [
-                Expanded(
-                  child: Text('يوم واحد · الدفع نقداً في الباص',
-                      style: AppTextStyles.labelSmall.copyWith(fontWeight: FontWeight.bold)),
-                ),
-                Text(_money(line.dailyPrice),
-                    style: AppTextStyles.titleMedium.copyWith(color: _brand)),
-              ]),
+    final chosen = line.option(draft.optionKey);
+    return Builder(
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const BuilderStepHead(step: 3, title: 'الفترة'),
+          const SizedBox(height: BasakSpace.s14),
+          if (options.isEmpty && !daily)
+            InlineError(
+              message: 'لا توجد فترة متاحة للاشتراك الآن على هذا الخط.',
+              retryLabel: 'تحديث',
+              onRetry: () => ref.invalidate(saleCatalogProvider),
             ),
-          ),
-        ],
-      ],
-    ]);
-  }
-
-  Widget _optionCard(SubscriptionDraft draft, SaleOption option, {double? pairPrice}) {
-    final selected = draft.optionKey == option.key;
-    final saved = option.option == 'both' && pairPrice != null ? pairPrice - option.price : 0.0;
-    return InkWell(
-      key: Key('option-${option.option}'),
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _choose(draft.pickOption(option.key), DraftStep.review),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
-        decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF4FB) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-                color: selected ? _brand : const Color(0xFFE6EEF3), width: selected ? 1.5 : 1)),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(option.title,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.labelSmall.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(_money(option.price),
-                style: AppTextStyles.titleMedium.copyWith(color: _brand)),
-          ),
-          if (saved > 0 || option.isUpcoming) ...[
-            const SizedBox(height: 4),
-            Text(saved > 0 ? 'وفّر ${_money(saved)}' : 'الفترة القادمة',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.labelSmall.copyWith(
-                    color: saved > 0 ? const Color(0xFF15803D) : const Color(0xFF3F51B5),
-                    fontWeight: FontWeight.w600)),
+          if (options.isNotEmpty)
+            Semantics(
+              container: true,
+              label: 'فترة الاشتراك',
+              child: ChoiceGrid(
+                columns: options.length == 4 ? 2 : null,
+                children: [
+                  for (final option in options)
+                    PeriodTile(
+                      key: Key('option-${option.option}'),
+                      label: option.title,
+                      amount: _amount(option.price),
+                      selected: draft.optionKey == option.key,
+                      tag: _periodTag(line, option)?.$1,
+                      tagTone: _periodTag(line, option)?.$2 ?? BasakTone.success,
+                      onTap: _submitting ? null : () => _choose(draft.pickOption(option.key)),
+                    ),
+                ],
+              ),
+            ),
+          if (chosen != null) ...[
+            const SizedBox(height: BasakSpace.s14),
+            Padding(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s4),
+              child: Text(_range(chosen),
+                  key: const Key('option-dates'),
+                  style: context.text.label.copyWith(color: context.colors.ink2, fontWeight: FontWeight.w400)),
+            ),
           ],
-        ]),
+          if (daily) ...[
+            if (options.isNotEmpty) const SizedBox(height: BasakSpace.s14),
+            QuietPriceRow(
+              key: const Key('option-daily'),
+              label: options.isEmpty ? 'يوم واحد، نقداً في الباص' : 'أو يوم واحد، نقداً في الباص',
+              value: formatMoney(line.dailyPrice),
+              onTap: _submitting ? null : () => _choose(draft.pickOption(SubscriptionDraft.dailyKey)),
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  // ── 5. Review ──────────────────────────────────────────────────────
+  // ── The cash day ───────────────────────────────────────────────────
 
-  Widget _reviewStep(SaleCatalog catalog, SubscriptionDraft draft) {
+  /// The one-day cash subscription, chosen: what was picked, the periods as
+  /// a list with the day among them, what a cash day means, and its own
+  /// confirmation. Nothing is paid or uploaded for it.
+  Widget _dailyPage(SaleCatalog catalog, SubscriptionDraft draft) {
     final company = catalog.company(draft.companyId)!;
     final line = catalog.line(draft.lineId)!;
     final station = line.station(draft.stationId)!;
-    final option = draft.isDaily ? null : line.option(draft.optionKey);
-    final amount = option?.price ?? line.dailyPrice;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _stepTitle(DraftStep.review, 'راجع اختياراتك', previous: option?.title ?? 'يوم واحد'),
-      Container(
-        padding: const EdgeInsets.fromLTRB(17, 8, 8, 17),
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(color: Color(0x0B17384A), blurRadius: 15, offset: Offset(0, 5))
-            ]),
-        child: Column(children: [
-          _reviewRow(LucideIcons.building2, 'شركة النقل', company.name, DraftStep.company),
-          _reviewRow(LucideIcons.busFront, 'الخط', line.name, DraftStep.line),
-          _reviewRow(LucideIcons.graduationCap, 'الجامعة', line.university ?? '—', null),
-          _reviewRow(LucideIcons.mapPin, 'محطة الصعود', station.name, DraftStep.station),
-          _reviewRow(LucideIcons.calendarDays, 'فترة الاشتراك',
-              option?.title ?? 'يوم واحد (نقداً في الباص)', DraftStep.period),
-          const SizedBox(height: 10),
-          Container(
-            margin: const EdgeInsetsDirectional.only(end: 9),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-                color: const Color(0xFFF1F6FB), borderRadius: BorderRadius.circular(13)),
-            child: Row(children: [
-              Expanded(child: Text('المبلغ المطلوب', style: AppTextStyles.bodyMedium)),
-              Text(_money(amount),
-                  key: const Key('review-amount'),
-                  style: AppTextStyles.titleLarge.copyWith(color: _brand)),
-            ]),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 24),
-      ElevatedButton(
+    return _frame(
+      header: _backHeader(() => _back(catalog, draft, DraftStep.period)),
+      dock: BasakButton(
         key: const Key('flow-confirm'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _brand,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-        onPressed: _submitting ? null : () => _confirm(catalog),
-        child: _submitting
-            ? const CircularProgressIndicator(color: Colors.white)
-            : Text(draft.isDaily ? 'تأكيد اشتراك اليوم' : 'تأكيد والذهاب للدفع'),
+        label: 'تأكيد اشتراك اليوم',
+        loading: _submitting,
+        onPressed: () => _confirmDaily(catalog, draft),
       ),
-      const SizedBox(height: 8),
-      Text(
-          draft.isDaily
-              ? 'يُفعّل اشتراك اليوم مباشرة، وتدفع نقداً للمشرف في الباص.'
-              : 'بعد التأكيد لا يمكن تغيير هذه الاختيارات.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-    ]);
+      children: [
+        const SizedBox(height: BasakSpace.s4),
+        InfoRows(rows: [
+          InfoRow(label: 'الشركة', value: company.name),
+          InfoRow(label: 'الخط والمحطة', value: '${line.name} · ${station.name}'),
+        ]),
+        const SizedBox(height: BasakSpace.s16),
+        Builder(
+          builder: (context) => Padding(
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s4),
+            child: Text('الفترة', style: context.text.label.copyWith(color: context.colors.ink2)),
+          ),
+        ),
+        const SizedBox(height: BasakSpace.s16),
+        for (final option in _ordered(line.options)) ...[
+          PeriodRow(
+            key: Key('option-${option.option}'),
+            title: option.title,
+            caption: 'حتى ${_day(option.endDate)}',
+            amount: _amount(option.price),
+            tag: _periodTag(line, option)?.$1,
+            tagTone: _periodTag(line, option)?.$2 ?? BasakTone.success,
+            selected: false,
+            onTap: _submitting ? null : () => _choose(draft.pickOption(option.key)),
+          ),
+          const SizedBox(height: BasakSpace.s8),
+        ],
+        PeriodRow(
+          key: const Key('option-daily'),
+          title: 'يوم واحد',
+          caption: 'اليوم فقط · الدفع نقداً في الباص',
+          amount: _amount(line.dailyPrice),
+          tag: 'نقداً',
+          tagTone: BasakTone.warning,
+          selected: true,
+          onTap: () {},
+        ),
+        const SizedBox(height: BasakSpace.s16),
+        const BasakCard(
+          radius: BasakRadius.control,
+          padding: EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s14),
+          child: InfoNote(
+            'اشتراك اليوم يظهر فقط لمن ليس له اشتراك مفتوح. لا يحتاج تحويلاً ولا إيصالاً: تدفع للمشرف عند الصعود.',
+            icon: LucideIcons.banknote,
+          ),
+        ),
+      ],
+    );
   }
 
-  Widget _reviewRow(IconData icon, String label, String value, DraftStep? edit) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(children: [
-          Icon(icon, size: 17, color: _brand),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 92,
-            child: Text(label,
-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+  // ── Nothing on sale ────────────────────────────────────────────────
+
+  /// No company runs a line to the student's university yet.
+  Widget _empty(SaleCatalog catalog) {
+    final state = EmptyState(
+      page: true,
+      icon: LucideIcons.bus,
+      title: 'لا توجد خطوط لجامعتك بعد',
+      message: 'لا توجد حالياً شركات أو خطوط متاحة '
+          '${catalog.universityName == null ? 'لجامعتك' : 'ل${catalog.universityName}'}. تظهر هنا فور إضافتها.',
+      actionLabel: 'تحديث',
+      actionIcon: LucideIcons.refreshCw,
+      onAction: () => ref.invalidate(saleCatalogProvider),
+    );
+    final header = _backHeader(widget.onCancel);
+    return LayoutBuilder(builder: (context, constraints) {
+      if (!constraints.hasBoundedHeight) {
+        return _frame(header: header, children: [
+          const SizedBox(height: BasakSpace.s40),
+          state,
+          const SizedBox(height: BasakSpace.s40),
+        ]);
+      }
+      return MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: ColoredBox(
+          color: context.colors.ground,
+          child: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: BasakSpace.maxContentWidth),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      BasakSpace.gutter, BasakSpace.s12, BasakSpace.gutter, BasakSpace.s24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      header,
+                      Expanded(child: Center(child: SingleChildScrollView(child: state))),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-          Expanded(
-            child: Text(value,
-                style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
-          ),
-          if (edit != null)
-            TextButton(
-              key: Key('review-edit-${edit.name}'),
-              style: TextButton.styleFrom(
-                  minimumSize: const Size(48, 40), padding: const EdgeInsets.symmetric(horizontal: 8)),
-              onPressed: _submitting ? null : () => _go(edit),
-              child: const Text('تعديل'),
-            )
-          else
-            const SizedBox(width: 48, height: 40),
-        ]),
+        ),
+      );
+    });
+  }
+}
+
+/// The builder as a route of its own, above the tabs: the boards draw it
+/// without the tab bar, closed by the round button at its top.
+class PurchaseFlowPage extends StatelessWidget {
+  final SubscriptionDraft initial;
+  final bool allowDaily;
+
+  const PurchaseFlowPage({super.key, this.initial = const SubscriptionDraft(), this.allowDaily = true});
+
+  /// Opens the builder; completes with the subscription it created, or null
+  /// when the student left without one.
+  static Future<SubscriptionModel?> open(BuildContext context,
+          {SubscriptionDraft initial = const SubscriptionDraft(), bool allowDaily = true}) =>
+      Navigator.of(context).push<SubscriptionModel>(MaterialPageRoute(
+        builder: (_) => PurchaseFlowPage(initial: initial, allowDaily: allowDaily),
+      ));
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: context.colors.ground,
+        body: PurchaseFlow(
+          initial: initial,
+          allowDaily: allowDaily,
+          onCancel: () => Navigator.of(context).pop(),
+          onCreated: (created) => Navigator.of(context).pop(created),
+        ),
       );
 }

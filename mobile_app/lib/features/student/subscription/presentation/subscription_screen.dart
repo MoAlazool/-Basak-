@@ -1,33 +1,28 @@
-import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/media/image_optimizer.dart';
-import '../../../../core/media/picker_errors.dart';
+
+import '../../../../core/network/network_errors.dart';
+import '../../../../core/storage/offline_cache.dart';
 import '../../../../core/sync/own_changes.dart';
 import '../../../../core/sync/session.dart';
+import '../../../../core/theme/app_icons.dart';
+import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/basak_ui.dart' show BasakUi;
+import '../../../../core/widgets/connection_strip_host.dart';
+import '../../../../core/widgets/skeleton.dart';
+import '../../home/presentation/student_home_screen.dart';
 import '../../qr/presentation/student_qr_screen.dart';
 import '../data/subscription_repository.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
-import '../../../../core/network/network_errors.dart';
-import '../../../../core/network/perf_trace.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/glass_scaffold.dart';
-import 'package:flutter/services.dart';
+import '../models/payment_method_model.dart';
 import '../models/sale_catalog.dart';
 import '../models/subscription_draft.dart';
 import '../models/subscription_model.dart';
-import '../models/payment_method_model.dart';
-import '../../home/presentation/student_home_screen.dart';
+import 'pay_screen.dart';
 import 'purchase_flow.dart';
 import 'receipt_card.dart';
-import 'receipt_pdf.dart';
-import 'package:gal/gal.dart';
-import '../../../../core/network/supabase_service.dart';
-import 'dart:typed_data';
+import 'receipt_screen.dart';
 
 // These stay loaded for the session, so opening the page again is instant. They
 // are refreshed when the server announces a change (SyncHub) and on app resume,
@@ -113,58 +108,86 @@ class ReceiptSubmitter {
   }
 }
 
-/// The image the student chose for a subscription's receipt: its file, the
-/// attempt it belongs to (which names the stored file across retries) and its
-/// preparation, started the moment it was chosen.
-class _ReceiptDraft {
-  final XFile file;
-  final ReceiptAttempt attempt;
-  final Future<Uint8List> prepared;
-
-  _ReceiptDraft(this.file, this.attempt, this.prepared);
-}
-
 /// The subscription a notification was about: its card opens when the
 /// subscriptions tab is shown, then this is cleared.
 final focusedSubscriptionProvider = StateProvider<String?>((ref) => null);
 
+/// What the tab says about time, apart from how it is drawn.
+abstract final class SubscriptionScreenWords {
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// "باقي 95 يوماً", with the number's own plural.
+  static String daysLeft(String? endDate, [DateTime? now]) {
+    final end = DateTime.tryParse(endDate ?? '');
+    if (end == null) return '';
+    final days = _dateOnly(end).difference(_dateOnly(now ?? DateTime.now())).inDays;
+    if (days <= 0) return 'ينتهي اليوم';
+    if (days == 1) return 'باقي يوم واحد';
+    if (days == 2) return 'باقي يومان';
+    if (days <= 10) return 'باقي $days أيام';
+    return 'باقي $days يوماً';
+  }
+
+  /// The share of the period that has passed, from 0 to 1.
+  static double elapsed(String? startDate, String? endDate, [DateTime? now]) {
+    final start = DateTime.tryParse(startDate ?? '');
+    final end = DateTime.tryParse(endDate ?? '');
+    if (start == null || end == null) return 0;
+    final whole = _dateOnly(end).difference(_dateOnly(start)).inDays;
+    if (whole <= 0) return 1;
+    return (_dateOnly(now ?? DateTime.now()).difference(_dateOnly(start)).inDays / whole).clamp(0.0, 1.0);
+  }
+
+  /// "أُرسل اليوم 3:40 م", "أُرسل أمس 9:05 م", "أُرسل 3 أكتوبر".
+  static String sentAt(String createdAt, [DateTime? now]) {
+    final at = DateTime.tryParse(createdAt)?.toLocal();
+    if (at == null) return '';
+    final today = _dateOnly(now ?? DateTime.now());
+    final days = today.difference(_dateOnly(at)).inDays;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final time = BasakUi.time12('${two(at.hour)}:${two(at.minute)}');
+    if (days == 0) return 'أُرسل اليوم $time';
+    if (days == 1) return 'أُرسل أمس $time';
+    return 'أُرسل ${ReceiptCard.day(createdAt, year: false)}';
+  }
+}
+
+/// The "اشتراكي" tab: where the student's subscription stands, and what there
+/// is to do about it. Paying is a page of its own ([PayScreen]), and so is the
+/// receipt ([ReceiptScreen]); the builder opens above the tabs.
 class SubscriptionScreen extends ConsumerStatefulWidget {
   /// Whether this tab is the one in front. Behind another tab (and while it
   /// is built in the background at start) it shows nothing of the catalog, so
   /// it does not read it.
   final bool visible;
 
-  const SubscriptionScreen({super.key, this.visible = true});
+  /// "العودة للرئيسية" once a receipt is sent.
+  final VoidCallback? onNavigateHome;
+
+  /// The card shortcut on a pass that has nothing to ask.
+  final VoidCallback? onNavigateToCard;
+
+  const SubscriptionScreen({super.key, this.visible = true, this.onNavigateHome, this.onNavigateToCard});
 
   @override
   ConsumerState<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
 class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
-  bool _isExporting = false;
-  _ReceiptDraft? _draft;
+  /// Past subscriptions: the latest two, or all of them.
+  bool _allHistory = false;
 
-  /// Where the receipt being sent is (null: nothing is being sent).
-  ReceiptPhase? _phase;
-
-  /// The part of the image that has left the phone, when it can be known.
-  double? _progress;
-  Timer? _sentTimer;
-
-  bool get _sending => _phase != null && _phase != ReceiptPhase.done;
-  String? _paymentMethodId;
-  /// Cards whose details are open. A card that needs the student to act
-  /// (pay, re-upload) opens by itself; the rest stay compact.
-  final Set<String> _expanded = {};
-  final Set<String> _collapsedByUser = {};
-
-  /// Showing the purchase flow while the student already has subscriptions
-  /// (paying the next period in advance), starting from [_buyingFrom].
-  bool _buying = false;
-  SubscriptionDraft _buyingFrom = const SubscriptionDraft();
-
-  /// The catalog as the "next period" card last showed it.
+  /// What the tab last showed of what it reads only while it is in front:
+  /// the catalog (the next period, a renewal), a paid subscription's receipt,
+  /// the receipts of one that is under review or was refused, and the
+  /// company's payment methods (to name the one a receipt was paid with).
   SaleCatalog? _catalogShown;
+  bool _catalogLoading = false;
+  final Map<String, AsyncValue<SubscriptionReceipt?>> _docs = {};
+  final Map<String, List<ReceiptModel>> _receipts = {};
+  final Map<String, List<PaymentMethodModel>> _methods = {};
+
+  static const _historyShown = 2;
 
   @override
   void initState() {
@@ -173,23 +196,14 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     _focus(ref.read(focusedSubscriptionProvider));
   }
 
-  /// Opens the card of the subscription a notification was about.
+  /// A notification was about a subscription: the tab shows it at its top, so
+  /// there is nothing to open — the request is only taken off.
   void _focus(String? subscriptionId) {
     if (subscriptionId == null) return;
-    _expanded.add(subscriptionId);
-    _collapsedByUser.remove(subscriptionId);
-    _buying = false;
     Future.microtask(() {
       if (!mounted) return;
       ref.read(focusedSubscriptionProvider.notifier).state = null;
-      setState(() {});
     });
-  }
-
-  @override
-  void dispose() {
-    _sentTimer?.cancel();
-    super.dispose();
   }
 
   void _refreshSubscriptions() {
@@ -215,940 +229,485 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       if (mounted) ref.invalidate(saleCatalogProvider);
     });
     // Already on screen: subscriptionCreatorProvider applied the server's answer.
-    setState(() {
-      _buying = false;
-      _expanded.add(created.id);
-      if (!_sending) _draft = null;
-      _paymentMethodId = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(created.isDaily
-          ? 'تم تفعيل اشتراك اليوم. ادفع نقداً للمشرف في الباص.'
-          : 'تم إنشاء طلب الاشتراك. أكمل الدفع وارفع الإيصال.'),
-      backgroundColor: AppColors.success,
-    ));
+    BasakToast.show(
+        context,
+        created.isDaily
+            ? 'تم تفعيل اشتراك اليوم. ادفع نقداً للمشرف في الباص.'
+            : 'تم إنشاء طلب الاشتراك. أكمل الدفع وارفع الإيصال.');
+    // "تأكيد والانتقال للدفع": the next thing to do is on the pay page.
+    if (!created.isDaily) _pay(created);
   }
 
-  Future<void> _pickReceipt(ImageSource source, String subscriptionId) async {
-    try {
-      // Asked for at the stored size, so the phone's own encoder shrinks it
-      // (camera photos are 12 MP and more) and little is left to do in Dart.
-      final picked = await ImagePicker().pickImage(
-          source: source,
-          imageQuality: ImageOptimizer.pickQuality,
-          maxWidth: ImageOptimizer.pickMaxSide,
-          maxHeight: ImageOptimizer.pickMaxSide);
-      if (picked == null || !mounted) return;
-      // Made ready now, in the background, not when "send" is tapped. A file
-      // that cannot be read is told when it is sent.
-      final prepared = ImageOptimizer.prepareReceipt(picked.path)..ignore();
-      setState(() => _draft = _ReceiptDraft(picked, ReceiptAttempt.start(subscriptionId), prepared));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(pickerErrorMessage(e)),
-              backgroundColor: AppColors.error),
-        );
-      }
-    }
+  void _pay(SubscriptionModel sub) => PayScreen.open(context, sub, onGoHome: widget.onNavigateHome);
+
+  /// The builder, above the tabs, starting from [initial].
+  Future<void> _subscribe({SubscriptionDraft initial = const SubscriptionDraft(), required bool allowDaily}) async {
+    final created = await PurchaseFlowPage.open(context, initial: initial, allowDaily: allowDaily);
+    if (created != null && mounted) _onCreated(created);
   }
 
-  void _removeReceipt() {
-    // While the image is still being made ready this simply drops it; once it
-    // is on its way it can no longer be taken back.
-    if (_phase != null && _phase != ReceiptPhase.preparing) return;
-    setState(() {
-      _draft = null;
-      _phase = null;
-      _progress = null;
-    });
+  static BasakStatus _statusOf(SubscriptionModel sub) {
+    if (sub.isExpired) return BasakStatus.expired;
+    if (sub.isActive) return sub.isUpcoming ? BasakStatus.upcoming : BasakStatus.active;
+    if (sub.isPendingReview) return BasakStatus.pendingReview;
+    if (sub.isRejected) return BasakStatus.rejected;
+    return BasakStatus.pendingPayment;
   }
 
-  Future<void> _submitReceipt(String subscriptionId, {bool needsMethod = false}) async {
-    final draft = _draft;
-    if (draft == null || _phase != null) return;
-    if (needsMethod && _paymentMethodId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('اختر وسيلة الدفع التي حوّلت بها أولاً.')));
-      return;
-    }
+  /// "2026 / 2027".
+  static String? _year(SubscriptionModel sub) =>
+      sub.academicYear == null ? null : '${sub.academicYear} / ${sub.academicYear! + 1}';
 
-    // Shown in the same frame as the tap.
-    setState(() {
-      _phase = ReceiptPhase.preparing;
-      _progress = null;
-    });
-    try {
-      PerfTrace.reset();
-      // Only the optimised image is uploaded; the original stays on the phone.
-      final bytes = await PerfTrace.time('receipt.prepare (left after the tap)', () => draft.prepared);
-      // Removed while it was being made ready.
-      if (!mounted || _draft != draft) return;
+  /// "الزرقا · كوبري السرو".
+  static String _lineAndStation(SubscriptionModel sub) =>
+      [(sub.lineName ?? '').trim(), (sub.stationName ?? '').trim()].where((s) => s.isNotEmpty).join(' · ');
 
-      await PerfTrace.time(
-          'receipt.send',
-          () => ref.read(receiptSubmitterProvider).submit(
-            attempt: draft.attempt,
-            bytes: bytes,
-            paymentMethodId: _paymentMethodId,
-            onPhase: (phase) {
-              if (mounted) setState(() => _phase = phase);
-            },
-            onProgress: (sent, total) {
-              final progress = total <= 0 ? null : sent / total;
-              // A repaint per percent is plenty.
-              if (mounted && (progress == null || _progress == null || progress - _progress! >= 0.01)) {
-                setState(() => _progress = progress);
-              }
-            },
-          ));
-      PerfTrace.dump('receipt upload, ${bytes.length ~/ 1024} kB');
-      if (!mounted) return;
-      setState(() {
-        _phase = ReceiptPhase.done;
-        _progress = 1;
-      });
-      // "Sent" stays a moment, then the card is the "under review" one.
-      _sentTimer?.cancel();
-      _sentTimer = Timer(const Duration(milliseconds: 1400), () {
-        if (mounted && _draft == draft) {
-          setState(() {
-            _draft = null;
-            _phase = null;
-            _progress = null;
-          });
-        }
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم رفع صورة الإيصال بنجاح وهو الآن قيد مراجعة إدارة الشركة.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        // The image stays chosen: sending again replaces the same file.
-        setState(() {
-          _phase = null;
-          _progress = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(errorMessage(e)), backgroundColor: AppColors.error),
-        );
-      }
-    }
+  static String? _withoutTitle(String? university) {
+    final name = (university ?? '').trim().replaceFirst(RegExp(r'^(جامعة|جامعه)\s+'), '');
+    return name.isEmpty ? null : name;
   }
 
-  /// The company's logo for the PDF, when it can be loaded quickly. The
-  /// receipt is complete without it, so being offline never blocks the PDF.
-  Future<Uint8List?> _companyLogo(String? folder) async {
-    if (folder == null || folder.isEmpty) return null;
-    try {
-      final url = SupabaseService.client.storage.from('wallet-assets').getPublicUrl('$folder/master.png');
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
-      final request = await client.getUrl(Uri.parse(url));
-      final response = await request.close().timeout(const Duration(seconds: 6));
-      if (response.statusCode != 200) return null;
-      final builder = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 6))) {
-        builder.add(chunk);
-      }
-      return builder.takeBytes();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// The receipt as a real PDF document built from the stored receipt: opened
-  /// in the share sheet as a PDF, or saved straight to the phone's photos as a
-  /// picture of that same document.
-  Future<void> _exportReceipt(SubscriptionReceipt receipt, {required bool asPdf}) async {
-    if (_isExporting) return;
-    final box = context.findRenderObject() as RenderBox?;
-    final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
-    setState(() => _isExporting = true);
-    try {
-      final pdf = await ReceiptPdf.build(receipt, logo: await _companyLogo(receipt.companyLogoPath));
-      if (asPdf) {
-        await ReceiptExport.share(pdf, ReceiptPdf.fileName(receipt), 'application/pdf', origin: origin);
-      } else {
-        // No sheet and no file to deal with: it goes to the photo library.
-        if (!await Gal.hasAccess() && !await Gal.requestAccess()) {
-          throw Exception('اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.');
-        }
-        await Gal.putImageBytes(await ReceiptPdf.image(pdf),
-            name: 'basak-receipt-${receipt.code}');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('تم حفظ الإيصال في الاستوديو.'), backgroundColor: AppColors.success));
-        }
-      }
-    } on GalException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.type == GalExceptionType.accessDenied
-                ? 'اسمح للتطبيق بحفظ الصور من إعدادات الهاتف ثم أعد المحاولة.'
-                : 'تعذر حفظ الصورة في الاستوديو. حاول مرة أخرى.'),
-            backgroundColor: AppColors.error));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage(e)), backgroundColor: AppColors.error));
-      }
-    } finally {
-      if (mounted) setState(() => _isExporting = false);
-    }
+  static String _lineTitle(SubscriptionModel sub) {
+    final line = (sub.lineName ?? '').trim();
+    if (line.isEmpty) return 'الخط';
+    return line.startsWith('خط ') ? line : 'خط $line';
   }
 
   @override
   Widget build(BuildContext context) {
     final subsAsync = ref.watch(allSubscriptionsProvider);
     ref.listen(focusedSubscriptionProvider, (_, id) => _focus(id));
+    final subs = subsAsync.valueOrNull;
 
-    return GlassScaffold(
-      canvas: const Color(0xFFEAF5FA),
-      body: ColoredBox(
-        color: const Color(0xFFEAF5FA),
-        child: RefreshIndicator(
-          color: AppColors.teal,
+    if (subs == null) {
+      if (subsAsync.hasError) {
+        final offline = isNetworkFailure(subsAsync.error!);
+        return BasakPage(
           onRefresh: _handleRefresh,
-          child: subsAsync.when(
-            data: (subs) {
-              final open = subs.where((s) => !s.isExpired).toList()
-                ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
-              // Newest first: every past subscription keeps its own card.
-              final history = subs.where((s) => s.isExpired).toList()
-                ..sort((a, b) => (b.startDate ?? b.createdAt).compareTo(a.startDate ?? a.createdAt));
-              if (_buying || subs.isEmpty) {
-                return _buildPurchaseView(open: open, hasHistory: history.isNotEmpty);
-              }
-              return _buildSubscriptionsView(open: open, history: history);
-            },
-            loading: () => const SingleChildScrollView(
-                physics: NeverScrollableScrollPhysics(), child: SubscriptionsSkeleton()),
-            error: (err, _) => SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.7,
-                child: Center(child: Text('تعذر تحميل الاشتراك: ${errorMessage(err)}')),
-              ),
+          children: [
+            SizedBox(height: MediaQuery.sizeOf(context).height * .14),
+            PageError(
+              icon: offline ? LucideIcons.wifiOff : LucideIcons.triangleAlert,
+              title: offline ? 'لا يوجد اتصال' : 'تعذر تحميل الاشتراك',
+              message: offline
+                  ? 'نحتاج الإنترنت مرة واحدة لتحميل بياناتك. بعدها تعمل بطاقتك واشتراكك بدون اتصال.'
+                  : errorMessage(subsAsync.error!),
+              onAction: () => ref.invalidate(allSubscriptionsProvider),
             ),
-          ),
+          ],
+        );
+      }
+      // A true first load, with nothing saved: the page's own shape.
+      return ColoredBox(
+        color: context.colors.ground,
+        child: const SafeArea(
+          bottom: false,
+          child: SingleChildScrollView(physics: NeverScrollableScrollPhysics(), child: SubscriptionsSkeleton()),
         ),
-      ),
-    );
-  }
-
-  /// Choosing a subscription. Nothing is saved until the review is confirmed.
-  Widget _buildPurchaseView({required List<SubscriptionModel> open, bool hasHistory = false}) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          PurchaseFlow(
-            // A new flow each time it is opened, starting from the offered choices.
-            key: ValueKey(_buyingFrom),
-            initial: _buyingFrom,
-            // A cash day ride is for a student with no subscription at all.
-            allowDaily: open.isEmpty,
-            visible: widget.visible,
-            onCancel: open.isEmpty && !hasHistory ? null : () => setState(() => _buying = false),
-            onCreated: _onCreated,
-          ),
-        ]),
       );
+    }
 
-  /// The student's subscriptions over time: the current one(s) first, each
-  /// older one below as its own card. Cards are compact; "عرض التفاصيل" opens
-  /// the full details and the receipt in place.
-  Widget _buildSubscriptionsView(
-      {required List<SubscriptionModel> open, required List<SubscriptionModel> history}) {
-    final active = open.where((s) => s.isActive).toList();
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 110),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('اشتراكاتي', style: AppTextStyles.displayMedium),
-        const SizedBox(height: 16),
-        if (open.isEmpty)
-          _subscribeAgainCard()
-        else ...[
-          _sectionLabel(open.length == 1 ? 'الاشتراك الحالي' : 'الاشتراكات الحالية'),
-          for (final sub in open) _subscriptionCard(sub),
-        ],
-        if (active.isNotEmpty) _payNextCard(active.first),
-        if (history.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          _sectionLabel(history.length == 1 ? 'اشتراك سابق' : 'اشتراكات سابقة'),
-          for (final old in history) _subscriptionCard(old),
-        ],
-      ]),
-    );
-  }
-
-  Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 10, right: 2),
-        child: Text(text,
-            style: AppTextStyles.titleMedium.copyWith(color: AppColors.textSecondary)),
+    // No subscription, ever: the tab is the builder.
+    if (subs.isEmpty) {
+      return PurchaseFlow(
+        visible: widget.visible,
+        onCreated: _onCreated,
       );
-
-  /// Nothing running: the past stays below, and a new subscription starts here.
-  Widget _subscribeAgainCard() => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('لا يوجد اشتراك حالي', style: AppTextStyles.titleMedium),
-          const SizedBox(height: 4),
-          Text('اشترك من جديد لتأكيد رحلاتك واستخدام بطاقتك.',
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              key: const Key('subscribe-again'),
-              onPressed: () => setState(() {
-                _buyingFrom = const SubscriptionDraft();
-                _buying = true;
-              }),
-              child: const Text('اشتراك جديد'),
-            ),
-          ),
-        ]),
-      );
-
-  /// The words and colours of a subscription's state.
-  ({String label, Color color, Color background, IconData icon}) _status(SubscriptionModel sub) {
-    if (sub.status == 'expired' || (sub.isExpired && sub.isActive)) {
-      return (label: 'انتهى الاشتراك', color: const Color(0xFF64788A), background: const Color(0xFFEDF1F4), icon: LucideIcons.history);
     }
-    if (sub.isActive) {
-      return sub.isUpcoming
-          ? (label: 'مفعّل · يبدأ قريباً', color: const Color(0xFF3F51B5), background: const Color(0xFFEEF0FF), icon: LucideIcons.calendarClock)
-          : (label: 'الاشتراك مفعّل', color: const Color(0xFF07865A), background: const Color(0xFFE7F8F0), icon: LucideIcons.circleCheck);
-    }
-    if (sub.isPendingReview) {
-      return (label: 'بانتظار المراجعة', color: const Color(0xFF00658D), background: const Color(0xFFE2F3FB), icon: LucideIcons.hourglass);
-    }
-    if (sub.isRejected) {
-      return (label: 'تم الرفض', color: const Color(0xFFB42335), background: const Color(0xFFFFECEE), icon: LucideIcons.circleX);
-    }
-    if (sub.isExpired) {
-      return (label: 'انتهى دون دفع', color: const Color(0xFF64788A), background: const Color(0xFFEDF1F4), icon: LucideIcons.history);
-    }
-    return (label: 'بانتظار الدفع', color: const Color(0xFFB97812), background: const Color(0xFFFFF4E5), icon: LucideIcons.wallet);
-  }
 
-  bool _needsAction(SubscriptionModel sub) =>
-      !sub.isExpired && !sub.isActive && !sub.isPendingReview;
+    final open = subs.where((s) => !s.isExpired).toList()
+      ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
+    // Newest first.
+    final history = subs.where((s) => s.isExpired).toList()
+      ..sort((a, b) => (b.startDate ?? b.createdAt).compareTo(a.startDate ?? a.createdAt));
+    final running = open.where((s) => s.isActive && !s.isDaily).toList();
 
-  /// One subscription: compact by default, with its state always in view.
-  Widget _subscriptionCard(SubscriptionModel sub) {
-    final status = _status(sub);
-    final paid = sub.isActive || sub.status == 'expired';
-    // A card waiting for the student opens by itself, unless they closed it.
-    final open = _expanded.contains(sub.id) || (_needsAction(sub) && !_collapsedByUser.contains(sub.id));
-    return Container(
-      key: Key('sub-card-${sub.id}'),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [BoxShadow(color: Color(0x0B17384A), blurRadius: 15, offset: Offset(0, 5))]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: Text(sub.periodName, style: AppTextStyles.titleLarge)),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: status.background, borderRadius: BorderRadius.circular(16)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(status.icon, size: 14, color: status.color),
-                  const SizedBox(width: 5),
-                  Text(status.label,
-                      style: AppTextStyles.labelSmall.copyWith(color: status.color, fontWeight: FontWeight.bold)),
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 14),
-            if ((sub.companyName ?? '').isNotEmpty) ...[
-              _summaryLine(LucideIcons.building2, 'شركة النقل', sub.companyName!),
-              const SizedBox(height: 10),
-            ],
-            _summaryLine(LucideIcons.busFront, 'الخط', sub.lineLabel),
-            const SizedBox(height: 10),
-            _summaryLine(LucideIcons.mapPin, 'محطة الصعود', sub.stationName ?? '—'),
-            if (sub.endDate != null && !sub.isDaily) ...[
-              const SizedBox(height: 10),
-              _summaryLine(LucideIcons.calendarCheck2, sub.isExpired ? 'انتهى في' : 'صالح حتى',
-                  ReceiptCard.day(sub.endDate)),
-            ],
-            const SizedBox(height: 10),
-            _summaryLine(
-                LucideIcons.wallet,
-                sub.isDaily
-                    ? 'نقداً في الباص'
-                    : paid
-                        ? 'المبلغ المدفوع'
-                        : sub.isPendingReview
-                            ? 'المبلغ'
-                            : 'المبلغ المطلوب',
-                formatMoney(sub.price),
-                labelKey: const Key('amount-label'),
-                valueKey: const Key('amount-value')),
-          ]),
-        ),
-        Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: TextButton.icon(
-            key: Key('sub-toggle-${sub.id}'),
-            onPressed: () => setState(() {
-              if (open) {
-                _expanded.remove(sub.id);
-                _collapsedByUser.add(sub.id);
-              } else {
-                _expanded.add(sub.id);
-                _collapsedByUser.remove(sub.id);
-              }
-              if (!_sending) _draft = null;
-            }),
-            icon: Icon(open ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 18),
-            label: Text(open ? 'إخفاء التفاصيل' : 'عرض التفاصيل'),
-          ),
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeInOut,
-          alignment: Alignment.topCenter,
-          child: !open
-              ? const SizedBox(width: double.infinity)
-              : Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: paid ? _approvedDetails(sub) : _paymentState(sub)),
-                ),
-        ),
-      ]),
-    );
-  }
-
-  /// Approved (running or ended): the full details and the receipt, with the
-  /// PDF and share actions. No amount due, no payment methods, no upload.
-  List<Widget> _approvedDetails(SubscriptionModel sub) {
-    final receiptAsync = sub.isDaily ? null : ref.watch(subscriptionReceiptDocProvider(sub.id));
-    final receipt = receiptAsync?.valueOrNull;
-    if (receipt == null) {
-      return [
-        const Divider(height: 18),
-        if (sub.destination != null) ...[
-          _summaryLine(LucideIcons.graduationCap, 'الجامعة', sub.destination!),
-          const SizedBox(height: 8),
-        ],
-        _summaryLine(LucideIcons.calendarDays, 'فترة الاشتراك', sub.periodLabel ?? sub.periodName),
-        if (sub.startDate != null) ...[
-          const SizedBox(height: 8),
-          _summaryLine(LucideIcons.calendarClock, 'يبدأ في', ReceiptCard.day(sub.startDate)),
-        ],
-        if (!sub.isDaily && receiptAsync?.isLoading != true) ...[
-          const SizedBox(height: 10),
-          Text('لا يوجد إيصال لهذا الاشتراك.',
-              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-        ],
-      ];
+    // The catalog is the largest read of the app: only while the tab is in
+    // front, and only when something here shows it.
+    final needsCatalog = running.isNotEmpty || open.isEmpty;
+    if (widget.visible && needsCatalog) {
+      final catalog = ref.watch(saleCatalogProvider);
+      _catalogShown = catalog.valueOrNull ?? _catalogShown;
+      _catalogLoading = catalog.isLoading && !catalog.hasValue;
     }
-    return [
-      ReceiptCard(receipt: receipt),
-      const SizedBox(height: 10),
-      SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          key: Key('receipt-pdf-${sub.id}'),
-          onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: true),
-          icon: const Icon(LucideIcons.receiptText, size: 18),
-          label: const Text('تحميل الإيصال PDF'),
-        ),
-      ),
-      const SizedBox(height: 8),
-      SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          key: Key('receipt-image-${sub.id}'),
-          onPressed: _isExporting ? null : () => _exportReceipt(receipt, asPdf: false),
-          icon: const Icon(LucideIcons.image, size: 18),
-          label: const Text('حفظ كصورة في الاستوديو'),
-        ),
-      ),
-    ];
-  }
 
-  /// Waiting for payment, rejected, or under review. The selection is fixed:
-  /// the student pays for this subscription or re-uploads its receipt.
-  List<Widget> _paymentState(SubscriptionModel sub) {
-    final receiptsAsync = ref.watch(subscriptionReceiptsProvider(sub.id));
-    final methods = sub.companyId == null
-        ? const <PaymentMethodModel>[]
-        : ref.watch(paymentMethodsProvider(sub.companyId!)).valueOrNull ?? const <PaymentMethodModel>[];
-    final receipts = receiptsAsync.valueOrNull ?? const <ReceiptModel>[];
-    final latest = receipts.isEmpty ? null : receipts.first;
-    return [
-      const Divider(height: 18),
-      if (sub.isPendingReview) ...[
-        _statusMessage(
-          icon: LucideIcons.hourglass,
-          title: 'استلمنا إيصالك',
-          message: 'تراجعه إدارة الشركة يدوياً، وسيصلك إشعار عند اعتماد الاشتراك.',
-          color: const Color(0xFF00658D),
-          background: const Color(0xFFE2F3FB),
-        ),
-        const SizedBox(height: 14),
-        _receiptUploadCard(sub, receipts.length, latest),
-      ] else ...[
-        if (sub.isRejected || latest?.isRejected == true) ...[
-          _statusMessage(
-            icon: LucideIcons.circleX,
-            title: 'تم رفض الإيصال',
-            message: latest?.rejectionReason ?? 'راجع سبب الرفض مع إدارة الشركة ثم ارفع إيصالاً جديداً.',
-            color: const Color(0xFFB42335),
-            background: const Color(0xFFFFECEE),
-          ),
-          const SizedBox(height: 14),
-        ],
-        _paymentMethodsCard(sub),
-        const SizedBox(height: 14),
-        if (receiptsAsync.isLoading && !receiptsAsync.hasValue)
-          const Skeleton(child: SkeletonCard(child: Bone(height: 44, radius: 12)))
-        else
-          _receiptUploadCard(sub, receipts.length, latest),
-        const SizedBox(height: 14),
-        _paymentNotes(methods, receipts.length),
+    return BasakPage(
+      onRefresh: _handleRefresh,
+      // Clear of the floating tab bar, whose height the shell reports here.
+      bottomInset: MediaQuery.paddingOf(context).bottom + BasakSpace.s24,
+      children: [
+        Semantics(header: true, child: Text('اشتراكي', style: context.text.display)),
+        for (final sub in open) ..._current(sub),
+        if (open.isEmpty) _ended(history.first),
+        if (running.isNotEmpty) ..._nextPeriod(running.first),
+        if (history.isNotEmpty) _history(history),
       ],
-    ];
-  }
-
-  /// The payment instructions, in one short numbered block.
-  Widget _paymentNotes(List<PaymentMethodModel> methods, int attempts) {
-    final notes = [
-      if (methods.isEmpty)
-        'تواصل مع إدارة الشركة للحصول على بيانات التحويل.'
-      else
-        'حوّل المبلغ كاملاً بالوسيلة التي اخترتها.',
-      'ارفع صورة واضحة للإيصال فيها رقم العملية والتاريخ.',
-      'تُراجع الإدارة الإيصال وسيصلك إشعار عند الاعتماد.',
-      if (attempts > 0 && attempts < 5) 'المتبقي ${5 - attempts} من 5 محاولات لرفع الإيصال.',
-    ];
-
-    return Container(
-      key: const Key('payment-notes'),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      decoration: BoxDecoration(
-          color: const Color(0xFFFFFBF2),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFF3E3C2))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(LucideIcons.info, size: 15, color: Color(0xFFB97812)),
-          const SizedBox(width: 6),
-          Text('ملاحظات الدفع',
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: const Color(0xFF8A5A0B), fontWeight: FontWeight.bold)),
-        ]),
-        const SizedBox(height: 6),
-        for (var i = 0; i < notes.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                width: 18,
-                child: Text('${i + 1}.',
-                    style: AppTextStyles.labelSmall
-                        .copyWith(color: const Color(0xFFB97812), fontWeight: FontWeight.bold)),
-              ),
-              Expanded(
-                child: Text(notes[i],
-                    style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF5E4A1E), height: 1.45)),
-              ),
-            ]),
-          ),
-      ]),
     );
   }
+
+  // ── The subscription that counts now ───────────────────────────────
+
+  List<Widget> _current(SubscriptionModel sub) {
+    final status = _statusOf(sub);
+    final money = formatMoney(sub.price);
+    final company = (sub.companyName ?? '').trim();
+    final key = Key('sub-card-${sub.id}');
+    final route = [
+      if (_lineAndStation(sub).isNotEmpty) InfoRow(label: 'الخط والمحطة', value: _lineAndStation(sub)),
+      if (company.isNotEmpty) InfoRow(label: 'الشركة', value: company),
+    ];
+    const amountLabel = Key('amount-label');
+    const amountValue = Key('amount-value');
+
+    switch (status) {
+      case BasakStatus.pendingPayment:
+        return [
+          PeriodCard(
+            key: key,
+            status: status,
+            meta: _year(sub),
+            metaLtr: true,
+            title: sub.periodName,
+            footer: AmountAction(
+              caption: 'المبلغ المطلوب',
+              money: money,
+              actionLabel: 'ادفع الآن',
+              onAction: () => _pay(sub),
+              captionKey: amountLabel,
+              moneyKey: amountValue,
+              actionKey: Key('pay-now-${sub.id}'),
+            ),
+          ),
+          if (route.isNotEmpty) InfoRows(rows: route),
+        ];
+
+      case BasakStatus.rejected:
+        final receipts = _receiptsOf(sub);
+        final latest = receipts == null || receipts.isEmpty ? null : receipts.first;
+        final reason = (latest?.rejectionReason ?? '').trim();
+        final attempts = receipts?.length ?? 0;
+        final line = _lineTitle(sub);
+        return [
+          PassCard(
+            key: key,
+            status: status,
+            period: sub.periodName,
+            from: sub.boardingTitle,
+            to: _withoutTitle(sub.destination) ?? line,
+            toCaption: company.isEmpty ? line : '$line · $company',
+            footer: PassAction(
+              caption: attempts >= 1 && attempts < PayScreen.maxAttempts
+                  ? 'المحاولة ${attempts + 1} من ${PayScreen.maxAttempts}'
+                  : 'المبلغ المطلوب',
+              value: reason.isNotEmpty ? reason : money,
+              actionLabel: 'إيصال جديد',
+              onAction: () => _pay(sub),
+            ),
+          ),
+          InfoRows(rows: [
+            InfoRow(label: 'المبلغ المطلوب', value: money, labelKey: amountLabel, valueKey: amountValue),
+          ]),
+        ];
+
+      case BasakStatus.pendingReview:
+        final receipts = _receiptsOf(sub);
+        final latest = receipts == null || receipts.isEmpty ? null : receipts.first;
+        final method = _methodName(sub, latest);
+        return [
+          PeriodCard(
+            key: key,
+            status: status,
+            meta: _year(sub),
+            metaLtr: true,
+            title: sub.periodName,
+            note: latest == null ? null : SubscriptionScreenWords.sentAt(latest.createdAt),
+          ),
+          InfoRows(rows: [
+            ...route,
+            InfoRow(label: 'المبلغ', value: money, labelKey: amountLabel, valueKey: amountValue),
+            if (method != null) InfoRow(label: 'طريقة الدفع', value: method),
+          ]),
+        ];
+
+      case BasakStatus.upcoming:
+        final starts = DateTime.tryParse(sub.startDate ?? '');
+        final line = _lineTitle(sub);
+        final receipt = _receiptRow(sub);
+        return [
+          PassCard(
+            key: key,
+            status: status,
+            period: starts == null
+                ? sub.periodName
+                : '${sub.periodName} · ${starts.day} ${BasakUi.arabicMonths[starts.month - 1]}',
+            from: sub.boardingTitle,
+            to: _withoutTitle(sub.destination) ?? line,
+            footer: PassStub(line: line, company: company, onShowCard: widget.onNavigateToCard, onInk: false),
+          ),
+          if (receipt != null) InfoRows(rows: [receipt]),
+        ];
+
+      case BasakStatus.active || BasakStatus.expired:
+        if (sub.isDaily) {
+          return [
+            PeriodCard(key: key, status: BasakStatus.active, title: sub.periodName),
+            InfoRows(rows: [
+              ...route,
+              InfoRow(label: 'نقداً في الباص', value: money, labelKey: amountLabel, valueKey: amountValue),
+            ]),
+          ];
+        }
+        final receipt = _receiptRow(sub);
+        return [
+          // Offline, the pass says how old what it shows is.
+          ValueListenableBuilder<DateTime?>(
+            key: key,
+            valueListenable: OfflineCache.offlineSince,
+            builder: (context, offlineSince, _) => PeriodCard(
+              status: BasakStatus.active,
+              meta: offlineSince == null ? _year(sub) : 'آخر تحديث ${ConnectionStripHost.dataTime(offlineSince)}',
+              metaLtr: offlineSince == null,
+              title: sub.periodName,
+              note: sub.endDate == null ? null : SubscriptionScreenWords.daysLeft(sub.endDate),
+              bar: sub.startDate == null || sub.endDate == null
+                  ? null
+                  : ValidityBar(
+                      elapsed: SubscriptionScreenWords.elapsed(sub.startDate, sub.endDate),
+                      from: ReceiptCard.day(sub.startDate, year: false),
+                      to: ReceiptCard.day(sub.endDate),
+                    ),
+            ),
+          ),
+          InfoRows(rows: [...route, if (receipt != null) receipt]),
+        ];
+    }
+  }
+
+  /// The receipts of a subscription under review or refused: when the last
+  /// one was sent, why it was refused. Read only while the tab is in front.
+  List<ReceiptModel>? _receiptsOf(SubscriptionModel sub) {
+    if (widget.visible) {
+      final read = ref.watch(subscriptionReceiptsProvider(sub.id)).valueOrNull;
+      if (read != null) _receipts[sub.id] = read;
+    }
+    return _receipts[sub.id];
+  }
+
+  /// The name of the method a receipt was paid with.
+  String? _methodName(SubscriptionModel sub, ReceiptModel? receipt) {
+    final companyId = sub.companyId;
+    if (receipt?.paymentMethodId == null || companyId == null) return null;
+    if (widget.visible) {
+      final read = ref.watch(paymentMethodsProvider(companyId)).valueOrNull;
+      if (read != null) _methods[companyId] = read;
+    }
+    return _methods[companyId]?.where((m) => m.id == receipt!.paymentMethodId).firstOrNull?.displayName;
+  }
+
+  /// "الإيصال" as a row that opens it, with its code once it is known.
+  InfoRow? _receiptRow(SubscriptionModel sub) {
+    if (sub.isDaily) return null;
+    if (widget.visible) _docs[sub.id] = ref.watch(subscriptionReceiptDocProvider(sub.id));
+    final doc = _docs[sub.id];
+    void open() => ReceiptScreen.open(context, sub.id);
+    final key = Key('receipt-row-${sub.id}');
+    final receipt = doc?.valueOrNull;
+    if (receipt != null) {
+      return InfoRow(key: key, label: 'الإيصال', value: receipt.code, ltrValue: true, onTap: open);
+    }
+    if (doc != null && doc.hasError) {
+      return InfoRow(
+        key: key,
+        label: 'تعذّر تحميل الإيصال',
+        onRetry: () => ref.invalidate(subscriptionReceiptDocProvider(sub.id)),
+      );
+    }
+    if (doc != null && doc.hasValue) return InfoRow(key: key, label: 'لا يوجد إيصال لهذا الاشتراك.');
+    return InfoRow(key: key, label: 'الإيصال', onTap: open);
+  }
+
+  // ── What comes next ────────────────────────────────────────────────
 
   /// "Subscribe to the next period in advance": shown only when the company
   /// allows it (the catalog then lists it), with that period's own price. It
-  /// opens the flow with the same company, line and station filled in.
-  ///
-  /// It is the one thing on this page that needs the catalog, so the catalog
-  /// is read (and listened to) only while the page is in front.
-  Widget _payNextCard(SubscriptionModel sub) {
-    if (widget.visible) _catalogShown = ref.watch(saleCatalogProvider).valueOrNull ?? _catalogShown;
+  /// opens the builder with the same company, line and station filled in.
+  List<Widget> _nextPeriod(SubscriptionModel sub) {
     final line = _catalogShown?.line(sub.lineId);
-    final next = (line?.options ?? const <SaleOption>[]).where((o) => o.isUpcoming).toList();
-    if (line == null || next.isEmpty) return const SizedBox.shrink();
-    return Container(
-      key: const Key('next-period'),
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-          color: const Color(0xFFEEF0FF),
-          borderRadius: BorderRadius.circular(18)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(LucideIcons.calendarPlus, color: Color(0xFF3F51B5)),
-          const SizedBox(width: 9),
-          Expanded(
-              child: Text('اشترك في الفترة القادمة من الآن',
-                  style: AppTextStyles.titleMedium
-                      .copyWith(color: const Color(0xFF3F51B5)))),
-        ]),
-        const SizedBox(height: 8),
-        for (final option in next)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => setState(() {
-                  _buyingFrom = SubscriptionDraft(
-                      companyId: line.companyId,
-                      lineId: line.id,
-                      stationId: line.station(sub.stationId)?.id,
-                      optionKey: option.key);
-                  _buying = true;
-                }),
-                child: Text('${option.title} · ${formatMoney(option.price)}'),
-              ),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  Widget _summaryLine(IconData icon, String label, String value, {Key? labelKey, Key? valueKey}) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Icon(icon, size: 16, color: const Color(0xFF00658D)),
-        const SizedBox(width: 8),
-        SizedBox(
-            width: 104,
-            child: Text(label,
-                key: labelKey,
-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary))),
-        Expanded(
-            child: Text(value,
-                key: valueKey,
-                style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600))),
-      ]);
-
-  Widget _statusMessage(
-          {required IconData icon,
-          required String title,
-          required String message,
-          required Color color,
-          required Color background}) =>
-      Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-            color: background, borderRadius: BorderRadius.circular(17)),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: color, size: 21),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(title,
-                    style: AppTextStyles.titleMedium.copyWith(color: color)),
-                const SizedBox(height: 4),
-                Text(message,
-                    style: AppTextStyles.bodyMedium.copyWith(color: color))
-              ]))
-        ]),
-      );
-
-  /// The company's payment methods: the student picks the one they used and
-  /// its transfer details appear, ready to copy. (The amount is in the summary
-  /// above and the instructions are in the notes below.)
-  Widget _paymentMethodsCard(SubscriptionModel sub) {
-    final companyId = sub.companyId;
-    if (companyId == null) return const SizedBox.shrink();
-    return ref.watch(paymentMethodsProvider(companyId)).when(
-          loading: () => const Skeleton(
-              child: SkeletonCard(
-                  child: Column(children: [Bone(height: 46, radius: 14), SizedBox(height: 8), Bone(height: 46, radius: 14)]))),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (methods) {
-            if (methods.isEmpty) return const SizedBox.shrink();
-            return Container(
-              key: const Key('payment-methods'),
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE4EDF3))),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  const Icon(LucideIcons.wallet, color: Color(0xFF00658D)),
-                  const SizedBox(width: 9),
-                  Expanded(child: Text('اختر وسيلة الدفع', style: AppTextStyles.titleMedium)),
+    if (line == null) {
+      if (!_catalogLoading) return const [];
+      // Its shape while what is on sale is read for the first time.
+      return const [
+        Skeleton(
+          child: SkeletonCard(
+            padding: EdgeInsetsDirectional.all(BasakSpace.s18),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Bone(width: 150, height: 16),
+                  SizedBox(height: BasakSpace.s10),
+                  Bone(width: 190, height: 12),
                 ]),
-                const SizedBox(height: 10),
-                for (final m in methods) _paymentMethodTile(m),
-              ]),
-            );
-          },
-        );
-  }
-
-  Widget _paymentMethodTile(PaymentMethodModel m) {
-    final selected = _paymentMethodId == m.id;
-    final icon = switch (m.type) {
-      'instapay' => LucideIcons.wallet,
-      'vodafone_cash' => LucideIcons.smartphone,
-      _ => LucideIcons.landmark,
-    };
-    return GestureDetector(
-      onTap: () => setState(() => _paymentMethodId = m.id),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFFEAF4FB) : const Color(0xFFF7FAFC),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: selected ? const Color(0xFF00658D) : const Color(0xFFE6EEF3), width: selected ? 1.5 : 1),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(selected ? LucideIcons.circleCheck : LucideIcons.circle,
-                size: 18, color: selected ? const Color(0xFF00658D) : AppColors.textSecondary),
-            const SizedBox(width: 8),
-            Icon(icon, size: 18, color: const Color(0xFF00658D)),
-            const SizedBox(width: 6),
-            Expanded(child: Text(m.displayName, style: AppTextStyles.titleMedium)),
-            Text(m.typeLabel, style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          ]),
-          if (selected) ...[
-            const SizedBox(height: 8),
-            if (m.type == 'bank' && m.bankName != null) _payLine('البنك', m.bankName!, copy: false),
-            _payLine(
-                switch (m.type) { 'instapay' => 'عنوان إنستاباي', 'vodafone_cash' => 'رقم المحفظة', _ => 'رقم الحساب' },
-                m.payTo),
-            if (m.type == 'bank' && m.iban != null) _payLine('IBAN', m.iban!),
-            if (m.accountHolder != null) _payLine('بإسم', m.accountHolder!, copy: false),
-          ],
-        ]),
-      ),
-    );
-  }
-
-  /// "label: value" with the value right beside its label (a number or an
-  /// address reads left to right but still sits next to the label).
-  Widget _payLine(String label, String value, {bool copy = true}) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Row(children: [
-          Text('$label: ', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          Flexible(
-            child: Text(value,
-                textDirection: copy ? TextDirection.ltr : null,
-                textAlign: TextAlign.right,
-                style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700)),
-          ),
-          if (copy)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: 'نسخ',
-              icon: const Icon(LucideIcons.copy, size: 16, color: Color(0xFF00658D)),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: value));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم النسخ')));
-              },
-            ),
-        ]),
-      );
-
-  Widget _receiptUploadCard(
-      SubscriptionModel sub, int attempts, ReceiptModel? latest) {
-    final canUpload = attempts < 5 && !sub.isPendingReview;
-    // The chosen image belongs to one subscription's card.
-    final draft = _draft?.attempt.subscriptionId == sub.id ? _draft : null;
-    final phase = draft == null ? null : _phase;
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x0A17384A), blurRadius: 14, offset: Offset(0, 4))
-          ]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(LucideIcons.receiptText, color: Color(0xFF00658D)),
-          const SizedBox(width: 9),
-          Expanded(
-              child: Text('إيصال التحويل', style: AppTextStyles.titleMedium)),
-          Text(
-              attempts >= 5
-                  ? 'اكتملت 5 محاولات'
-                  : sub.isPendingReview
-                      ? 'محاولة $attempts من 5'
-                      : 'محاولة ${attempts + 1} من 5',
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: AppColors.textSecondary))
-        ]),
-        if (phase == ReceiptPhase.done) ...[
-          const SizedBox(height: 12),
-          _receiptProgress(ReceiptPhase.done),
-        ] else if (latest != null && sub.isPendingReview) ...[
-          const SizedBox(height: 12),
-          Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFF0F6FA),
-                  borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [
-                const Icon(LucideIcons.fileCheck2, color: Color(0xFF07865A)),
-                const SizedBox(width: 9),
-                Expanded(
-                    child: Text(
-                        'تم استلام الإيصال — المحاولة ${latest.attemptNumber}',
-                        style: AppTextStyles.bodyMedium))
-              ])),
-        ] else if (draft != null) ...[
-          const SizedBox(height: 12),
-          ClipRRect(
-              borderRadius: BorderRadius.circular(13),
-              child: Image.file(File(draft.file.path),
-                  key: const Key('receipt-preview'),
-                  height: 190,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  // Decoded at the size it is shown, not at the photo's own.
-                  cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context))
-                      .round()
-                      .clamp(200, 1400),
-                  gaplessPlayback: true)),
-          const SizedBox(height: 8),
-          if (phase != null)
-            _receiptProgress(phase)
-          else
-            Text(draft.file.name,
-                style: AppTextStyles.labelSmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          TextButton.icon(
-              key: const Key('receipt-remove'),
-              onPressed: phase == null || phase == ReceiptPhase.preparing ? _removeReceipt : null,
-              icon: const Icon(LucideIcons.trash2, size: 17),
-              label: const Text('إزالة الصورة')),
-        ] else ...[
-          if (attempts >= 5) ...[
-            const SizedBox(height: 12),
-            Text('اكتملت المحاولات الخمس. تواصل مع الإدارة لمساعدتك.',
-                style: AppTextStyles.bodyMedium
-                    .copyWith(color: AppColors.textSecondary)),
-          ],
-          if (canUpload) ...[
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                  child: OutlinedButton.icon(
-                      onPressed: _sending ? null : () => _pickReceipt(ImageSource.gallery, sub.id),
-                      icon: const Icon(LucideIcons.image),
-                      label: const Text('اختيار صورة'))),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: OutlinedButton.icon(
-                      onPressed: _sending ? null : () => _pickReceipt(ImageSource.camera, sub.id),
-                      icon: const Icon(LucideIcons.camera),
-                      label: const Text('التقاط صورة')))
-            ]),
-          ],
-        ],
-        if (draft != null && phase != ReceiptPhase.done && !sub.isPendingReview) ...[
-          const SizedBox(height: 7),
-          SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                  key: const Key('receipt-send'),
-                  onPressed: phase != null
-                      ? null
-                      : () => _submitReceipt(sub.id,
-                          needsMethod: sub.companyId != null &&
-                              (ref.read(paymentMethodsProvider(sub.companyId!)).valueOrNull?.isNotEmpty ?? false)),
-                  icon: phase != null
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(LucideIcons.upload),
-                  label: Text(phase != null
-                      ? 'جارٍ الإرسال...'
-                      : 'إرسال الإيصال للمراجعة'))),
-        ],
-      ]),
-    );
-  }
-
-  /// Where the receipt is on its way: what is happening now, and for the
-  /// upload how much of the image has really been sent.
-  Widget _receiptProgress(ReceiptPhase phase) {
-    final done = phase == ReceiptPhase.done;
-    final label = switch (phase) {
-      ReceiptPhase.preparing => 'تجهيز الصورة…',
-      ReceiptPhase.uploading => 'رفع الصورة…',
-      ReceiptPhase.saving => 'إرسال الإيصال للمراجعة…',
-      ReceiptPhase.done => 'تم الإرسال',
-    };
-    // Only the upload has a measurable part; the other steps just run.
-    final sent = phase == ReceiptPhase.uploading ? _progress : null;
-    final color = done ? const Color(0xFF07865A) : const Color(0xFF00658D);
-    return Semantics(
-      liveRegion: true,
-      label: sent == null ? label : '$label ${(sent * 100).round()}%',
-      child: ExcludeSemantics(
-        child: Container(
-          key: Key('receipt-phase-${phase.name}'),
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-              color: done ? const Color(0xFFE7F8F0) : const Color(0xFFF0F6FA),
-              borderRadius: BorderRadius.circular(14)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(done ? LucideIcons.circleCheck : LucideIcons.upload, size: 18, color: color),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Text(label,
-                      style: AppTextStyles.bodyMedium.copyWith(color: color, fontWeight: FontWeight.w600))),
-              if (sent != null)
-                Text('${(sent * 100).round()}%',
-                    textDirection: TextDirection.ltr,
-                    style: AppTextStyles.labelSmall.copyWith(color: color, fontWeight: FontWeight.bold)),
-            ]),
-            if (!done) ...[
-              const SizedBox(height: 9),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                    value: sent,
-                    minHeight: 5,
-                    color: color,
-                    backgroundColor: const Color(0xFFD9E8F0)),
               ),
-            ],
-          ]),
+              SizedBox(width: BasakSpace.s12),
+              Bone(width: 76, height: 44, radius: BasakRadius.small),
+            ]),
+          ),
         ),
+      ];
+    }
+    final next = line.options.where((o) => o.isUpcoming).toList();
+    if (next.isEmpty) return const [];
+    return [
+      Column(
+        key: const Key('next-period'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < next.length; i++) ...[
+            if (i > 0) const SizedBox(height: BasakSpace.s10),
+            OfferCard(
+              title: '${next[i].title} متاح الآن',
+              subtitle: 'نفس الخط والمحطة · ${formatMoney(next[i].price)}',
+              actionLabel: 'اشترك',
+              onAction: () => _subscribe(
+                initial: SubscriptionDraft(
+                    companyId: line.companyId,
+                    lineId: line.id,
+                    stationId: line.station(sub.stationId)?.id,
+                    optionKey: next[i].key),
+                // A student who already holds a subscription is not offered a cash day ride.
+                allowDaily: false,
+              ),
+            ),
+          ],
+        ],
+      ),
+    ];
+  }
+
+  /// Nothing running: the last subscription, ended, and the same line and
+  /// station for the period now on sale — or, when that is not offered, a new
+  /// subscription from the start.
+  Widget _ended(SubscriptionModel last) {
+    final colors = context.colors;
+    final text = context.text;
+    final line = _catalogShown?.line(last.lineId);
+    final station = line?.station(last.stationId);
+    // The period that starts first; a single term before the two together.
+    final options = [...?line?.options]..sort((a, b) {
+        final byStart = a.startDate.compareTo(b.startDate);
+        return byStart != 0 ? byStart : a.endDate.compareTo(b.endDate);
+      });
+    final offer = station == null ? null : options.firstOrNull;
+    final paid = last.status == 'expired' || last.isActive;
+
+    return BasakCard(
+      radius: BasakRadius.sheet,
+      padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const StatusChip(BasakStatus.expired),
+              const SizedBox(width: BasakSpace.s12),
+              if (last.endDate != null)
+                Expanded(
+                  child: Text(ReceiptCard.day(last.endDate),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
+                ),
+            ],
+          ),
+          const SizedBox(height: BasakSpace.s16),
+          Text('انتهى ${last.periodName}', style: text.title),
+          if (!paid) Text('انتهى دون دفع', style: text.bodySmall.copyWith(color: colors.ink2)),
+          const SizedBox(height: BasakSpace.s16),
+          if (offer != null && line != null) ...[
+            OfferSummary(
+              caption: '${offer.title} · نفس الخط والمحطة',
+              value: '${line.name} · ${station!.name}',
+              money: formatMoney(offer.price),
+            ),
+            const SizedBox(height: BasakSpace.s16),
+            BasakButton(
+              key: const Key('renew'),
+              label: 'جدّد الاشتراك',
+              onPressed: () => _subscribe(
+                initial: SubscriptionDraft(
+                    companyId: line.companyId, lineId: line.id, stationId: station.id, optionKey: offer.key),
+                allowDaily: true,
+              ),
+            ),
+            const SizedBox(height: BasakSpace.s2),
+            SheetLink(
+              key: const Key('subscribe-again'),
+              label: 'اختر خطاً أو محطة أخرى',
+              onTap: () => _subscribe(allowDaily: true),
+            ),
+          ] else ...[
+            Text('لا يوجد اشتراك حالي', style: text.body.copyWith(color: colors.ink2)),
+            const SizedBox(height: BasakSpace.s16),
+            BasakButton(
+              key: const Key('subscribe-again'),
+              label: 'اشتراك جديد',
+              onPressed: () => _subscribe(allowDaily: true),
+            ),
+          ],
+        ],
       ),
     );
   }
 
+  // ── The past ───────────────────────────────────────────────────────
+
+  /// Past subscriptions as quiet rows, newest first: the latest two, then all
+  /// of them on request. A paid one opens its receipt.
+  Widget _history(List<SubscriptionModel> history) {
+    final shown = _allHistory ? history : history.take(_historyShown).toList();
+    final text = context.text;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.s4, BasakSpace.s8, BasakSpace.s4, BasakSpace.s10),
+          child: Text(history.length == 1 ? 'اشتراك سابق' : 'اشتراكات سابقة',
+              style: text.bodySmall.copyWith(color: context.colors.ink2, fontWeight: FontWeight.w500)),
+        ),
+        InfoRows(
+          rows: [
+            for (final old in shown)
+              InfoRow(
+                key: Key('sub-card-${old.id}'),
+                label: old.isDaily || old.academicYear == null
+                    ? old.periodName
+                    : '${old.periodName} ${old.academicYear}/${old.academicYear! + 1}',
+                caption: [
+                  old.status == 'expired' || old.isActive
+                      ? (old.endDate == null ? 'انتهى' : 'انتهى ${ReceiptCard.day(old.endDate)}')
+                      : 'انتهى دون دفع',
+                  if ((old.lineName ?? '').trim().isNotEmpty) old.lineName!.trim(),
+                ].join(' · '),
+                onTap: !old.isDaily && (old.status == 'expired' || old.isActive)
+                    ? () => ReceiptScreen.open(context, old.id)
+                    : null,
+              ),
+          ],
+          footer: history.length <= _historyShown || _allHistory
+              ? null
+              : BasakButton(
+                  key: const Key('history-all'),
+                  label: 'عرض كل الاشتراكات السابقة · ${history.length}',
+                  variant: BasakButtonVariant.quiet,
+                  size: BasakButtonSize.small,
+                  onPressed: () => setState(() => _allHistory = true),
+                ),
+        ),
+      ],
+    );
+  }
 }

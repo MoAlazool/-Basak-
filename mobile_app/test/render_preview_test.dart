@@ -94,21 +94,29 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    // The builder: the only company starts chosen, so it opens on the lines.
     await _open(tester, []);
-    await _shot(tester, '1-company');
-    await tap('company-c1');
-    await _shot(tester, '2-line');
+    await _shot(tester, '1-lines');
     await tap('line-l1');
-    await _shot(tester, '3-station');
     await tap('station-s2');
-    await _shot(tester, '4-period');
+    await _shot(tester, '2-station');
+    await tap('station-confirm');
+    await _shot(tester, '3-period');
     await tap('option-both');
+    await _shot(tester, '4-period-chosen');
+    await tester.ensureVisible(find.byKey(const Key('flow-review')));
+    await tap('flow-review');
     await _shot(tester, '5-review');
+    await tap('review-back');
 
-    await _open(tester, [fixtures.subscription('pending_payment')], height: 1150);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('InstaPay').first);
+    // Awaiting payment on the tab, then the pay page it opens.
+    await _open(tester, [fixtures.subscription('pending_payment')]);
+    await _shot(tester, '6-awaiting');
+    await tester.tap(find.text('ادفع الآن'));
+    tester.view.physicalSize = const Size(402 * 2, 1150 * 2);
     await _shot(tester, '6-payment');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
 
     SubscriptionModel sub(String id, String status, String code, String phase, String start, String end) =>
         SubscriptionModel.fromJson({
@@ -124,9 +132,9 @@ void main() {
     ];
     await _open(tester, history, doc: fixtures.receipt, height: 874);
     await _shot(tester, '7-history');
-    await tester.tap(find.byKey(const Key('sub-toggle-sub1')));
-    tester.view.physicalSize = const Size(402 * 2, 1500 * 2);
-    await _shot(tester, '8-expanded');
+    // The receipt is a row of the tab and a page of its own.
+    await tester.tap(find.byKey(const Key('receipt-row-sub1')));
+    await _shot(tester, '8-receipt');
   }, skip: _dir == null);
 
   // The card tab, framed as in the app: the floating tab bar over the page's bottom.

@@ -34,7 +34,8 @@ abstract class SubscriptionGateway {
 
 /// What ReceiptModel reads.
 const receiptColumns =
-    'id, subscription_id, image_url, status, rejection_reason, attempt_number, reviewed_by, created_at, reviewed_at';
+    'id, subscription_id, image_url, status, rejection_reason, attempt_number, reviewed_by, created_at, reviewed_at, '
+    'payment_method_id';
 
 class SupabaseSubscriptionGateway implements SubscriptionGateway {
   const SupabaseSubscriptionGateway();
