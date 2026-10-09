@@ -6,7 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 
-import '../theme/app_text_styles.dart';
+import '../ui/ui.dart';
 
 /// The one way a profile photo enters the app:
 ///
@@ -38,6 +38,14 @@ class ProfilePhoto {
       fullscreenDialog: true,
       builder: (_) => PhotoAdjustScreen(source: bytes),
     ));
+  }
+
+  /// Asks where the photo comes from ([PhotoSourceSheet]), then picks and
+  /// frames it. Null when the student backs out at any step.
+  static Future<Uint8List?> choose(BuildContext context) async {
+    final source = await PhotoSourceSheet.show(context);
+    if (source == null || !context.mounted) return null;
+    return pickAndAdjust(context, source);
   }
 
   /// The part of [image] inside [crop], scaled to a square JPEG.
@@ -93,6 +101,8 @@ class _PhotoAdjustScreenState extends State<PhotoAdjustScreen> {
   String? _error;
   bool _saving = false;
   double _placedFor = 0;
+  double _viewport = 0;
+  double _baseScale = 1;
 
   @override
   void initState() {
@@ -152,137 +162,189 @@ class _PhotoAdjustScreenState extends State<PhotoAdjustScreen> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تعذر حفظ الصورة. حاول مرة أخرى.')));
+        BasakToast.show(context, 'تعذر حفظ الصورة. حاول مرة أخرى.', kind: BasakToastKind.failure);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+    final text = context.text;
     final image = _image;
-    return Scaffold(
-      backgroundColor: const Color(0xFF0E1C26),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: Text('ضبط الصورة',
-            style: AppTextStyles.titleLarge.copyWith(color: Colors.white)),
-        leading: IconButton(
-          icon: const Icon(LucideIcons.x),
-          tooltip: 'إلغاء',
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: SafeArea(
-        child: _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(_error!,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.bodyMedium.copyWith(color: Colors.white)),
+    final cancel = _saving ? null : () => Navigator.of(context).pop();
+
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Scaffold(
+        backgroundColor: colors.scanPanel,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                BasakSpace.gutter, BasakSpace.s12, BasakSpace.gutter, BasakSpace.s16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: BasakSpace.tapTarget,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Semantics(
+                        header: true,
+                        child: Text('ضبط الصورة', style: text.headline.copyWith(color: colors.onInk)),
+                      ),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Tooltip(
+                          message: 'إلغاء',
+                          excludeFromSemantics: true,
+                          child: BasakPressable(
+                            onTap: cancel,
+                            child: Center(
+                              widthFactor: 1,
+                              child: Text('إلغاء',
+                                  style: text.body.copyWith(color: colors.onInk, fontWeight: FontWeight.w500)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              )
-            : image == null
-                ? const Center(child: CircularProgressIndicator(color: Colors.white))
-                : LayoutBuilder(builder: (context, constraints) {
-                    final viewport = (constraints.maxWidth - 32)
-                        .clamp(120.0, (constraints.maxHeight - 190).clamp(120.0, 520.0))
-                        .toDouble();
-                    // At zoom 1 the photo's shorter side exactly fills the circle.
-                    final baseScale = viewport / (image.width < image.height ? image.width : image.height);
-                    final shown = Size(image.width * baseScale, image.height * baseScale);
-                    _place(viewport, shown);
-                    return Column(children: [
-                      const SizedBox(height: 8),
-                      Text('حرّك الصورة وكبّرها حتى يظهر وجهك داخل الدائرة',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium
-                              .copyWith(color: const Color(0xFFB9CCD8))),
-                      const Spacer(),
-                      SizedBox(
-                        width: viewport,
-                        height: viewport,
-                        child: Stack(fit: StackFit.expand, children: [
-                          ClipRect(
-                            child: InteractiveViewer(
-                              transformationController: _controller,
-                              constrained: false,
-                              minScale: 1,
-                              maxScale: 5,
-                              child: SizedBox(
-                                width: shown.width,
-                                height: shown.height,
-                                child: RawImage(image: image, fit: BoxFit.fill),
-                              ),
-                            ),
-                          ),
-                          const IgnorePointer(child: CustomPaint(painter: _CircleMask())),
-                        ]),
-                      ),
-                      const Spacer(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: Row(children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Color(0xFF4A6272)),
-                                minimumSize: const Size.fromHeight(50),
-                              ),
-                              child: const Text('إلغاء'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _saving ? null : () => _confirm(viewport, baseScale),
-                              style: ElevatedButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(50)),
-                              icon: _saving
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.white))
-                                  : const Icon(LucideIcons.check, size: 18),
-                              label: const Text('اعتماد الصورة'),
-                            ),
-                          ),
-                        ]),
-                      ),
-                    ]);
-                  }),
+                Expanded(
+                  child: _error != null
+                      ? Center(
+                          child: Text(_error!,
+                              textAlign: TextAlign.center, style: text.body.copyWith(color: colors.onInk)),
+                        )
+                      : image == null
+                          ? Center(child: CircularProgressIndicator(color: colors.onInk))
+                          : LayoutBuilder(builder: (context, constraints) {
+                              // 300 on a 390 phone; smaller where the screen is short.
+                              final viewport = (constraints.maxWidth - 50)
+                                  .clamp(120.0, (constraints.maxHeight - 110).clamp(120.0, 520.0))
+                                  .toDouble();
+                              // At zoom 1 the photo's shorter side exactly fills the circle.
+                              final baseScale =
+                                  viewport / (image.width < image.height ? image.width : image.height);
+                              final shown = Size(image.width * baseScale, image.height * baseScale);
+                              _place(viewport, shown);
+                              _viewport = viewport;
+                              _baseScale = baseScale;
+                              return Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: viewport,
+                                    height: viewport,
+                                    child: Stack(fit: StackFit.expand, children: [
+                                      ClipRect(
+                                        child: InteractiveViewer(
+                                          transformationController: _controller,
+                                          constrained: false,
+                                          minScale: 1,
+                                          maxScale: 5,
+                                          child: SizedBox(
+                                            width: shown.width,
+                                            height: shown.height,
+                                            child: RawImage(image: image, fit: BoxFit.fill),
+                                          ),
+                                        ),
+                                      ),
+                                      IgnorePointer(
+                                        child: CustomPaint(
+                                          painter: _CircleMask(
+                                              outside: colors.scanPanel, ring: colors.onInk),
+                                        ),
+                                      ),
+                                    ]),
+                                  ),
+                                  const SizedBox(height: BasakSpace.s24),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 280),
+                                    child: Text('حرّك الصورة وكبّرها بإصبعين حتى يظهر وجهك داخل الدائرة.',
+                                        textAlign: TextAlign.center,
+                                        style: text.bodySmall.copyWith(color: colors.hairline)),
+                                  ),
+                                ],
+                              );
+                            }),
+                ),
+                if (_error == null)
+                  BasakButton(
+                    key: const Key('photo-confirm'),
+                    label: 'اعتماد الصورة',
+                    icon: LucideIcons.check,
+                    loading: _saving,
+                    onPressed: image == null ? null : () => _confirm(_viewport, _baseScale),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-/// Dims everything outside the circle the photo will be shown in.
+/// Covers everything outside the circle the photo will be shown in, so the
+/// circle is all there is to frame.
 class _CircleMask extends CustomPainter {
-  const _CircleMask();
+  final Color outside;
+  final Color ring;
+
+  const _CircleMask({required this.outside, required this.ring});
 
   @override
   void paint(Canvas canvas, Size size) {
     final circle = Rect.fromLTWH(0, 0, size.width, size.height);
     canvas.drawPath(
       Path.combine(PathOperation.difference, Path()..addRect(circle), Path()..addOval(circle)),
-      Paint()..color = const Color(0xB30E1C26),
+      Paint()..color = outside,
     );
     canvas.drawOval(
       circle.deflate(1),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
-        ..color = Colors.white,
+        ..color = ring,
     );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _CircleMask old) => old.outside != outside || old.ring != ring;
+}
+
+/// Camera or photos: the sheet every profile photo starts from.
+abstract final class PhotoSourceSheet {
+  static Future<ImageSource?> show(BuildContext context) => BasakSheet.show<ImageSource>(
+        context,
+        title: 'صورة الحساب',
+        largeTitle: true,
+        builder: (sheet) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: BasakSpace.s6),
+            SheetActionRow(
+              key: const Key('photo-source-camera'),
+              icon: LucideIcons.camera,
+              label: 'التقاط صورة بالكاميرا',
+              onTap: () => Navigator.pop(sheet, ImageSource.camera),
+            ),
+            const SizedBox(height: BasakSpace.s8),
+            SheetActionRow(
+              key: const Key('photo-source-gallery'),
+              icon: LucideIcons.image,
+              label: 'اختيار من الصور',
+              onTap: () => Navigator.pop(sheet, ImageSource.gallery),
+            ),
+            const SizedBox(height: BasakSpace.s20),
+            Text('صورة واضحة لوجهك: المشرف يطابقها عند الصعود.',
+                style: sheet.text.label.copyWith(color: sheet.colors.ink3, fontWeight: FontWeight.w400)),
+            const SizedBox(height: BasakSpace.s6),
+          ],
+        ),
+      );
 }

@@ -6,6 +6,7 @@ import 'core/sync/sync_hub.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/models/user_role.dart';
 import 'features/auth/presentation/login_register_screen.dart';
+import 'features/auth/presentation/wrong_role_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/notifications/presentation/notifications_host.dart';
 import 'features/onboarding/onboarding_controller.dart';
@@ -98,22 +99,7 @@ class AuthGate extends ConsumerWidget {
         return const SyncScope(child: SupervisorMainScreen());
       case UserRole.admin:
       case UserRole.unknown:
-        return Scaffold(
-          appBar: AppBar(title: const Text('باصك')),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('حساب الإدارة أو غير محدد الدور داخل تطبيق الموبايل'),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => ref.read(authStateProvider.notifier).signOut(),
-                  child: const Text('تسجيل الخروج'),
-                ),
-              ],
-            ),
-          ),
-        );
+        return const WrongRoleScreen();
     }
   }
 }

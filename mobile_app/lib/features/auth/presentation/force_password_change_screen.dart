@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:basak_mobile/core/ui/ui.dart';
+
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/basak_ui.dart';
 import '../providers/auth_provider.dart';
+import 'password_strength.dart';
 
 /// True when the Super Admin reset this student's password and the student has
 /// not chosen a new one yet (students.must_change_password, set server-side).
@@ -48,29 +48,36 @@ class ForcePasswordChangeScreen extends ConsumerStatefulWidget {
 class _ForcePasswordChangeScreenState extends ConsumerState<ForcePasswordChangeScreen> {
   final _password = TextEditingController();
   final _confirm = TextEditingController();
+  final _confirmFocus = FocusNode();
   bool _busy = false;
   bool _obscure = true;
-  String? _error;
+  String? _passwordError;
+  String? _confirmError;
+
+  /// What the server answered, when it is no single field's fault.
+  String? _failure;
 
   @override
   void dispose() {
     _password.dispose();
     _confirm.dispose();
+    _confirmFocus.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     // One change at a time, however fast the button is tapped.
     if (_busy) return;
-    setState(() => _error = null);
-    if (_password.text.length < 8) {
-      setState(() => _error = 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.');
-      return;
-    }
-    if (_password.text != _confirm.text) {
-      setState(() => _error = 'كلمتا المرور غير متطابقتين.');
-      return;
-    }
+    FocusScope.of(context).unfocus();
+    final passwordError = _password.text.length < passwordMinLength ? passwordTooShortMessage : null;
+    final confirmError = _password.text != _confirm.text ? passwordMismatchMessage : null;
+    setState(() {
+      _passwordError = passwordError;
+      _confirmError = passwordError == null ? confirmError : null;
+      _failure = null;
+    });
+    if (passwordError != null || confirmError != null) return;
+
     setState(() => _busy = true);
     try {
       final response = await SupabaseService.client.functions
@@ -87,107 +94,79 @@ class _ForcePasswordChangeScreenState extends ConsumerState<ForcePasswordChangeS
       if (!mounted) return;
       if (userId != null) ref.invalidate(studentProfileSummaryProvider(userId));
       if (!applied) ref.invalidate(mustChangePasswordProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('تم تغيير كلمة المرور. استخدمها في المرات القادمة.'),
-          backgroundColor: AppColors.success,
-        ));
-      }
+      if (mounted) BasakToast.show(context, 'تم تغيير كلمة المرور. استخدمها في المرات القادمة.');
     } on FunctionException catch (e) {
       if (!mounted) return;
       final details = e.details;
-      setState(() => _error = details is Map && details['error'] is String
+      setState(() => _failure = details is Map && details['error'] is String
           ? details['error'] as String
           : 'تعذر تغيير كلمة المرور. حاول مرة أخرى.');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => _failure = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    InputDecoration deco(String label) => InputDecoration(
-          labelText: label,
-          filled: true,
-          fillColor: Colors.white,
-          prefixIcon: const Icon(LucideIcons.lock),
-          suffixIcon: IconButton(
-            icon: Icon(_obscure ? LucideIcons.eye : LucideIcons.eyeOff),
-            onPressed: () => setState(() => _obscure = !_obscure),
+  Widget build(BuildContext context) => EntryPage(
+        // No way back: the app opens once a password is chosen.
+        trailing: const BrandLockup(),
+        title: 'اختر كلمة مرور جديدة',
+        subtitle: 'أعادت الإدارة تعيين كلمة مرورك. اختر واحدة جديدة لتكمل.',
+        actions: [
+          BasakButton(
+            key: const Key('force-password-save'),
+            label: 'حفظ كلمة المرور والمتابعة',
+            loading: _busy,
+            onPressed: _submit,
           ),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-        );
-    return Scaffold(
-      backgroundColor: BasakUi.canvas,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BasakUi.card(radius: 24),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: const BoxDecoration(color: Color(0xFFFFF4E5), shape: BoxShape.circle),
-                    child: const Icon(LucideIcons.keyRound, color: Color(0xFFB97812), size: 28),
-                  ),
-                  const SizedBox(height: 12),
-                  Text('اختر كلمة مرور جديدة',
-                      style: AppTextStyles.titleLarge.copyWith(color: BasakUi.ink)),
-                  const SizedBox(height: 6),
-                  Text('تم تعيين كلمة مرور مؤقتة لحسابك من الإدارة. لحماية حسابك اختر كلمة مرور جديدة قبل المتابعة.',
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.bodyMedium.copyWith(color: BasakUi.muted)),
-                  const SizedBox(height: 18),
-                  TextField(
-                    controller: _password,
-                    obscureText: _obscure,
-                    autofillHints: const [AutofillHints.newPassword],
-                    decoration: deco('كلمة المرور الجديدة (8 أحرف على الأقل)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _confirm,
-                    obscureText: _obscure,
-                    decoration: deco('تأكيد كلمة المرور'),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
-                  ],
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: BasakUi.teal,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                      onPressed: _busy ? null : _submit,
-                      child: _busy
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('حفظ كلمة المرور والمتابعة'),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => ref.read(authStateProvider.notifier).signOut(),
-                    child: const Text('تسجيل الخروج'),
-                  ),
-                ]),
+          EntryLink(
+            key: const Key('force-password-sign-out'),
+            label: 'تسجيل الخروج',
+            tone: EntryLinkTone.danger,
+            onTap: _busy ? null : () => ref.read(authStateProvider.notifier).signOut(),
+          ),
+        ],
+        children: [
+          AutofillGroup(
+            child: GroupedFields(children: [
+              GroupedField(
+                key: const Key('force-password-new'),
+                label: 'كلمة المرور الجديدة',
+                hint: '8 أحرف على الأقل',
+                controller: _password,
+                error: _passwordError,
+                ltr: true,
+                obscureText: _obscure,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.newPassword],
+                trailing: PasswordEye(hidden: _obscure, onTap: () => setState(() => _obscure = !_obscure)),
+                onChanged: (_) {
+                  if (_passwordError != null) setState(() => _passwordError = null);
+                },
+                onSubmitted: (_) => _confirmFocus.requestFocus(),
               ),
-            ),
+              GroupedField(
+                key: const Key('force-password-confirm'),
+                label: 'تأكيد كلمة المرور',
+                hint: 'أعد كتابتها',
+                controller: _confirm,
+                focusNode: _confirmFocus,
+                error: _confirmError,
+                ltr: true,
+                obscureText: _obscure,
+                textInputAction: TextInputAction.done,
+                autofillHints: const [AutofillHints.newPassword],
+                onChanged: (_) {
+                  if (_confirmError != null) setState(() => _confirmError = null);
+                },
+                onSubmitted: (_) => _submit(),
+              ),
+            ]),
           ),
-        ),
-      ),
-    );
-  }
+          if (_failure != null) InlineError(message: _failure!),
+        ],
+      );
 }

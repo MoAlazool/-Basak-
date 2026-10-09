@@ -159,6 +159,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String university,
     required String college,
     required String password,
+    String? specialisation,
     Uint8List? profileImageBytes,
     String? profileImageExtension,
   }) async {
@@ -170,6 +171,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         university: university,
         college: college,
         password: password,
+        specialisation: specialisation,
         profileImageBytes: profileImageBytes,
         profileImageExtension: profileImageExtension,
       );
