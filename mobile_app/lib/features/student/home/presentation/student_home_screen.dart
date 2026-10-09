@@ -750,7 +750,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               );
             }).toList(),
           ),
-        CheckboxListTile.adaptive(
+        // Its own Material: a ListTile paints its ink on the nearest one, and
+        // the card around it is a plain decorated box.
+        Material(
+          type: MaterialType.transparency,
+          child: CheckboxListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           dense: true,
           controlAffinity: ListTileControlAffinity.leading,
@@ -762,6 +766,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           activeColor: _teal,
           title: Text('لا أريد الركوب في رحلة العودة',
               style: AppTextStyles.labelSmall.copyWith(color: _ink)),
+        ),
         ),
         if (_isRidingToday) ...[
           Container(

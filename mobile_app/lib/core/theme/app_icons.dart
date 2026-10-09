@@ -8,8 +8,10 @@ import 'package:flutter/widgets.dart';
 /// lucide_icons.dart. Unused glyphs are tree-shaken out of release builds.
 abstract final class LucideIcons {
   static const IconData alertTriangle = IconData(57747, fontFamily: 'Lucide');
+  static const IconData arrowDown = IconData(57410, fontFamily: 'Lucide');
   static const IconData arrowLeft = IconData(57416, fontFamily: 'Lucide');
   static const IconData arrowRight = IconData(57417, fontFamily: 'Lucide');
+  static const IconData arrowUp = IconData(57418, fontFamily: 'Lucide');
   static const IconData badgeCheck = IconData(57921, fontFamily: 'Lucide');
   static const IconData badgeHelp = IconData(58491, fontFamily: 'Lucide');
   static const IconData ban = IconData(57425, fontFamily: 'Lucide');
@@ -21,6 +23,7 @@ abstract final class LucideIcons {
   static const IconData building2 = IconData(58000, fontFamily: 'Lucide');
   static const IconData bus = IconData(57812, fontFamily: 'Lucide');
   static const IconData busFront = IconData(58619, fontFamily: 'Lucide');
+  static const IconData calendar = IconData(57443, fontFamily: 'Lucide');
   static const IconData calendarCheck2 = IconData(58040, fontFamily: 'Lucide');
   static const IconData calendarClock = IconData(58116, fontFamily: 'Lucide');
   static const IconData calendarDays = IconData(58041, fontFamily: 'Lucide');
@@ -42,6 +45,7 @@ abstract final class LucideIcons {
   static const IconData clockAlert = IconData(58922, fontFamily: 'Lucide');
   static const IconData copy = IconData(57502, fontFamily: 'Lucide');
   static const IconData creditCard = IconData(57514, fontFamily: 'Lucide');
+  static const IconData download = IconData(57522, fontFamily: 'Lucide');
   static const IconData externalLink = IconData(57529, fontFamily: 'Lucide');
   static const IconData eye = IconData(57530, fontFamily: 'Lucide');
   static const IconData eyeOff = IconData(57531, fontFamily: 'Lucide');
@@ -72,14 +76,18 @@ abstract final class LucideIcons {
   static const IconData receiptText = IconData(58796, fontFamily: 'Lucide');
   static const IconData refreshCw = IconData(57669, fontFamily: 'Lucide');
   static const IconData route = IconData(58686, fontFamily: 'Lucide');
+  static const IconData scan = IconData(57943, fontFamily: 'Lucide');
   static const IconData scanLine = IconData(57944, fontFamily: 'Lucide');
   static const IconData school = IconData(58339, fontFamily: 'Lucide');
   static const IconData search = IconData(57681, fontFamily: 'Lucide');
   static const IconData send = IconData(57682, fontFamily: 'Lucide');
   static const IconData settings = IconData(57684, fontFamily: 'Lucide');
+  static const IconData share2 = IconData(57686, fontFamily: 'Lucide');
   static const IconData shieldAlert = IconData(57854, fontFamily: 'Lucide');
   static const IconData shieldCheck = IconData(57855, fontFamily: 'Lucide');
   static const IconData smartphone = IconData(57699, fontFamily: 'Lucide');
+  static const IconData sparkles = IconData(58386, fontFamily: 'Lucide');
+  static const IconData star = IconData(57718, fontFamily: 'Lucide');
   static const IconData sunrise = IconData(57721, fontFamily: 'Lucide');
   static const IconData sunset = IconData(57722, fontFamily: 'Lucide');
   static const IconData switchCamera = IconData(57724, fontFamily: 'Lucide');
@@ -92,8 +100,8 @@ abstract final class LucideIcons {
   static const IconData userPlus = IconData(57762, fontFamily: 'Lucide');
   static const IconData userRound = IconData(58472, fontFamily: 'Lucide');
   static const IconData userRoundPlus = IconData(58476, fontFamily: 'Lucide');
-  static const IconData userX = IconData(57763, fontFamily: 'Lucide');
   static const IconData users = IconData(57764, fontFamily: 'Lucide');
+  static const IconData userX = IconData(57763, fontFamily: 'Lucide');
   static const IconData wallet = IconData(57860, fontFamily: 'Lucide');
   static const IconData wifiOff = IconData(57775, fontFamily: 'Lucide');
   static const IconData x = IconData(57778, fontFamily: 'Lucide');

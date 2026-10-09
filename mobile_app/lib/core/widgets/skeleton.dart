@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/tokens.dart';
+
 /// Placeholders shown only on a true first load, when nothing is saved yet.
 /// Each one has the shape of the screen it stands in for, so nothing jumps
 /// when the data arrives. (With saved data, the data itself is shown at once
@@ -12,16 +14,16 @@ class Bone extends StatelessWidget {
   final double radius;
   final Color color;
 
-  const Bone({super.key, this.width, this.height = 12, this.radius = 8, this.color = const Color(0xFFE4EDF2)});
+  const Bone({super.key, this.width, this.height = 12, this.radius = 8, this.color = BasakPalette.sunken});
 
-  const Bone.circle(double size, {super.key, this.color = const Color(0xFFE4EDF2)})
+  const Bone.circle(double size, {super.key, this.color = BasakPalette.sunken})
       : width = size,
         height = size,
         radius = 999;
 
   @override
   Widget build(BuildContext context) => Container(
-      width: width, height: height, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius)));
+      width: width, height: height, decoration: BoxDecoration(color: color, borderRadius: BasakRadius.all(radius)));
 }
 
 /// Makes the bones under it breathe, and tells screen readers the page is loading.
@@ -37,7 +39,7 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
   // Still under `flutter test`: an endless animation would never settle.
   static const _animate = !bool.fromEnvironment('FLUTTER_TEST');
   late final AnimationController _pulse =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900), lowerBound: .55, upperBound: 1);
+      AnimationController(vsync: this, duration: BasakMotion.skeleton, lowerBound: .55, upperBound: 1);
 
   @override
   void initState() {
@@ -74,13 +76,13 @@ class SkeletonCard extends StatelessWidget {
       required this.child,
       this.padding = const EdgeInsets.all(16),
       this.radius = 20,
-      this.color = Colors.white});
+      this.color = BasakPalette.surface});
 
   @override
   Widget build(BuildContext context) => Container(
       width: double.infinity,
       padding: padding,
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius)),
+      decoration: BoxDecoration(color: color, borderRadius: BasakRadius.all(radius)),
       child: child);
 }
 
@@ -140,11 +142,11 @@ class HomeSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const onBlue = Color(0x33FFFFFF);
+    const onBlue = BasakPalette.inkRule;
     return Skeleton(
       child: Column(children: [
         SkeletonCard(
-          color: const Color(0xFF2F7FA3),
+          color: BasakPalette.ink,
           radius: 26,
           padding: const EdgeInsets.all(18),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [

@@ -1,38 +1,40 @@
 import 'package:flutter/material.dart';
 
-/// Centralized Design Palette — Unified (Glass + Brand)
+import '../ui/tokens.dart';
+
+/// The old palette's names, kept so screens that are not rebuilt yet still
+/// compile. Each one now points at its successor in `core/ui/tokens.dart`;
+/// the class goes away with the last screen that uses it.
+@Deprecated('Read context.colors (core/ui/tokens.dart) instead')
 class AppColors {
   // Backgrounds
-  static const Color background = Color(0xFFF8FAFC);
-  static const Color surface = Colors.white;
+  static const Color background = BasakPalette.ground;
+  static const Color surface = BasakPalette.surface;
 
-  // Brand Primary (Navy & Teal — used in Theme)
-  static const Color primary = Color(0xFF1E3A8A); // Deep Navy Blue
-  static const Color secondary = Color(0xFF0D9488); // Teal
-  static const Color teal = Color(0xFF00658D);
-  static const Color ink = Color(0xFF17384A);
+  // Navy and the second teal are not in the product; teal is the action colour.
+  static const Color primary = BasakPalette.teal;
+  static const Color secondary = BasakPalette.teal;
+  static const Color teal = BasakPalette.teal;
+  static const Color ink = BasakPalette.ink;
 
-  // Baby Blue Accents (Glass)
+  // Baby blue leaves with the glass widgets that still draw with it.
   static const Color babyBlue = Color(0xFF7EC8E3);
-  static const Color babyBlueLight = Color(0xFFA8D8F0);
+  static const Color babyBlueLight = BasakPalette.sky;
   static const Color babyBlueUltraLight = Color(0xFFE0F2FE);
   static const Color babyBlueDark = Color(0xFF4FA8C7);
 
-  // Text Colors (Dark slate, never pure black)
-  static const Color textPrimary = Color(0xFF1E293B);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color textMuted = Color(0xFF94A3B8);
+  static const Color textPrimary = BasakPalette.ink;
+  static const Color textSecondary = BasakPalette.ink2;
+  static const Color textMuted = BasakPalette.ink3;
 
-  // Status & Feedback Colors
-  static const Color success = Color(0xFF10B981);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color error = Color(0xFFEF4444);
-  static const Color errorLight = Color(0xFFFEE2E2);
+  // Status: the text-safe tones
+  static const Color success = BasakPalette.success;
+  static const Color warning = BasakPalette.warning;
+  static const Color error = BasakPalette.danger;
+  static const Color errorLight = BasakPalette.dangerTint;
 
-  // Glassmorphic Properties
   static Color glassBorder = Colors.white.withOpacity(0.40);
 
-  // Blue-Tinted Soft Shadows (never flat gray)
   static List<BoxShadow> get softShadow => [
         BoxShadow(
           color: const Color(0xFF7EC8E3).withOpacity(0.12),
@@ -48,12 +50,5 @@ class AppColors {
         ),
       ];
 
-  static List<BoxShadow> get floatingBarShadow => [
-        BoxShadow(
-          color: const Color(0xFF7EC8E3).withOpacity(0.18),
-          blurRadius: 28,
-          spreadRadius: 2,
-          offset: const Offset(0, 10),
-        ),
-      ];
+  static List<BoxShadow> get floatingBarShadow => BasakShadow.floating;
 }
