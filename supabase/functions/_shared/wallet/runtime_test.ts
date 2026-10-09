@@ -6,7 +6,7 @@ import { type AppleConfig, deliverGoogle, loadAppleDevices, markDelivered, pushA
 import { fakeGoogleWallet, fakeImaging, STUDENT, testCard, testGoogleConfig } from './testing.ts';
 
 const avatar: Handlers['storage'] = (_bucket, method) => method === 'download' ? { data: new Blob(['photo-a']) } : {};
-const photoLink = /^https:\/\/project\.test\/functions\/v1\/wallet-photo\/([0-9a-f]{64})\.jpg$/;
+const photoLink = /^https:\/\/project\.test\/functions\/v1\/wallet-photo\/([0-9a-f]{64})-00658d\.jpg$/;
 // deno-lint-ignore no-explicit-any
 const photoOf = (object: any): string | undefined => object.imageModulesData[0]?.mainImage.sourceUri.uri;
 
@@ -19,8 +19,8 @@ Deno.test('an installed card with the same photo: no download, no database write
     await deliverGoogle(fake.client, config, card, { photo_token: 'a'.repeat(64), photo_version: 'v1', content_hash: 'old', dirty_at: 't' });
     assertEquals(fake.log, []);
     assertEquals(google.requests(), ['PATCH genericClass', 'PUT genericObject']);
-    // The link Google already has keeps working.
-    assertEquals(photoOf(google.calls[1].body), `https://project.test/functions/v1/wallet-photo/${'a'.repeat(64)}.jpg`);
+    // Same token, so the link works as before; it carries the card colour for the strip's sides.
+    assertEquals(photoOf(google.calls[1].body), `https://project.test/functions/v1/wallet-photo/${'a'.repeat(64)}-00658d.jpg`);
   } finally { google.restore(); }
 });
 
