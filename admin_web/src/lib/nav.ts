@@ -1,6 +1,6 @@
 import {
   BarChart3, Bell, Building2, Bus, CalendarRange, CreditCard, FileCheck2, GraduationCap, LayoutDashboard,
-  ShieldCheck, UserCheck, Users, UsersRound, Wallet, type LucideIcon,
+  ShieldCheck, Smartphone, UserCheck, Users, UsersRound, Wallet, type LucideIcon,
 } from 'lucide-react';
 import * as routes from './routes';
 
@@ -28,6 +28,7 @@ export const platformNav: NavItem[] = [
   { to: '/platform/admins', name: 'مديرو الشركات', short: 'المديرون', icon: ShieldCheck, preload: routes.CompanyAdminsPage.preload },
   { to: '/platform/universities', name: 'الجامعات والوجهات', short: 'الجامعات', icon: GraduationCap, preload: routes.UniversitiesPage.preload },
   { to: '/platform/defaults', name: 'الإعدادات الافتراضية', short: 'الافتراضي', icon: CalendarRange, preload: routes.PlatformDefaultsPage.preload },
+  { to: '/platform/app-versions', name: 'إصدارات التطبيق', short: 'الإصدارات', icon: Smartphone, preload: routes.AppVersionsPage.preload },
 ];
 
 /** One company's workspace. Every page under it shows that company only. */

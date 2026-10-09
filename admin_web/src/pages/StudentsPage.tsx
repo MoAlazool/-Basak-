@@ -7,7 +7,7 @@ import { keys, refreshIfNotUpdated, STALE, unwrap, usePageData, VARIANT_GC } fro
 import { type LineOption, type StationOption, type TripOption } from '../lib/lineOptions';
 import { activeStations, switchesKey, useLineOptions } from '../lib/reference';
 import { useSignedUrls } from '../lib/signedUrls';
-import { fetchStudentsPage, withoutStudent, withSubscription, type StudentRow, type StudentsPageAnswer, type StudentSubscription } from '../lib/students';
+import { fetchStudentsPage, studyLine, withoutStudent, withSubscription, type StudentRow, type StudentsPageAnswer, type StudentSubscription } from '../lib/students';
 import { forgetApplied, rememberApplied } from '../lib/recentChanges';
 import { useGuard } from '../lib/guard';
 import { hhmm } from '../lib/time';
@@ -543,7 +543,7 @@ export const StudentsPage: React.FC = () => {
                         <span className="inline-flex items-center gap-1.5">
                           <GraduationCap className="h-3.5 w-3.5 text-blue-500" />
                           {s.university || 'غير محدد'}
-                          <span className="block pr-5 text-slate-400">{s.college || 'الكلية غير محددة'}</span>
+                          <span className="block pr-5 text-slate-400">{studyLine(s.college, s.specialisation, 'الكلية غير محددة')}</span>
                         </span>
                       </td>
                       <td className="p-4">

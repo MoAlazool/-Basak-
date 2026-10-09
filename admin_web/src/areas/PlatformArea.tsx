@@ -5,7 +5,7 @@ import { SkeletonPage } from '../components/Skeleton';
 import { platformNav } from '../lib/nav';
 import { usePlatformSync } from '../lib/sync';
 import {
-  AllCompaniesPage, AllStudentsPage, CompanyAdminsPage, PlatformDefaultsPage, PlatformNotificationsPage,
+  AllCompaniesPage, AllStudentsPage, AppVersionsPage, CompanyAdminsPage, PlatformDefaultsPage, PlatformNotificationsPage,
   PlatformOverviewPage, UniversitiesPage,
 } from '../lib/routes';
 
@@ -24,6 +24,7 @@ export const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) =
           <Route path="admins" element={<CompanyAdminsPage />} />
           <Route path="universities" element={<UniversitiesPage />} />
           <Route path="defaults" element={<PlatformDefaultsPage />} />
+          <Route path="app-versions" element={<AppVersionsPage />} />
           <Route path="*" element={<Navigate to="/platform" replace />} />
         </Routes>
       </Suspense>

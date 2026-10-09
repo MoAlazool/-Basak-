@@ -12,6 +12,8 @@ export interface StudentSubscription {
 /** An active member of the company with their subscriptions to it. */
 export interface StudentRow {
   id: string; phone: string; full_name: string; university: string; college: string;
+  /** The student's specialisation (department), read-only here. Absent from an older database. */
+  specialisation?: string | null;
   profile_image_url: string | null; created_at: string;
   subscriptions: StudentSubscription[];
 }
@@ -49,4 +51,14 @@ export function withSubscription(page: StudentsPageAnswer | undefined, subscript
 export function withoutStudent(page: StudentsPageAnswer | undefined, studentId: string): StudentsPageAnswer | undefined {
   if (!page || !page.rows.some((student) => student.id === studentId)) return page;
   return { ...page, rows: page.rows.filter((student) => student.id !== studentId) };
+}
+
+/**
+ * What the dashboard shows under a student's university: the college, then the
+ * specialisation when the student gave one ("الهندسة • مدني"). A college never
+ * chosen is stored as 'غير محدد' and shown as `none`.
+ */
+export function studyLine(college: string | null | undefined, specialisation: string | null | undefined, none = ''): string {
+  const parts = [college, specialisation].map((part) => (part ?? '').trim()).filter((part) => part && part !== 'غير محدد');
+  return parts.length ? parts.join(' • ') : none;
 }

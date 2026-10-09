@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FileCheck, Check, X, Eye, AlertOctagon, Clock, Building2, MapPin, Phone, GraduationCap, Search } from 'lucide-react';
 import { RECEIPTS_BUCKET, type PendingReceiptRow } from '../lib/pendingReceipts';
+import { studyLine } from '../lib/students';
 import { resignPath, useSignedUrls } from '../lib/signedUrls';
 import { notifyError } from '../lib/toasts';
 import { useGuard } from '../lib/guard';
@@ -212,7 +213,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                         <div className="min-w-0 space-y-0.5">
                           <p className="font-bold text-[#1F2937] leading-tight">{row.studentName}</p>
                           <p className="flex items-center gap-1 text-[11.5px] text-[#5B6B7A]" dir="rtl"><Phone className="h-3 w-3" /><span dir="ltr">{row.studentPhone}</span></p>
-                          <p className="flex items-center gap-1 text-[11.5px] text-[#5B6B7A]"><GraduationCap className="h-3 w-3" />{row.university}{row.college ? ` • ${row.college}` : ''}</p>
+                          <p className="flex items-center gap-1 text-[11.5px] text-[#5B6B7A]"><GraduationCap className="h-3 w-3" />{row.university}{studyLine(row.college, row.specialisation) ? ` • ${studyLine(row.college, row.specialisation)}` : ''}</p>
                         </div>
                       </div>
                     </td>

@@ -19,6 +19,8 @@ export interface PendingReceiptRow {
   studentPhone: string;
   university: string;
   college: string;
+  /** The student's specialisation (department); empty when they gave none. */
+  specialisation: string;
   companyId: string;
   companyName: string;
   lineName: string;
@@ -82,7 +84,10 @@ export interface PendingReceipts { rows: PendingReceiptRow[]; hasMore: boolean }
 export interface ReceiptAnswerRow {
   id: string; image_url: string | null; attempt_number: number | null; created_at: string; amount: number | string | null;
   subscription_id: string; student_id: string | null; student_name: string | null; student_phone: string | null;
-  university: string | null; college: string | null; company_id: string | null; company_name: string | null;
+  university: string | null; college: string | null;
+  /** Absent from a database that has not been given the column yet. */
+  specialisation?: string | null;
+  company_id: string | null; company_name: string | null;
   line_name: string | null; station_name: string | null; departure_time: string | null; return_time: string | null;
   subscription_type: string | null; period_label: string | null; period_start: string | null; period_end: string | null;
   period_phase: string | null; price: number | string | null;
@@ -100,6 +105,7 @@ export function toPendingRow(row: ReceiptAnswerRow): PendingReceiptRow {
     studentPhone: row.student_phone || '—',
     university: row.university || '—',
     college: row.college && row.college !== 'غير محدد' ? row.college : '',
+    specialisation: (row.specialisation ?? '').trim(),
     companyId: row.company_id || '',
     companyName: row.company_name || '—',
     lineName: row.line_name || '—',

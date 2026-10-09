@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, queryClient, STALE, unwrap, usePageData } from '../lib/query';
@@ -8,6 +8,7 @@ import {
 import { rememberApplied } from '../lib/recentChanges';
 import { useGuard } from '../lib/guard';
 import { clockLabel, hhmm } from '../lib/time';
+import { BUS_CAPACITY_MAX, capacityText, parseBusCapacity } from '../lib/lineCapacity';
 import { notifyError } from '../lib/toasts';
 import { SkeletonCards } from '../components/Skeleton';
 import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
@@ -361,6 +362,24 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
   const [gap, setGap] = useState('10');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Seats on one bus of this line. Read apart from the line's own lookup and saved on its own
+  // (set_line_bus_capacity), so a database that does not have the column yet does not break this
+  // form: the field then stays closed and nothing is sent.
+  const [capacity, setCapacity] = useState('');
+  const [savedCapacity, setSavedCapacity] = useState<number | null>(null);
+  const [capacityKnown, setCapacityKnown] = useState(!initial.id);
+  useEffect(() => {
+    if (!initial.id) return undefined;
+    let open = true;
+    void supabase.from('lines').select('bus_capacity').eq('id', initial.id).maybeSingle().then(({ data, error: readError }) => {
+      if (!open || readError) return;
+      const value = (data as { bus_capacity: number | null } | null)?.bus_capacity ?? null;
+      setSavedCapacity(value);
+      setCapacity(capacityText(value));
+      setCapacityKnown(true);
+    });
+    return () => { open = false; };
+  }, [initial.id]);
 
   const patch = (p: Partial<LineDraft>) => setD((cur) => ({ ...cur, ...p }));
 
@@ -438,6 +457,8 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
     const noPrice = SALE_OPTIONS.find((o) => d.prices[o].enabled && priceOf(o) <= 0);
     if (noPrice) { setError(`اكتب سعر «${optionName[noPrice]}» أو عطّله.`); return; }
+    const seats = parseBusCapacity(capacity);
+    if (!seats.ok) { setError(seats.message); return; }
     const noReturnTime = d.trips.find((t) => t.direction === 'return' && !t.start_time);
     if (noReturnTime) { setTab('return'); setError('حدد موعد تحرك كل رحلة عودة من الجامعة.'); return; }
     const noStops = d.trips.find((t) => t.direction === 'departure' && !Object.values(t.times).some(Boolean));
@@ -484,11 +505,17 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     const { error: priceError } = await supabase.from('line_period_prices').upsert(
       SALE_OPTIONS.map((o) => ({ line_id: lineId as string, option: o, price: priceOf(o), is_enabled: d.prices[o].enabled })),
       { onConflict: 'line_id,option' });
+    // Only when it was changed: an untouched field costs no request.
+    const capacityError = capacityKnown && seats.value !== savedCapacity
+      ? (await supabase.rpc('set_line_bus_capacity', { p_line_id: lineId as string, p_capacity: seats.value })).error
+      : null;
+    if (capacityKnown && !capacityError) setSavedCapacity(seats.value);
     setSaving(false);
     // The page reads the saved line once (below, through onSaved). The rows it already knew
     // announce their change too; that announcement does not read the lines a second time.
     rememberApplied([lineId as string, ...d.stations.map((s) => s.id), ...d.trips.map((t) => t.id)], ['lines', 'lineNames', 'periods']);
     if (priceError) setError('تم حفظ الخط لكن تعذر حفظ الأسعار: ' + priceError.message);
+    else if (capacityError) setError('تم حفظ الخط لكن تعذر حفظ عدد مقاعد الباص: ' + capacityError.message);
     else onSaved();
   };
 
@@ -568,6 +595,12 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
                 <input type="number" min={0} value={offered.daily ? d.price_daily : 0} disabled={!offered.daily}
                   onChange={(e) => patch({ price_daily: e.target.value })} className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
                 {!offered.daily && <span className="mt-1 block text-[11px] font-normal text-slate-400">الاشتراك اليومي معطّل من الإعدادات.</span>}
+              </label>
+              <label className="text-xs font-semibold text-slate-500">عدد مقاعد الباص (اختياري)
+                <input type="number" min={1} max={BUS_CAPACITY_MAX} step={1} value={capacity} disabled={!capacityKnown}
+                  onChange={(e) => setCapacity(e.target.value)} placeholder="مثال: 50"
+                  className={`mt-1 ${input} disabled:bg-slate-100 disabled:text-slate-400`} />
+                <span className="mt-1 block text-[11px] font-normal text-slate-400">يظهر للمشرف في التطبيق ليعرف كم باصاً تحتاج كل رحلة.</span>
               </label>
             </div>
           </section>
