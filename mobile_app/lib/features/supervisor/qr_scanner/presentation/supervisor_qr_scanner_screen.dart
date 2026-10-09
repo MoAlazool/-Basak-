@@ -12,6 +12,7 @@ import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../data/supervisor_repository.dart';
 import '../../models/supervisor_models.dart';
+import '../../trips/presentation/supervisor_trips_screen.dart' show tripManifestProvider;
 import '../models/scanned_student_details.dart';
 
 /// Scan a student's QR, verify identity + subscription and record the check-in
@@ -52,10 +53,16 @@ class _SupervisorQrScannerScreenState extends ConsumerState<SupervisorQrScannerS
       final result = await ref
           .read(supervisorRepoProvider)
           .checkIn(rawValue, direction: _direction, tripId: widget.tripId);
+      // Every scan is in the month's log. Read again when that page is opened.
+      ref.invalidate(supervisorMonthlySummaryProvider);
       if (result.outcome == CheckInOutcome.checkedIn) {
         _sessionCheckIns++;
         HapticFeedback.mediumImpact();
+        // The day's numbers and the trip lists show the check-in. This is
+        // their one refresh: the server's announcement of this scan is not
+        // acted on again, nor is leaving the scanner.
         ref.invalidate(supervisorDashboardProvider);
+        ref.invalidate(tripManifestProvider);
       } else {
         HapticFeedback.heavyImpact();
       }

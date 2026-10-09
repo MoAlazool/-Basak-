@@ -296,8 +296,43 @@ class OfflineCache {
     await Future.wait([for (final key in keys) _storage.delete(key: key)]);
   }
 
+  /// Saved reads named after a day (a week's ride votes, a day's trip lists and
+  /// rider counts) are of no use once that day is long gone, and a new one is
+  /// written every day: without this they would pile up on the device for as
+  /// long as the account stays signed in. Removes those older than [keep],
+  /// and what earlier versions of the app saved under names no longer read.
+  static Future<void> prune({DateTime? now, Duration keep = const Duration(days: 14)}) async {
+    final cutoff = (now ?? DateTime.now()).subtract(keep);
+    final day = RegExp(r'\d{4}-\d{2}-\d{2}');
+    bool stale(String key) {
+      if (!key.startsWith(_dataPrefix)) return false;
+      // basak.offline.data.{user id}.{name}
+      final dot = key.indexOf('.', _dataPrefix.length);
+      if (dot < 0) return false;
+      final name = key.substring(dot + 1);
+      if (name == 'student_pass' ||
+          name.startsWith('ride.range.') ||
+          name.startsWith('ride.details.') ||
+          name.startsWith('ride.status.')) {
+        return true; // read by earlier versions only
+      }
+      if (!name.startsWith('ride.') && !name.startsWith('rider_counts.') && !name.startsWith('supervisor.manifest.')) {
+        return false;
+      }
+      final days = [for (final match in day.allMatches(name)) DateTime.tryParse(match.group(0)!)].whereType<DateTime>();
+      return days.isNotEmpty && days.last.isBefore(cutoff);
+    }
+
+    try {
+      await deleteWhere(stale);
+    } catch (_) {
+      // A locked keystore: next time.
+    }
+  }
+
   /// Lookups are kept per supervisor: on a shared phone, another supervisor
-  /// (possibly of another company) never reads what this one scanned.
+  /// (possibly of another company) never reads what this one scanned. They go
+  /// with everything else on sign-out ([clearAll]).
   static Future<void> saveStudentLookup(
       String supervisorId, String qrValue, Map<String, dynamic> details) async {
     await _storage.write(
@@ -312,16 +347,6 @@ class OfflineCache {
   static Future<Map<String, dynamic>?> readStudentLookup(
           String supervisorId, String qrValue) async =>
       _decode(await _safeRead(_lookupKey(supervisorId, qrValue)));
-
-  /// Removes every cached lookup. Called on sign-out, so nothing a supervisor
-  /// saw offline stays on the device for the next account.
-  static Future<void> clearStudentLookups() async {
-    try {
-      await deleteWhere((key) => key.startsWith(_studentLookupPrefix));
-    } catch (_) {
-      // A locked keystore must never block signing out.
-    }
-  }
 
   static String _lookupKey(String supervisorId, String qrValue) =>
       '$_studentLookupPrefix$supervisorId.${_safeKey(qrValue)}';

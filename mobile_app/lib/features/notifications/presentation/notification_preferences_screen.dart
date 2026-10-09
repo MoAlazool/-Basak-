@@ -7,8 +7,6 @@ import '../../../core/theme/app_icons.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/basak_ui.dart';
 import '../../../core/widgets/skeleton.dart';
-import '../../auth/models/user_role.dart';
-import '../../auth/providers/auth_provider.dart';
 import '../data/notification_preferences.dart';
 import '../data/notifications_repository.dart';
 import '../push/notification_platform.dart';
@@ -17,8 +15,9 @@ import '../push/push_providers.dart';
 import 'notification_style.dart';
 import 'push_permission_sheet.dart';
 
-/// Which pushes the user wants, and whether this phone can show them at all.
-/// The in-app inbox is not affected by anything here.
+/// Which pushes a supervisor wants, and whether this phone can show them at
+/// all. The in-app inbox is not affected by anything here. (Students have no
+/// switches: their Notification Center opens without the settings button.)
 class NotificationPreferencesScreen extends ConsumerStatefulWidget {
   const NotificationPreferencesScreen({super.key});
 
@@ -35,6 +34,7 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
   /// The switch moves at once; if the server refuses, it moves back and the
   /// reason is shown.
   Future<void> _change(Future<void> Function(NotificationPreferencesNotifier) change) async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
       await change(ref.read(notificationPreferencesProvider.notifier));
@@ -54,7 +54,6 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
   Widget build(BuildContext context) {
     final async = ref.watch(notificationPreferencesProvider);
     final preferences = async.valueOrNull;
-    final isStudent = ref.watch(authStateProvider.select((s) => s.role)) == UserRole.student;
 
     return Scaffold(
       backgroundColor: BasakUi.canvas,
@@ -119,19 +118,6 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
                         : null,
                   ),
               ]),
-              if (isStudent) ...[
-                const BasakSectionTitle('تذكيرات التطبيق'),
-                _card([
-                  _switch(
-                    icon: LucideIcons.calendarClock,
-                    title: notificationCategoryLabel(NotificationCategory.reminder),
-                    subtitle: 'يذكّرك التطبيق بتأكيد حضورك قبل قفل التصويت',
-                    value: preferences.allows(NotificationCategory.reminder),
-                    onChanged: (value) =>
-                        _change((n) => n.setCategory(NotificationCategory.reminder, value)),
-                  ),
-                ]),
-              ],
             ],
             const SizedBox(height: 18),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

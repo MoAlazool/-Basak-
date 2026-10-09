@@ -103,8 +103,6 @@ class AppNotification {
   static String? _text(Object? value) =>
       value is String && value.trim().isNotEmpty ? value : null;
 
-  bool get fromSupervisor => senderRole == 'supervisor';
-
   /// "المشرف أحمد" / "إدارة الشركة" / "باصك" for what the system sends itself.
   String get senderLabel => switch (senderRole) {
         'supervisor' => senderName.isEmpty ? 'المشرف' : 'المشرف $senderName',

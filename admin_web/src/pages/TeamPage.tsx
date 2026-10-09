@@ -6,6 +6,7 @@ import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { SkeletonTable } from '../components/Skeleton';
+import { useGuard } from '../lib/guard';
 
 interface TeamAdmin { id: string; email: string; full_name: string; created_at: string; }
 
@@ -27,9 +28,14 @@ export const TeamPage: React.FC = () => {
   const loading = page.loading;
   const load = page.reload;
 
-  const createAdmin = async (event: React.FormEvent) => {
+  const guard = useGuard();
+  const createAdmin = (event: React.FormEvent) => {
     event.preventDefault();
     if (form.password && form.password.length < 8) { setError('كلمة المرور يجب ألا تقل عن 8 أحرف.'); return; }
+    // A second submit while the first is on its way does nothing (the account must not be created twice).
+    void guard('create', submitAdmin);
+  };
+  const submitAdmin = async () => {
     setSubmitting(true);
     setError('');
     setNotice('');

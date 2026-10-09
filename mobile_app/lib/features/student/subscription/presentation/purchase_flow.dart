@@ -16,8 +16,15 @@ import '../models/subscription_draft.dart';
 import '../models/subscription_model.dart';
 
 /// Companies, lines, stations and the options on sale for the signed-in
-/// student. Kept for the session; refreshed by SyncHub when a line or its
-/// prices change, on app resume and by pull to refresh.
+/// student. It is the largest read of the app (every line that serves the
+/// student's university), so it is read only while something on screen shows
+/// it: the purchase flow, and the "next period" card of a running
+/// subscription. Nothing reads it at start or in the background.
+///
+/// Once read it is kept for the session. A change that can alter it (a line,
+/// its prices, the student's subscriptions, a return to the app) only marks it
+/// stale: it is read again at once when it is on screen, otherwise the next
+/// time it is shown. From its saved copy first, like everything else.
 final saleCatalogProvider = FutureProvider<SaleCatalog>((ref) {
   ref.watch(sessionUserIdProvider);
   return ref.watch(subscriptionRepoProvider).getSaleCatalog();
@@ -46,11 +53,13 @@ final subscriptionCreatorProvider =
         academicYear: request.academicYear,
       );
       echo.done(id: created.id, keep: const Duration(minutes: 1));
-      // The lists were updated from the answer (answered from memory); what
-      // is on sale and the card do change with a new subscription.
+      // The lists were updated from the answer (answered from memory), and
+      // the card follows them. What is on sale changes too, but the student
+      // is leaving the purchase flow: the screen marks the catalog stale once
+      // the flow is off screen (see SubscriptionScreen), so it is not read
+      // again for nobody.
       ref.invalidate(currentSubscriptionProvider);
       ref.invalidate(allSubscriptionsProvider);
-      ref.invalidate(saleCatalogProvider);
       ref.invalidate(studentQrProvider);
       return created;
     } catch (_) {
@@ -94,6 +103,11 @@ class PurchaseFlow extends ConsumerStatefulWidget {
   /// Daily cash rides are offered only to a student with no open subscription.
   final bool allowDaily;
 
+  /// Whether the flow is on screen now. While it is not (its tab is built in
+  /// the background, or another tab is in front) the catalog is not read or
+  /// listened to; what was last shown stays.
+  final bool visible;
+
   /// Leaves the flow without subscribing (shown when there is somewhere to
   /// go back to).
   final VoidCallback? onCancel;
@@ -103,6 +117,7 @@ class PurchaseFlow extends ConsumerStatefulWidget {
     super.key,
     this.initial = const SubscriptionDraft(),
     this.allowDaily = true,
+    this.visible = true,
     this.onCancel,
     required this.onCreated,
   });
@@ -115,6 +130,9 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   late SubscriptionDraft _draft = widget.initial;
   late DraftStep _step = widget.initial.firstOpenStep;
   bool _submitting = false;
+
+  /// The catalog as last shown (null: the flow has not been on screen yet).
+  AsyncValue<SaleCatalog>? _shown;
 
   void _go(DraftStep step) {
     if (_draft.canOpen(step)) setState(() => _step = step);
@@ -154,7 +172,11 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
 
   @override
   Widget build(BuildContext context) {
-    final catalogAsync = ref.watch(saleCatalogProvider);
+    // Watched only while on screen: behind another tab nothing is read, and a
+    // change that marks the catalog stale waits until the flow is shown again.
+    if (widget.visible) _shown = ref.watch(saleCatalogProvider);
+    final catalogAsync = _shown;
+    if (catalogAsync == null) return const PurchaseFlowSkeleton();
     return catalogAsync.when(
       loading: () => const PurchaseFlowSkeleton(),
       error: (e, _) => _message('تعذر تحميل الشركات والخطوط: ${errorMessage(e)}', retry: true),

@@ -91,18 +91,8 @@ class AuthRepository {
         .toList();
   }
 
-  Future<List<String>> getActiveColleges(String universityId) async {
-    final rows = await _client
-        .from('colleges')
-        .select('name')
-        .eq('university_id', universityId)
-        .eq('is_active', true)
-        .order('name');
-    return (rows as List<dynamic>).map((row) => row['name'] as String).toList();
-  }
-
-  /// Register a new student:
-  /// Enforces 4-part name check and creates student record with unique phone and static QR code
+  /// Registers a new student: the sign-in account, the optional photo and the
+  /// student row (unique phone; the database issues the permanent QR code).
   Future<User> registerStudent({
     required String phone,
     required String fullName,
@@ -127,7 +117,7 @@ class AuthRepository {
     }
     final authEmail = phoneToAuthEmail(cleanPhone);
 
-    // 2. Create the sign-in account. The phone is its login, so a number that is
+    // Create the sign-in account. The phone is its login, so a number that is
     // already registered is refused here by the server, whatever password is typed.
     User? user;
     try {
@@ -189,7 +179,7 @@ class AuthRepository {
           );
     }
 
-    // 4. Create Student Profile Record (phone is unique at DB level)
+    // The student's profile row (the phone is unique in the database).
     try {
       final Map<String, dynamic> record = {
         'id': studentId,
@@ -215,7 +205,7 @@ class AuthRepository {
       throw Exception('تعذر حفظ بيانات الطالب في قاعدة البيانات: $e');
     }
 
-    // 5. Ensure active session
+    // Make sure a session is active.
     if (_client.auth.currentUser == null) {
       try {
         await _client.auth.signInWithPassword(

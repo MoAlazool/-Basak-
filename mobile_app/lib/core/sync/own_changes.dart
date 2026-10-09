@@ -32,8 +32,12 @@ class OwnChanges {
   /// Call before sending a write: from now until [OwnChange.done] (plus a
   /// short while) or [OwnChange.failed], an announcement about [table]
   /// (and [id] / [op] when given) is this phone's own.
-  static OwnChange begin(String table, {String? id, String? op}) {
-    final change = OwnChange._(table, id, op);
+  ///
+  /// With [once] only the first such announcement is: for a write whose row
+  /// the server does not name in its answer, so that the same change made by
+  /// someone else at the same moment is still heard.
+  static OwnChange begin(String table, {String? id, String? op, bool once = false}) {
+    final change = OwnChange._(table, id, op, once);
     _expected.add(change);
     return change;
   }
@@ -42,10 +46,15 @@ class OwnChanges {
   static bool isEcho(SyncEvent event) {
     final at = now();
     _expected.removeWhere((c) => c._until != null && !at.isBefore(c._until!));
-    return _expected.any((c) =>
-        c.table == event.table &&
-        (c._id == null || c._id == event.id) &&
-        (c.op == null || event.op.isEmpty || c.op == event.op));
+    for (final c in _expected) {
+      if (c.table == event.table &&
+          (c._id == null || c._id == event.id) &&
+          (c.op == null || event.op.isEmpty || c.op == event.op)) {
+        if (c.once) _expected.remove(c);
+        return true;
+      }
+    }
+    return false;
   }
 
   /// True the first time [id] of [table] is reported within a short while,
@@ -70,10 +79,11 @@ class OwnChanges {
 class OwnChange {
   final String table;
   final String? op;
+  final bool once;
   String? _id;
   DateTime? _until;
 
-  OwnChange._(this.table, this._id, this.op);
+  OwnChange._(this.table, this._id, this.op, this.once);
 
   /// The server answered. [id] is the row it created, when it was not known
   /// before; the announcement is expected for [keep] more.

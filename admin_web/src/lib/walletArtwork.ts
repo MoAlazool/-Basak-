@@ -8,7 +8,7 @@ import { supabase } from './supabase';
 // image by URL. Resizing happens here in the browser, so the server never
 // processes images. File names must match supabase/functions/_shared/wallet/pass_data.ts.
 
-export const WALLET_BUCKET = 'wallet-assets';
+const WALLET_BUCKET = 'wallet-assets';
 export const ACCEPTED_IMAGES = 'image/png,image/jpeg,image/webp';
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 

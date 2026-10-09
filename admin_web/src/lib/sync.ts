@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { keys } from './query';
 import { notify } from './toasts';
-import { wasAppliedHere } from './recentChanges';
+import { appliedLists } from './recentChanges';
 
 /** What the database announces: which row changed, never its contents. */
 interface ChangeEvent { table: string; op: 'INSERT' | 'UPDATE' | 'DELETE'; id: string | null; company_id: string | null; }
@@ -26,7 +26,7 @@ const AFFECTS: Record<string, string[]> = {
   company_terms: ['settings', 'switches', 'periods'],
   wallet_card_settings: ['walletCard'],
   password_reset_requests: ['resetRequests'],
-  companies: ['company', 'overview', 'settings', 'switches'],
+  companies: ['company', 'overview', 'settings', 'switches', 'vote'],
   company_invites: ['invites', 'students'],
   student_correction_requests: ['corrections', 'students'],
   notifications: ['notifications'],
@@ -42,16 +42,21 @@ const RIDES_ONLY = new Set(['daily_ride_status', 'supervisor_scan_events']);
 const WHEN_VISIBLE = '?';
 
 /**
- * The lists one announced change makes out of date. `own` is true when this
- * tab made the change itself and has already put the result in its cache: the
- * pending-receipts list is then left alone (everything else still follows).
- * A name ending in "?" is re-read only if its page is open.
+ * The lists one announced change makes out of date. `applied` names the lists
+ * this tab has already brought up to date for that very row (its own approval
+ * has left the receipts queue and replaced the overview numbers): those are
+ * left alone, everything else still follows. A name ending in "?" is re-read
+ * only if its page is open.
  */
-export function affectedBy(event: Pick<ChangeEvent, 'table'>, own: boolean): string[] {
-  if (RIDES_ONLY.has(event.table)) return [`overview${WHEN_VISIBLE}`];
-  const names = AFFECTS[event.table] ?? [];
-  return own && (event.table === 'receipts' || event.table === 'subscriptions')
-    ? names.filter((name) => name !== 'receipts') : names;
+export function affectedBy(event: Pick<ChangeEvent, 'table'>, applied: readonly string[] = []): string[] {
+  const names = RIDES_ONLY.has(event.table) ? [`overview${WHEN_VISIBLE}`] : AFFECTS[event.table] ?? [];
+  return applied.length === 0 ? names
+    : names.filter((name) => !applied.includes(name.endsWith(WHEN_VISIBLE) ? name.slice(0, -WHEN_VISIBLE.length) : name));
+}
+
+/** Every list a burst of changes makes out of date, each once. `appliedFor` answers per row id. */
+export function affectedByAll(events: readonly Pick<ChangeEvent, 'table' | 'id'>[], appliedFor: (id: string | null) => readonly string[]): string[] {
+  return [...new Set(events.flatMap((event) => affectedBy(event, appliedFor(event.id))))];
 }
 
 /**
@@ -107,21 +112,24 @@ function useTopic(topic: string | null, onChange: (event: ChangeEvent) => void) 
   }, [topic]);
 }
 
-/** A burst of events (approving a receipt touches three tables) refreshes each list once. */
-function useCoalesced(run: (names: Set<string>) => void, delay = 400, maxWait = 2000) {
-  const state = useRef({ pending: new Set<string>(), timer: undefined as number | undefined, firstAt: 0, run });
+/**
+ * A burst of events (approving a receipt touches three tables) is handled once,
+ * a moment after the last one. The wait also lets the answer to this tab's own
+ * write arrive first, so its announcement is recognised as already applied.
+ */
+function useCoalesced<T>(run: (items: T[]) => void, delay = 400, maxWait = 2000) {
+  const state = useRef({ pending: [] as T[], timer: undefined as number | undefined, firstAt: 0, run });
   state.current.run = run;
   useEffect(() => () => window.clearTimeout(state.current.timer), []);
-  return (names: string[]) => {
-    if (names.length === 0) return;
+  return (item: T) => {
     const current = state.current;
     const now = Date.now();
-    if (current.pending.size === 0) current.firstAt = now;
-    names.forEach((name) => current.pending.add(name));
+    if (current.pending.length === 0) current.firstAt = now;
+    current.pending.push(item);
     window.clearTimeout(current.timer);
     current.timer = window.setTimeout(() => {
-      const batch = new Set(current.pending);
-      current.pending.clear();
+      const batch = current.pending;
+      current.pending = [];
       current.run(batch);
     }, nextFlushDelay(current.firstAt, now, delay, maxWait));
   };
@@ -133,9 +141,9 @@ function useCoalesced(run: (names: Set<string>) => void, delay = 400, maxWait = 
  */
 export function useWorkspaceSync(companyId: string) {
   const client = useQueryClient();
-  const refresh = useCoalesced((names) => {
+  const refresh = useCoalesced<ChangeEvent>((events) => {
     const overviewOpen = window.location.pathname.replace(/\/+$/, '') === `/c/${companyId}`;
-    const { now, later } = planRefresh(names, overviewOpen);
+    const { now, later } = planRefresh(affectedByAll(events, appliedLists), overviewOpen);
     // Default `refetchType: 'active'`: only lists that are mounted are read again.
     now.forEach((name) => void client.invalidateQueries({ queryKey: keys.company(companyId, name) }));
     later.forEach((name) => void client.invalidateQueries({ queryKey: keys.company(companyId, name), refetchType: 'none' }));
@@ -143,8 +151,7 @@ export function useWorkspaceSync(companyId: string) {
   useTopic(`company:${companyId}`, (event) => {
     // Belt and braces: the topic is this company's, and so must the event be.
     if (event.company_id && event.company_id !== companyId) return;
-    // This tab's own approval/rejection is already on screen: its echo re-reads nothing it wrote.
-    refresh(affectedBy(event, wasAppliedHere(event.id)));
+    refresh(event);
     // Something new for the admin to act on: say so, wherever they are.
     const arrival = event.op === 'INSERT' ? ARRIVALS[event.table] : undefined;
     if (arrival) notify({ ...arrival, to: `/c/${companyId}/${arrival.page}` });
@@ -152,9 +159,45 @@ export function useWorkspaceSync(companyId: string) {
   useEffect(() => () => { void client.cancelQueries({ queryKey: keys.company(companyId) }); }, [client, companyId]);
 }
 
-/** Keeps the platform area current: its totals, the company list, and open reset requests. */
+/**
+ * What a change means for the platform admin's pages. A table missing here
+ * refreshes everything of the platform (better once too often than a stale page).
+ */
+const PLATFORM_AFFECTS: Record<string, string[]> = {
+  receipts: ['overview'],
+  subscriptions: ['overview', 'students'],
+  company_students: ['overview', 'students'],
+  companies: ['overview', 'companyNames', 'companyAdmins', 'students'],
+  student_correction_requests: ['corrections', 'students'],
+  password_reset_requests: ['resetRequests'],
+  notifications: ['notifications'],
+};
+
+/**
+ * The platform lists a burst of changes makes out of date; `null` means all of
+ * them. As in a workspace, a list this tab already brought up to date for a row
+ * (its own cancelled or deleted notification) is left alone.
+ */
+export function platformAffectedBy(
+  events: readonly Pick<ChangeEvent, 'table' | 'id'>[], appliedFor: (id: string | null) => readonly string[] = () => [],
+): string[] | null {
+  const names = new Set<string>();
+  for (const event of events) {
+    const lists = PLATFORM_AFFECTS[event.table];
+    if (!lists) return null;
+    const applied = appliedFor(event.id);
+    lists.forEach((name) => { if (!applied.includes(name)) names.add(name); });
+  }
+  return [...names];
+}
+
+/** Keeps the platform area current: its totals, the company list, the accounts and open requests. */
 export function usePlatformSync() {
   const client = useQueryClient();
-  const refresh = useCoalesced(() => { void client.invalidateQueries({ queryKey: keys.platform() }); }, 1000, 5000);
-  useTopic('platform', () => refresh(['platform']));
+  const refresh = useCoalesced<ChangeEvent>((events) => {
+    const names = platformAffectedBy(events, appliedLists);
+    if (names === null) void client.invalidateQueries({ queryKey: keys.platform() });
+    else names.forEach((name) => void client.invalidateQueries({ queryKey: keys.platform(name) }));
+  }, 1000, 5000);
+  useTopic('platform', refresh);
 }

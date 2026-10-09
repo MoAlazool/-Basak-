@@ -1,125 +1,78 @@
-# Admin dashboard — performance pass results
+# Admin dashboard — performance notes
 
-Scope: `admin_web/` only. Numbers below come from `npm run build` and from reading
-the code (a static request inventory). Nothing here was measured in a browser:
-timings, real request counts and image bytes are the main agent's measurements.
+Scope: `admin_web/` only. Sizes come from `npm run build`; request counts come from reading the
+code (a static inventory). Nothing here was measured in a browser: timings, real request counts
+and bytes on the wire are measured separately and recorded in the consolidated results file,
+which supersedes this one where they differ.
 
-N = pending receipts on screen. "Stage" = has to wait for the previous request.
+## 1. Bundle (vite 5.4, 41 JS chunks)
 
-## 1. Bundle (`npm run build`, vite 5.4.21)
+| What one visit downloads (entry + static imports + the screen's lazy chunks) | Files | Raw | gzip |
+|---|---:|---:|---:|
+| Sign-in page | 8 | 491,146 B | 141,596 B |
+| Company admin, first page (overview) | 17 | 536,395 B | 158,899 B |
 
-### Before — one chunk
+Before lazy routes every admin downloaded one 770,699 B file (207,148 B gzip).
 
-| File | Raw | gzip |
-|---|---:|---:|
-| `index-D8BjiOuS.js` | 770,699 B | 207,148 B |
-| `index-BROXowyP.css` | 41,851 B | 7,924 B |
+- 438 kB of each visit is three vendor files (`supabase`, `react`, `query`): unchanged by a
+  dashboard release, `modulepreload`ed, downloaded in parallel with the entry.
+- Every page is its own chunk, fetched when opened or when its navigation entry is pointed at.
+  A company admin never downloads the platform's pages.
+- `kit` (3 kB) groups six tiny helpers that many pages share, instead of six requests.
+- `legacy` (4.6 kB) is downloaded only if a server function is missing (section 3).
+- `npm run check:bundle` builds and fails when either row above grows about 10% past these
+  numbers (`scripts/check-bundle.mjs` holds the budgets).
 
-Every admin downloaded all 770,699 B (all 18 pages of both roles) before anything rendered.
+Fonts: Cairo and Inter as one variable-font request per family, loaded without blocking the
+first paint.
 
-### After — 41 JS chunks
+## 2. Requests (static inventory)
 
-| Chunk | Raw | gzip | Loaded |
-|---|---:|---:|---|
-| `supabase` | 226,706 | 58,631 | always (vendor, cacheable across releases) |
-| `react` (react, react-dom, router) | 164,650 | 53,471 | always (vendor) |
-| `query` (TanStack) | 46,769 | 13,828 | always (vendor) |
-| `index` (entry: session check, skeletons, cache, route table) | 14,970 | 5,537 | always |
-| `icons` (lucide, only the icons used) | 28,337 | 5,416 | with the first area/page |
-| `sync` (shell, sidebar, realtime) | 11,448 | 4,261 | both areas |
-| `Workspace` | 5,457 | 2,433 | company area |
-| `PlatformArea` | 958 | 497 | platform area |
-| `LinesPage` | 31,162 | 8,563 | on visit / nav hover |
-| `StudentsPage` | 29,149 | 8,768 | on visit / nav hover |
-| `History` (notification history, shared) | 24,662 | 7,021 | notifications pages |
-| `SubscriptionSettingsPage` | 24,217 | 6,750 | on visit |
-| `WalletCardDesignPage` | 19,638 | 6,427 | on visit |
-| `PendingReceiptsTable` | 17,517 | 5,959 | overview + receipts |
-| `ReportsPage` | 16,300 | 4,811 | on visit |
-| `AllCompaniesPage` | 12,478 | 4,174 | platform only |
-| `SupervisorsPage` | 12,159 | 4,138 | on visit |
-| `notificationsData` | 10,642 | 4,290 | notifications pages |
-| `PaymentMethodsPage` | 10,436 | 3,169 | on visit |
-| `PlatformNotificationsPage` | 9,874 | 3,692 | platform only |
-| `UniversitiesPage` | 9,694 | 3,080 | platform only |
-| `CompanyAdminsPage` | 7,814 | 2,736 | platform only |
-| `AllStudentsPage` | 7,710 | 2,822 | platform only |
-| `NotificationsPage` | 6,288 | 2,649 | on visit |
-| `LoginPage` | 5,844 | 2,283 | signed out only |
-| `PlatformOverviewPage` | 5,512 | 2,124 | platform only |
-| `PasswordResetRequests` | 5,409 | 2,023 | students pages |
-| `TopLinesPanel` | 5,340 | 1,657 | overview pages |
-| `TeamPage` | 4,878 | 1,988 | on visit |
-| `ResetPasswordPage` | 3,973 | 1,672 | recovery link only |
-| `OverviewPage` | 2,816 | 1,356 | on visit |
-| 10 small shared chunks (`overview`, `reference`, `Topbar`, `StatsRow`, `signedUrls`, `ReceiptsPage`, `edgeFunctions`, `toasts`, `saleOptions`, `BasakLogo`) | 11,693 | 6,127 | as needed |
-| **All JS** | **794,500** | **242,353** | never all at once |
-| `index-CZiIXUnq.css` | 41,946 | 7,889 | always |
+N = pending receipts on screen.
 
-### What one visit downloads (entry + everything it imports statically)
+| Where | Requests |
+|---|---|
+| Boot on reload | 1: `admins` with its company embedded |
+| Shell, every workspace page | `company_overview` + a HEAD count of open password-reset requests |
+| Receipts queue (overview and receipts pages) | 1 `get_pending_receipts_page` + 1 `createSignedUrls`; images lazy |
+| Queue re-read (focus, someone else's receipt) | 1; 0 signing and 0 image downloads (links reused for 50 min) |
+| Approve / reject | 1 `review_receipt`. Its answer carries the company's numbers; the change's own announcement reads nothing. Decisions taken close together are applied in the order they were saved (`reviewed_at`), with no extra read |
+| Financial report | 100 rows per request (`limit` / `offset` in `p_filters`), «عرض المزيد» for the next 100; totals always cover every matching row. Was up to 2000 rows (1.1 MB at 100,000 students) on every refresh |
+| Students page | 1 `get_company_students_page` (rows and total) + avatar signing + reset requests, invitations, corrections |
+| Students: search / page change | 1 per settled search, the total once 700 ms after typing stops; a page change never recounts |
+| Students: subscription status | 1 update; its answer goes into the row; the announcement refreshes the overview only |
+| Lines / supervisors / payment methods | each lookup under one shared key; a write answers with the saved row, which is shown without a re-read |
+| Settings | each save answers with what was saved; the company row's announcement re-reads only what is derived from it |
+| Platform area | an announced change refreshes only the lists it concerns, not every platform query on screen |
 
-| Landing | Before raw / gzip | After raw / gzip | Change |
-|---|---|---|---|
-| Session check + skeleton (first paint) | 770,699 / 207,148 | 453,095 / 131,467 | −41% / −37% |
-| Sign-in page | 770,699 / 207,148 | 487,541 / 139,416 | −37% / −33% |
-| Company admin → overview | 770,699 / 207,148 | 533,026 / 157,017 | −31% / −24% |
-| Company admin → receipts | 770,699 / 207,148 | 524,728 / 154,019 | −32% / −26% |
-| Company admin → students | 770,699 / 207,148 | 539,930 / 158,029 | −30% / −24% |
-| Platform admin → platform overview | 770,699 / 207,148 | 515,981 / 150,413 | −33% / −27% |
+A page opened again within 30 s asks for nothing (lookups: 5 min). A burst of live events is
+handled once, 400 ms after the last one and at most 2 s after the first.
 
-438,125 B of that (supabase + react + query) is vendor code in its own files: unchanged by a
-dashboard release, so a returning admin re-downloads only the small app chunks. The three vendor
-files are `modulepreload`ed and download in parallel with the entry. The area chunk is requested
-as soon as the admin's role is known (not after React renders), and a page's chunk on hover/focus
-of its navigation entry.
+## 3. Deploy order
 
-Honest note: the sum of all chunks grew by 23.8 kB raw / 35.2 kB gzip (per-chunk overhead and
-worse cross-file compression). Nobody downloads the sum.
+`get_pending_receipts_page`, `review_receipt` and `get_company_students_page` may be missing
+from the database the dashboard talks to. On PostgREST's `PGRST202` the dashboard does the same
+job the older way (`src/lib/legacy.ts`: five requests for the queue, a plain update for a
+decision, a nested select plus a count for students) and asks for the function again five
+minutes later. `university_student_counts()` missing shows «—» in place of the numbers.
+An `admin_subscription_report` that does not page yet ignores `limit` / `offset` and answers
+without `rows_total`: its rows (up to 2000) are taken as the whole report. A `review_receipt`
+answer without `reviewed_at` falls back to one `company_overview` read after overlapping decisions.
 
-### Fonts
+## 4. Regression guards
 
-Before: a render-blocking Google Fonts stylesheet, Cairo + Inter, five static weights each.
-After: the same five weights (all are used: 400/500/600/700/800) as one variable-font request
-per family (`wght@400..800`), stylesheet preloaded and applied without blocking first paint
-(`media="print"` swap, `<noscript>` fallback, `display=swap`).
+`npm test` (vitest, pure logic only, no timers): cache keys and their scoping, what is persisted,
+signed-link reuse, which lists a live event refreshes and which an own change skips, receipt and
+student cache edits, the order overlapping decisions are applied in, report paging, the notification idempotency key, Cairo time, the double-submit guard and
+the missing-function fallback.
 
-## 2. Request inventory (static)
+## 5. Not verified here
 
-| Where | Before | After |
-|---|---|---|
-| **Boot on reload (company admin), before the shell** | 5 requests in 3 stages: `admins` ×2 and `companies(name)` ×2 (two session checks ran), then `companies(id,name,status)` | **1**: `admins` with `companies(id,name,status)` embedded; the row is written into the workspace's cache. Two checks arriving together share that one request |
-| Shell on every page | `company_overview` + full reset-request rows (for `.length`) | `company_overview` + a HEAD count of the same function (no rows) |
-| Sign-in | 5 sequential REST after auth | 1 (the form and the session listener share it) |
-| Tab regains focus (library re-announces the session) | `admins` + `companies(name)` | `admins` (1) |
-| Platform admin opens a workspace | `companies(id,name,status)` + `companies(id,name)` uncached in `WorkspaceBar`, every time | 0 if the companies lookup is cached (5 min), else 1 + 1 cached |
-| **Receipts page open** | 5 REST in 3 stages, no limit → N × `createSignedUrl` → N full images, all eager | 5 REST in 3 stages, capped at 50 (+«عرض المزيد») → **1** `createSignedUrls` → images lazy (only rows near the viewport download) |
-| **Receipts list re-read** (focus after 30 s, any `receipts`/`subscriptions` event from someone else) | 5 + N signs + N full images again (new tokens = new URLs) | 5; **0 signs, 0 image downloads** (same links for 50 min; only a newly arrived receipt's path is signed, in 1 request) |
-| Receipt preview click | 1 sign + 1 full image | **0 + 0** when the thumbnail has loaded (same URL, browser cache) |
-| **Approve / reject** | 1 PATCH + 2 × (5 list REST + N signs + 1 `company_overview`) = **13 + 2N** requests, **2N** image downloads | **1 PATCH + 1 `company_overview`** (the echo of the subscription change, once); 0 list reads, 0 signs, 0 images. The list is re-read (5 REST) only when fewer than 10 loaded rows remain while more are waiting |
-| Students page open | 9: students with `count: 'exact'`, avatar signing, universities + deep lines, then periods (waterfall), switches, reset requests, invites, corrections | 6: students (no count), 1 HEAD exact count, avatar signing (first time; reused 50 min), reset requests, invites, corrections |
-| Students: typing in search / changing page | exact count with every query | rows only; exact count once, 700 ms after typing stops; page changes never recount |
-| Students: add form | loaded with the page | universities + lines + switches on first focus/click in the form, then periods (0 if another page already cached them) |
-| Avatars / supervisor photos on focus or revisit | re-signed (600 s links) → re-downloaded | reused: 0 requests |
-| Lines page open | 5 (one combined key) | 5, each under its shared key (reused by Students form, Notifications, Supervisors) |
-| Line form open | 2 RPCs to the network every time | 0 when cached (switches always are; settings 1 the first time) |
-| Supervisors page | 4, lines and supervisors duplicated under their own keys | 4 cold; supervisors + assignments shared with the Lines page |
-| Reports page | 4; undo/reset reloads awaited one after another | 4 cold, 2 when universities/line names are cached; reloads in parallel |
-| Universities page | `select('*')`, **every student's university**, colleges | universities (column list, shared key), colleges, `university_student_counts()` |
-| Payment methods | `select('*')`; reorder = 2 sequential updates | column list; 2 parallel updates |
-| Wallet card page | 1 uncached read, empty body while loading, every visit | cached (`walletCard` key, live-refreshed); skeleton on first visit, instant afterwards |
-| Ride confirmation / scan events on any page | `company_overview` re-read every time | re-read only while the overview page is open; otherwise marked out of date |
-| Burst of realtime events | pure trailing 400 ms debounce (could be postponed without limit) | 400 ms trailing, at most 2 s after the first event (platform: 1 s / 5 s) |
-
-Keys for the same data: universities 4 → 1 (`shared/universities`); lines 4 → 2
-(`lines` deep, `lineNames` light); supervisors 2 → 1; assignments 2 → 1.
-
-## 3. What could not be verified here
-
-- Anything in a browser: time-to-content, the real request counts above, image bytes, lazy
-  loading, hover prefetch, the no-sign-in-flash on reload, own-echo suppression against the local
-  stack, and that the app renders (only `tsc` and `vite build` were run).
+- Anything in a browser: time to content, real request counts, image bytes, lazy loading, hover
+  prefetch, own-echo suppression against a running database, and that the app renders
+  (`tsc`, `vite build`, `vitest` and the bundle check were run; no dev server, no browser).
+- The three server functions of section 3 were coded against their documented shapes and never
+  called.
 - Browser-cache reuse of receipt images relies on the storage endpoint sending cacheable headers
   for an unchanged signed URL.
-- `rpc(..., { head: true, count: 'exact' })` on `admin_list_password_reset_requests` (a HEAD
-  request to a STABLE function) was not exercised.
-- `university_student_counts()` did not exist while this was written; the page falls back to «—».
+- The HEAD count on `admin_list_password_reset_requests` with a `status` filter was not exercised.

@@ -92,5 +92,24 @@ alone is picked up the next time the student is scanned or opens the QR screen.
    supabase functions deploy student-wallet-pass wallet-apple-web wallet-sync wallet-photo --no-verify-jwt --project-ref <ref>
    ```
 
-**Tests**: `deno test supabase/functions/_shared/wallet/` (card contents) and
-`supabase/tests/local/wallet/` (end to end on a local stack, see `tests/local/README.md`).
+**Tests**: `deno test supabase/functions/_shared/wallet/` (card contents, signing, delivery to
+Google with a fake Google, photo links; no network) and `supabase/tests/local/wallet/` (end to end
+on a local stack, see `tests/local/README.md`). The image library downloads its decoder while it
+loads, so the tests that use it are skipped unless run as
+`deno test --allow-net=deno.land supabase/functions/_shared/wallet/artwork_test.ts`.
+
+## Edge Functions
+
+Shared code lives in `functions/_shared/` and each function's `index.ts` is a thin entry.
+
+| What | Where |
+|---|---|
+| CORS, JSON answers, errors | `_shared/http.ts` |
+| The two Supabase clients (made once per isolate) and the session check | `_shared/clients.ts` |
+| Who is an admin and which company they may act on | `_shared/admin-auth.ts` |
+| Creating / deleting sign-in accounts with their profile rows (and undoing a half-made one) | `_shared/accounts.ts` |
+| Registering a student | `_shared/create-student.ts` |
+| Push notifications | `_shared/push/` |
+
+`deno test supabase/functions/_shared/` runs every unit test (fake clients and fake fetch, no
+network, no permissions). `deno check supabase/functions/*/index.ts` type-checks every function.

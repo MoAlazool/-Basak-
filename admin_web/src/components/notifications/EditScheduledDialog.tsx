@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import {
-  audienceFromSpec, audienceToPayload, cairoLocalToIso, cairoToday, draftProblem, isoToCairoLocal,
-  type HistoryRow, type NotificationDraft,
-} from '../../lib/notifications';
-import { updateScheduledNotification, useAudienceOptions, useAudiencePreview, useNotificationActions } from '../../lib/notificationsData';
+import { audienceFromSpec, audienceToPayload, draftProblem, type HistoryRow, type NotificationDraft } from '../../lib/notifications';
+import { cairoLocalToIso, cairoToday, isoToCairoLocal } from '../../lib/time';
+import { updateScheduledNotification, useAudiencePreview, useNotificationActions } from '../../lib/notificationsData';
+import { useLineOptions } from '../../lib/reference';
+import { useGuard } from '../../lib/guard';
 import { notify } from '../../lib/toasts';
 import { NotificationForm } from './NotificationForm';
 import { AudiencePreviewCard, Dialog } from './parts';
@@ -19,7 +19,8 @@ export const EditScheduledDialog: React.FC<{ companyId: string; row: HistoryRow;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const options = useAudienceOptions(companyId);
+  const options = useLineOptions(companyId);
+  const guard = useGuard();
   const audience = audienceToPayload(draft.audience);
   const preview = useAudiencePreview(companyId, audience);
   const { refresh } = useNotificationActions(companyId);
@@ -28,22 +29,22 @@ export const EditScheduledDialog: React.FC<{ companyId: string; row: HistoryRow;
   const students = preview.status === 'ready' ? preview.data?.students ?? 0 : 0;
   const canSave = !problem && preview.status === 'ready' && students > 0;
 
-  const save = async () => {
+  const save = () => guard('save', async () => {
     const scheduledAt = cairoLocalToIso(draft.scheduledLocal);
     const late = draftProblem(draft);
-    if (busy || late || !audience || !scheduledAt) { if (late) setError(late); return; }
+    if (late || !audience || !scheduledAt) { if (late) setError(late); return; }
     setBusy(true);
     setError('');
     try {
       await updateScheduledNotification({ id: row.id, title: draft.title.trim(), body: draft.body.trim(), audience, scheduledAt });
       notify({ title: 'تم حفظ تعديل الإشعار المجدول' });
-      void refresh();
+      void refresh(row.id);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر حفظ التعديل.');
       setBusy(false);
     }
-  };
+  });
 
   return (
     <Dialog wide title="تعديل إشعار مجدول" onClose={() => { if (!busy) onClose(); }}>

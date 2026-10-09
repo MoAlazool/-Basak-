@@ -11,21 +11,13 @@ import 'package:basak_mobile/features/student/daily_ride/models/vote_settings.da
 import 'package:basak_mobile/features/onboarding/onboarding_controller.dart';
 import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
 import 'package:basak_mobile/features/supervisor/models/supervisor_models.dart';
-import 'package:basak_mobile/features/student/lines/models/trip_model.dart';
 import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
 
 class _FakeDailyRideRepo implements DailyRideRepository {
   @override
   Future<VoteSettings> getVoteSettings(String? companyId) async => VoteSettings.fallback;
   @override
-  Future<Map<DateTime, bool>> getRideStatusesForRange(DateTime from, DateTime to) async => {};
-  @override
-  Future<DailyRideDetails> getRideDetailsForDate(DateTime date) async =>
-      const DailyRideDetails(isRiding: false, isReturning: false);
-  @override
-  Future<bool> getRideStatusForDate(DateTime date) async => false;
-  @override
-  Future<bool> toggleRide({required DateTime rideDate, required bool isRiding}) async => isRiding;
+  Future<RideDays> getRides(DateTime from, DateTime to) async => const RideDays({});
   @override
   Future<DailyRideDetails> confirmRide({
     required DateTime rideDate,
@@ -50,17 +42,11 @@ void main() {
   });
 
   test('station times accept either text or a list of times', () {
-    final station = StationModel.fromJson({
-      'id': 'station-1',
-      'line_id': 'line-1',
-      'name': 'محطة الجامعة',
-      'order_index': 1,
-      'departure_times': ['07:00', '07:15'],
-      'return_times': '16:00',
-    });
-
-    expect(station.departureTime, '07:00، 07:15');
-    expect(station.returnTime, '16:00');
+    expect(stationTimes(['07:15:00', '07:00']), ['07:00', '07:15']);
+    expect(stationTimes('16:00'), ['16:00']);
+    expect(stationTimes(null), isEmpty);
+    expect(stationTimesLabel(['07:00', '07:15']), '07:00، 07:15');
+    expect(stationTimesLabel('16:00'), '16:00');
   });
 
   test('the default vote opens at 4 PM and closes at 6 AM on the ride day', () {
@@ -262,20 +248,6 @@ void main() {
   });
 
   test('a return trip saved without station times serves every station with no times shown', () {
-    TripModel trip(String direction, Map<String, String> stops) => TripModel.fromJson({
-          'id': 't', 'direction': direction, 'label': '', 'start_time': '14:00:00',
-          'line_trip_stops': [
-            for (final e in stops.entries) {'station_id': e.key, 'stop_time': e.value},
-          ],
-        });
-    // Saved by the dashboard with every stop at the start time.
-    expect(trip('return', {'a': '14:00:00', 'b': '14:00:00'}).stopTimesUnset, isTrue);
-    expect(trip('return', {'a': '14:00:00', 'b': '14:00:00'}).timeAt('a'), '14:00');
-    // Real station times are shown as before.
-    expect(trip('return', {'a': '14:30:00', 'b': '14:50:00'}).stopTimesUnset, isFalse);
-    // Departure trips always carry their pickup times.
-    expect(trip('departure', {'a': '14:00:00'}).stopTimesUnset, isFalse);
-
     TripManifest manifest(String stopTime) => TripManifest.fromJson({
           'line': {'id': 'l', 'name': 'خط', 'origin_name': 'المنصورة'},
           'direction': 'return',

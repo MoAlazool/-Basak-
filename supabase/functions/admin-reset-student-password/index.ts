@@ -1,4 +1,5 @@
-import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
+import { requireSuperAdmin } from '../_shared/admin-auth.ts';
+import { errorMessage, errorStatus, jsonResponse, preflight } from '../_shared/http.ts';
 
 // Admin-assisted password reset (Super Admin only). Changes the student's real
 // Supabase Auth password with the service role and flags the account so the app
@@ -17,8 +18,8 @@ function generatePassword(length = 10): string {
 }
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
+  const early = preflight(request);
+  if (early) return early;
 
   try {
     const { user, serviceClient } = await requireSuperAdmin(request);
@@ -36,27 +37,31 @@ Deno.serve(async (request: Request) => {
     if (!student) return jsonResponse({ error: 'الطالب غير موجود.' }, 404);
 
     // The student's Auth account is the profile id (phone@busak.app); never create a new one.
-    const { data: authUser, error: authLookupError } = await serviceClient.auth.admin.getUserById(student.id);
-    if (authLookupError || !authUser?.user) {
-      return jsonResponse({ error: 'لا يوجد حساب دخول لهذا الطالب. احذفه وأعد إضافته من صفحة الطلاب.' }, 409);
-    }
-
+    // Auth itself says when there is no such account, so it is not looked up first.
     const generated = !requested;
     const temporaryPassword = requested || generatePassword();
     const { error: updateError } = await serviceClient.auth.admin.updateUserById(student.id, {
       password: temporaryPassword,
     });
-    if (updateError) throw updateError;
+    if (updateError) {
+      if (updateError.status === 404 || /not found/i.test(updateError.message)) {
+        return jsonResponse({ error: 'لا يوجد حساب دخول لهذا الطالب. احذفه وأعد إضافته من صفحة الطلاب.' }, 409);
+      }
+      throw updateError;
+    }
 
+    // If this fails the admin sees an error and repeats the reset; until then
+    // the new password is known to nobody, which is the safe side.
     const { error: flagError } = await serviceClient
       .from('students').update({ must_change_password: true }).eq('id', student.id);
     if (flagError) throw flagError;
 
-    // Audit without the password.
+    // Audit without the password. A missing audit line does not undo the reset.
     const companyId = /^[0-9a-f-]{36}$/i.test(String(body.companyId ?? '')) ? String(body.companyId) : null;
-    await serviceClient.from('password_admin_resets').insert({
+    const { error: auditError } = await serviceClient.from('password_admin_resets').insert({
       student_id: student.id, reset_by: user.id, generated, company_id: companyId,
     });
+    if (auditError) console.error('admin-reset-student-password: audit line not written', auditError.code ?? '');
 
     return jsonResponse({
       ok: true,

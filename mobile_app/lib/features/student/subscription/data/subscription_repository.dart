@@ -125,7 +125,6 @@ class SubscriptionRepository {
     }
   }
 
-  /// Upload receipt photo to Supabase Storage and insert receipt record
   /// Active payment methods of the subscription's company (managed by the
   /// company in the dashboard; never hardcoded in the app).
   Future<List<PaymentMethodModel>> getPaymentMethods(String companyId) async {
@@ -289,7 +288,8 @@ class SubscriptionRepository {
 
   /// Writes a receipt this phone just sent (the row the server returned) into
   /// what the phone holds: the receipt list of its subscription, and the
-  /// subscription's status in the list, the current subscription and the pass.
+  /// subscription's status in the list and in the current subscription (the
+  /// card follows the current subscription).
   /// Nothing is read from the server for it.
   Future<void> applyReceiptSubmitted(Map<String, dynamic> receipt) async {
     final subscriptionId = receipt['subscription_id'] as String;
@@ -303,11 +303,6 @@ class SubscriptionRepository {
         ]);
     await OfflineCache.applyLocal('subscriptions', (current) => [for (final row in current as List? ?? const []) reviewed(row)]);
     await OfflineCache.applyLocal('subscriptions.current', reviewed);
-    await OfflineCache.applyLocal(
-        'student_pass',
-        (current) => current is Map && current['subscription_id'] == subscriptionId
-            ? {...current, 'subscription_status': 'pending_review'}
-            : current);
   }
 
   /// Writes a subscription this phone just created into what the phone holds.

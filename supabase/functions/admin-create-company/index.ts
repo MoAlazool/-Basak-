@@ -1,14 +1,15 @@
 // Creates a company that is usable from the first minute: the company itself,
-// its own copy of the semester dates, its wallet card design, its first admin
-// and (optionally) a first payment method. If any step fails nothing is left behind.
-import { corsHeaders, errorMessage, errorStatus, HttpError, jsonResponse, requireSuperAdmin } from '../_shared/admin-auth.ts';
-import { createCompanyAdmin, validateCompanyAdmin } from '../_shared/company-admin.ts';
+// its own copy of the semester dates, its wallet card design, (optionally) a
+// first payment method and its first admin. If any step fails nothing is left behind.
+import { requireSuperAdmin } from '../_shared/admin-auth.ts';
+import { assertAdminEmailFree, createCompanyAdmin, validateCompanyAdmin } from '../_shared/company-admin.ts';
+import { errorMessage, errorStatus, HttpError, jsonResponse, preflight } from '../_shared/http.ts';
 
 const text = (value: unknown) => String(value ?? '').trim();
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
+  const early = preflight(request);
+  if (early) return early;
 
   try {
     const { user, serviceClient } = await requireSuperAdmin(request);
@@ -27,6 +28,8 @@ Deno.serve(async (request: Request) => {
     if (method && !['instapay', 'vodafone_cash', 'bank'].includes(text(method.methodType))) {
       throw new HttpError(400, 'نوع وسيلة الدفع غير صحيح.');
     }
+    // Known before anything exists, so a taken e-mail never creates a company to undo.
+    await assertAdminEmailFree(serviceClient, adminEmail);
 
     // The database copies the default terms into the new company.
     const { data: company, error: companyError } = await serviceClient.from('companies')
@@ -37,39 +40,39 @@ Deno.serve(async (request: Request) => {
       throw companyError;
     }
 
-    let adminId: string | null = null;
     try {
-      const { error: walletError } = await serviceClient.from('wallet_card_settings')
-        .upsert({ company_id: company.id }, { onConflict: 'company_id', ignoreDuplicates: true });
+      // Rows that belong to the company alone, and go with it if it is removed.
+      const [{ error: walletError }, { error: methodError }] = await Promise.all([
+        serviceClient.from('wallet_card_settings')
+          .upsert({ company_id: company.id }, { onConflict: 'company_id', ignoreDuplicates: true }),
+        method
+          ? serviceClient.from('company_payment_methods').insert({
+            company_id: company.id,
+            method_type: text(method.methodType),
+            display_name: text(method.displayName),
+            account_holder: text(method.accountHolder) || null,
+            instapay_address: text(method.instapayAddress) || null,
+            wallet_phone: text(method.walletPhone) || null,
+            bank_name: text(method.bankName) || null,
+            bank_account_number: text(method.bankAccountNumber) || null,
+            iban: text(method.iban) || null,
+          })
+          : Promise.resolve({ error: null }),
+      ]);
       if (walletError) throw walletError;
+      if (methodError) throw new HttpError(400, 'بيانات وسيلة الدفع غير مكتملة أو غير صحيحة.');
 
+      // The admin comes last: an invitation e-mail cannot be taken back, and
+      // this step removes its own account again if the admins row fails.
       const created = await createCompanyAdmin(serviceClient, {
         email: adminEmail, fullName: adminName, companyId: company.id, password: adminPassword,
         createdBy: user.id, redirectTo: request.headers.get('origin') ?? undefined,
       });
-      adminId = created.id;
-
-      if (method) {
-        const { error: methodError } = await serviceClient.from('company_payment_methods').insert({
-          company_id: company.id,
-          method_type: text(method.methodType),
-          display_name: text(method.displayName),
-          account_holder: text(method.accountHolder) || null,
-          instapay_address: text(method.instapayAddress) || null,
-          wallet_phone: text(method.walletPhone) || null,
-          bank_name: text(method.bankName) || null,
-          bank_account_number: text(method.bankAccountNumber) || null,
-          iban: text(method.iban) || null,
-        });
-        if (methodError) {
-          throw new HttpError(400, 'بيانات وسيلة الدفع غير مكتملة أو غير صحيحة.');
-        }
-      }
-      return jsonResponse({ id: company.id, name: company.name, adminId, invited: created.invited });
+      return jsonResponse({ id: company.id, name: company.name, adminId: created.id, invited: created.invited });
     } catch (stepError) {
-      // Undo in reverse: the admin's sign-in account (which removes the admins row), then the company.
-      if (adminId) await serviceClient.auth.admin.deleteUser(adminId);
-      await serviceClient.from('companies').delete().eq('id', company.id);
+      // No admin exists at this point, so the company and its own rows can go.
+      const { error: undoError } = await serviceClient.from('companies').delete().eq('id', company.id);
+      if (undoError) console.error('admin-create-company: an unfinished company could not be removed', company.id, undoError.message);
       throw stepError;
     }
   } catch (error) {

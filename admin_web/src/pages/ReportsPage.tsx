@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DollarSign, RotateCcw, Search, ShieldAlert, Undo2, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
-import { keys, unwrap, usePageData } from '../lib/query';
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { keys, unwrap, usePageData, VARIANT_GC } from '../lib/query';
+import { mergeReport, nextReportOffset, REPORT_PAGE, type ReportPart } from '../lib/reports';
+import { useGuard } from '../lib/guard';
+import { notifyError } from '../lib/toasts';
+import { egp } from '../components/StatsRow';
 import { useLineNames, useUniversities } from '../lib/reference';
 import { SkeletonTable } from '../components/Skeleton';
 
@@ -17,7 +22,7 @@ interface Totals {
   count: number; paid: number; unpaid: number; upcoming: number; upcoming_paid: number; expired: number;
   revenue: number; revenue_first: number; revenue_second: number; revenue_summer: number; revenue_annual: number; revenue_both?: number; revenue_daily: number;
 }
-interface Report { baseline: string | null; totals: Totals; rows: ReportRow[] }
+type Report = ReportPart<ReportRow, Totals>;
 interface ResetRow { id: string; scope: 'financial' | 'all'; reset_at: string; note: string | null; undone_at: string | null }
 interface Option { id: string; name: string }
 
@@ -25,7 +30,7 @@ const PERIODS: Record<string, string> = {
   first: 'الفصل الأول', second: 'الفصل الثاني', summer: 'الفصل الصيفي', both: 'الفصلان معاً', annual: 'الفصلان معاً', daily: 'يومي (كاش)',
 };
 const PHASES: Record<string, string> = { current: 'ساري', upcoming: 'قادم (مدفوع مقدماً)', expired: 'منتهي' };
-const money = (n: number | null | undefined) => `${Number(n || 0).toLocaleString('ar-EG')} ج.م`;
+const money = (n: number | null | undefined) => egp(Number(n || 0));
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('ar-EG') : '—');
 
 export const ReportsPage: React.FC = () => {
@@ -45,12 +50,23 @@ export const ReportsPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  const reportPage = usePageData(keys.company(company.id, 'reports', applied), () =>
-    unwrap<Report>(supabase.rpc('admin_subscription_report', { p_filters: { ...applied, company_id: company.id } })),
-  { keepPrevious: true });
-  const report = reportPage.data ?? null;
-  const loading = reportPage.loading;
-  const error = reportPage.error;
+  // The rows come a hundred at a time («عرض المزيد» asks for the next hundred); the totals
+  // in every answer cover all matching rows. A change of filter is another key, so it
+  // starts again from the first hundred.
+  const reportQuery = useInfiniteQuery({
+    queryKey: keys.company(company.id, 'reports', applied),
+    queryFn: ({ pageParam }) => unwrap<Report>(supabase.rpc('admin_subscription_report', {
+      p_filters: { ...applied, company_id: company.id, limit: REPORT_PAGE, offset: pageParam },
+    })),
+    initialPageParam: 0,
+    getNextPageParam: (_last: Report, parts: Report[]) => nextReportOffset(parts),
+    placeholderData: keepPreviousData,
+    // Each combination of filters is its own answer; only the unfiltered report stays cached for long.
+    ...(Object.values(applied).some(Boolean) ? { gcTime: VARIANT_GC } : {}),
+  });
+  const report = useMemo(() => mergeReport(reportQuery.data?.pages ?? []), [reportQuery.data]);
+  const loading = reportQuery.isPending;
+  const error = reportQuery.error instanceof Error ? reportQuery.error.message : '';
 
   // Filters come from the shared lookups; only the resets belong to this page.
   const universities: Option[] = useUniversities().data ?? [];
@@ -60,21 +76,27 @@ export const ReportsPage: React.FC = () => {
     unwrap<ResetRow[]>(supabase.from('report_resets').select('id, scope, reset_at, note, undone_at')
       .or(`company_id.eq.${company.id},company_id.is.null`).order('reset_at', { ascending: false }).limit(10)));
   const resets = resetsPage.data ?? [];
-  const load = reportPage.reload;
+  const load = async () => { await reportQuery.refetch(); };
   const loadOptions = resetsPage.reload;
 
   const set = (patch: Partial<typeof filters>) => setFilters((f) => ({ ...f, ...patch }));
   const t = report?.totals;
   const years = useMemo(() => { const y = new Date().getFullYear(); return [y - 1, y, y + 1]; }, []);
-  const activeResets = resets.filter((r) => !r.undone_at);
   const select = 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm';
 
-  const undo = async (reset: ResetRow) => {
+  const client = useQueryClient();
+  const guard = useGuard();
+  // A reset (or undoing one) moves where the company's figures start: the report, the
+  // list of resets and the overview's revenue all follow. Nothing announces it, so they are read here.
+  const afterReset = () => Promise.all([
+    loadOptions(), load(), client.invalidateQueries({ queryKey: keys.company(company.id, 'overview') }),
+  ]);
+  const undo = (reset: ResetRow) => guard(reset.id, async () => {
     if (!confirm('إلغاء هذا التصفير؟ ستعود التقارير لاحتساب البيانات السابقة له.')) return;
     const { error: undoError } = await supabase.rpc('admin_undo_report_reset', { p_reset_id: reset.id });
-    if (undoError) alert(undoError.message);
-    else await Promise.all([loadOptions(), load()]);
-  };
+    if (undoError) notifyError('تعذر إلغاء التصفير', undoError.message);
+    else await afterReset();
+  });
 
   return (
     <div className="space-y-6">
@@ -153,7 +175,11 @@ export const ReportsPage: React.FC = () => {
       <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 p-4">
           <h2 className="font-bold text-slate-700">الطلاب والاشتراكات</h2>
-          <span className="text-xs text-slate-400">{t ? `${t.count} اشتراك` : ''}{t && t.count > 2000 ? ' (يُعرض أول 2000)' : ''}</span>
+          <span className="text-xs text-slate-400">
+            {report && report.rowsTotal > 0 ? `${report.rows.length.toLocaleString('ar-EG')} من ${Math.max(report.rowsTotal, t?.count ?? 0).toLocaleString('ar-EG')} اشتراك` : ''}
+            {/* An older database sends its first 2000 rows and cannot send the rest. */}
+            {report && !reportQuery.hasNextPage && (t?.count ?? 0) > report.rows.length ? ` (يُعرض أول ${report.rows.length.toLocaleString('ar-EG')})` : ''}
+          </span>
         </div>
         {loading ? <SkeletonTable rows={6} columns={6} /> : !report || report.rows.length === 0 ? (
           <div className="p-8 text-center text-slate-500">لا توجد اشتراكات مطابقة.</div>
@@ -188,6 +214,14 @@ export const ReportsPage: React.FC = () => {
             </table>
           </div>
         )}
+        {reportQuery.hasNextPage && !loading && (
+          <div className="border-t border-slate-100 p-3 text-center">
+            <button type="button" onClick={() => void reportQuery.fetchNextPage()} disabled={reportQuery.isFetchingNextPage}
+              className="rounded-xl bg-slate-100 px-5 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50">
+              {reportQuery.isFetchingNextPage ? 'جاري التحميل…' : 'عرض المزيد'}
+            </button>
+          </div>
+        )}
       </div>
 
       {resets.length > 0 && (
@@ -207,7 +241,7 @@ export const ReportsPage: React.FC = () => {
       {resetScope && (
         <ResetDialog scope={resetScope} companyId={company.id} companyName={company.name}
           onClose={() => setResetScope(null)}
-          onDone={async () => { setResetScope(null); await Promise.all([loadOptions(), load()]); }} />
+          onDone={() => { setResetScope(null); void afterReset(); }} />
       )}
     </div>
   );
@@ -243,14 +277,15 @@ const ResetDialog: React.FC<{ scope: 'financial' | 'all'; companyId: string; com
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const run = async () => {
+  const guard = useGuard();
+  const run = () => guard('reset', async () => {
     setBusy(true);
     setError('');
     const { error: rpcError } = await supabase.rpc('admin_reset_reports', { p_scope: scope, p_confirm: typed, p_note: note || null, p_company_id: companyId });
     setBusy(false);
     if (rpcError) setError(rpcError.message);
     else onDone();
-  };
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" dir="rtl">

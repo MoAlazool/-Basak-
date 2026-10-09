@@ -96,7 +96,7 @@ export function ridersCard(numbers: Parameters<typeof nextRideHint>[0], fallback
  * The line under "riding today": confirmations for the next ride, which is the
  * number that moves while students vote in the evening.
  */
-export function nextRideHint(numbers: { riders_today: number; riders_next: number; next_ride_date: string; vote_closes_at?: string; riders_week: { date: string }[] } | null): string {
+function nextRideHint(numbers: { riders_today: number; riders_next: number; next_ride_date: string; vote_closes_at?: string; riders_week: { date: string }[] } | null): string {
   if (!numbers) return '';
   const today = numbers.riders_week[numbers.riders_week.length - 1]?.date;
   if (!numbers.next_ride_date || numbers.next_ride_date === today) {

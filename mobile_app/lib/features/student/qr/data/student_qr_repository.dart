@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/network/perf_trace.dart';
 import '../../../../core/storage/offline_cache.dart';
+import '../../subscription/models/subscription_model.dart';
 
 class StudentPassDetails {
   final String? qrValue;
@@ -20,7 +23,6 @@ class StudentPassDetails {
   final String? subscriptionId;
   final String? subscriptionType;
   final String? subscriptionStatus;
-  final String? paymentDate;
   final bool isOfflineCache;
 
   const StudentPassDetails(
@@ -35,7 +37,6 @@ class StudentPassDetails {
       this.subscriptionId,
       this.subscriptionType,
       this.subscriptionStatus,
-      this.paymentDate,
       this.isOfflineCache = false});
 
   /// What is saved on the device. It holds only what the server said (no
@@ -52,7 +53,6 @@ class StudentPassDetails {
         'subscription_id': subscriptionId,
         'subscription_type': subscriptionType,
         'subscription_status': subscriptionStatus,
-        'payment_date': paymentDate,
       };
 
   factory StudentPassDetails.fromCache(Map<String, dynamic> json, {bool isOfflineCache = true}) =>
@@ -68,17 +68,21 @@ class StudentPassDetails {
         subscriptionId: json['subscription_id'] as String?,
         subscriptionType: json['subscription_type'] as String?,
         subscriptionStatus: json['subscription_status'] as String?,
-        paymentDate: json['payment_date'] as String?,
         isOfflineCache: isOfflineCache,
       );
 }
 
-/// The requests behind the student pass, one method each (see SubscriptionGateway).
+/// What the pass asks of the server itself (replaced in tests). Everything it
+/// shows is read by other screens already: the student's own row (the profile)
+/// and the current subscription (the home screen).
 abstract class StudentPassGateway {
   String? get userId;
-  Future<Map<String, dynamic>?> studentRow(String userId);
-  Future<Map<String, dynamic>?> subscriptionRow(String userId, String today);
-  void refreshWalletCard();
+
+  /// A subscription can start or end by date alone, which nothing on the
+  /// server notices. Showing the card is a good moment to ask the server to
+  /// bring the student's Wallet card up to date; it does nothing when the card
+  /// is already right or the student has none.
+  Future<void> refreshWalletCard();
 }
 
 class SupabaseStudentPassGateway implements StudentPassGateway {
@@ -90,44 +94,9 @@ class SupabaseStudentPassGateway implements StudentPassGateway {
   String? get userId => _client.auth.currentUser?.id;
 
   @override
-  Future<Map<String, dynamic>?> studentRow(String userId) {
-    PerfTrace.count('pass.student');
-    return _client
-        .from(SupabaseTables.students)
-        .select('qr_code_value, full_name, phone, university, college, profile_image_url')
-        .eq('id', userId)
-        .maybeSingle();
-  }
-
-  @override
-  Future<Map<String, dynamic>?> subscriptionRow(String userId, String today) async {
-    PerfTrace.count('pass.subscription');
-    // Awaited here so the request is sent exactly once (a Postgrest builder
-    // re-sends for every listener).
-    return await _client
-        .from(SupabaseTables.subscriptions)
-        .select('''
-            id, type, status, departure_time, return_time,
-            lines(name), stations(name)
-          ''')
-        .eq('student_id', userId)
-        .inFilter('status', ['pending_payment', 'pending_review', 'active', 'rejected'])
-        // The subscription running today first, then the next upcoming one.
-        .or('end_date.is.null,end_date.gte.$today')
-        .order('start_date', ascending: true)
-        .order('created_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-  }
-
-  /// A subscription can start or end by date alone, which nothing on the
-  /// server notices. Opening this screen is a good moment to ask the server
-  /// to bring the student's Wallet card up to date; it does nothing when the
-  /// card is already right or the student has none. Never blocks the screen.
-  @override
-  void refreshWalletCard() {
+  Future<void> refreshWalletCard() async {
     PerfTrace.count('pass.wallet_refresh');
-    _client.rpc(SupabaseRpcs.walletRefreshMyCard).then((_) {}, onError: (_) {});
+    await _client.rpc(SupabaseRpcs.walletRefreshMyCard);
   }
 }
 
@@ -136,26 +105,65 @@ class StudentQrRepository {
 
   StudentQrRepository({StudentPassGateway? gateway}) : _gateway = gateway ?? const SupabaseStudentPassGateway();
 
-  /// The student's card and QR code. It never waits for the network when it
-  /// has been shown before: the saved pass appears at once and is checked with
-  /// the server behind it (see [OfflineCache.readThrough]).
-  Future<StudentPassDetails?> getStudentPassDetails() async {
+  /// Whose Wallet card was last refreshed, and on which day.
+  String? _walletRefreshedFor;
+
+  /// What was last written to the device.
+  String? _saved;
+
+  /// The student's card and QR code, put together from what the app already
+  /// holds: [student] is the student's own row and [subscription] the current
+  /// subscription, each read once for every screen that shows it (and each
+  /// from its saved copy first, so the card never waits for the network when
+  /// it has been shown before). The card itself costs no request.
+  ///
+  /// The pass is also kept under its own key, so it survives anything else
+  /// failing: with no connection and nothing else saved, that copy is shown.
+  Future<StudentPassDetails?> getStudentPassDetails({
+    required Future<Map<String, dynamic>?> Function() student,
+    required Future<SubscriptionModel?> Function() subscription,
+  }) async {
     final userId = _gateway.userId;
     if (userId == null) return null;
 
     try {
-      final json = await OfflineCache.readThrough('student_pass', () async {
-        final details = await _fetchPass(userId);
-        if (details == null) return null;
-        final saved = details.toCacheJson();
-        // Kept under its own key too: the pass must survive anything else failing.
-        await OfflineCache.saveStudentPass(saved);
-        _gateway.refreshWalletCard();
-        return saved;
-      });
-      if (json == null) return null;
-      return StudentPassDetails.fromCache(Map<String, dynamic>.from(json as Map),
-          isOfflineCache: OfflineCache.offlineSince.value != null);
+      // Side by side: neither waits for the other.
+      final subscriptionFuture = subscription();
+      // Never left unawaited with an error if the student read fails first.
+      subscriptionFuture.ignore();
+      final row = await student();
+      if (row == null) return null;
+      final current = await subscriptionFuture;
+
+      var qrValue = row['qr_code_value'] as String?;
+      if (!row.containsKey('qr_code_value')) {
+        // A copy saved by a version that did not keep the code with the
+        // profile: the pass saved by that version still has it.
+        qrValue = (await OfflineCache.readStudentPass())?['qr_value'] as String?;
+      }
+      final photo = (row['profile_image_url'] as String?)?.trim() ?? '';
+      final details = StudentPassDetails(
+        qrValue: qrValue,
+        fullName: row['full_name'] as String?,
+        phone: row['phone'] as String?,
+        university: row['university'] as String?,
+        college: row['college'] as String?,
+        profileImagePath: photo.isEmpty ? null : photo,
+        lineName: current?.lineName,
+        stationName: current?.stationName,
+        subscriptionId: current?.id,
+        subscriptionType: current?.type,
+        subscriptionStatus: current?.status,
+        isOfflineCache: OfflineCache.offlineSince.value != null,
+      );
+      final json = details.toCacheJson();
+      final encoded = jsonEncode(json);
+      if (encoded != _saved && (qrValue ?? '').isNotEmpty) {
+        _saved = encoded;
+        await OfflineCache.saveStudentPass(json);
+      }
+      _refreshWalletCard(userId);
+      return details;
     } catch (error) {
       // Only an unreachable server falls back to the saved pass; a refused or
       // deleted account must not keep showing a valid-looking QR.
@@ -170,33 +178,16 @@ class StudentQrRepository {
     }
   }
 
-  Future<StudentPassDetails?> _fetchPass(String userId) async {
-      // Independent of the student row: runs alongside it instead of after it.
-      final subscriptionFuture =
-          _gateway.subscriptionRow(userId, DateTime.now().toIso8601String().substring(0, 10));
-      // Never left unawaited with an error if the student query fails first.
-      subscriptionFuture.ignore();
-      final response = await _gateway.studentRow(userId);
-
-      if (response == null) return null;
-      final subscription = await subscriptionFuture;
-      final line = subscription?['lines'] as Map<String, dynamic>?;
-      final station = subscription?['stations'] as Map<String, dynamic>?;
-      final details = StudentPassDetails(
-        qrValue: response['qr_code_value'] as String?,
-        fullName: response['full_name'] as String?,
-        phone: response['phone'] as String?,
-        university: response['university'] as String?,
-        college: response['college'] as String?,
-        profileImagePath: (response['profile_image_url'] as String?)?.trim().isEmpty ?? true
-            ? null
-            : response['profile_image_url'] as String,
-        lineName: line?['name'] as String?,
-        stationName: station?['name'] as String?,
-        subscriptionId: subscription?['id'] as String?,
-        subscriptionType: subscription?['type'] as String?,
-        subscriptionStatus: subscription?['status'] as String?,
-      );
-      return details;
+  /// Once a day in a run of the app (what changes by date alone changes at
+  /// midnight; every other change the server notices itself), not every time
+  /// the card is put together again. Never blocks the screen; a failure is
+  /// tried again the next time.
+  void _refreshWalletCard(String userId) {
+    final key = '$userId ${DateTime.now().toIso8601String().substring(0, 10)}';
+    if (key == _walletRefreshedFor) return;
+    _walletRefreshedFor = key;
+    _gateway.refreshWalletCard().then((_) {}, onError: (_) {
+      if (_walletRefreshedFor == key) _walletRefreshedFor = null;
+    });
   }
 }

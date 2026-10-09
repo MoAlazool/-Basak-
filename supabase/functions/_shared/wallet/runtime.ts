@@ -1,12 +1,10 @@
-// What the wallet functions share: secrets, the card's content, its artwork,
-// and delivering a card to Apple or Google.
-import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { type ApplePushConfig, type AppleSigner, buildPkpass, sendPassUpdatePush } from './apple.ts';
-import { appleBackground } from './artwork.ts';
-import { defaultAppleImages } from './default_assets.ts';
+// What the wallet functions share: secrets, the card's content, and delivering
+// a card to Apple or Google. (What a pass looks like is in apple_pass.ts.)
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { type ApplePushConfig, type AppleSigner, type PushResult, sendPassUpdatePush } from './apple.ts';
 import { type GoogleConfig, upsertClass, upsertObject } from './google.ts';
-import { APPLE_LOGO_FILES, buildApplePassJson, buildGoogleClass, buildGoogleObject, type CardContent } from './pass_data.ts';
-import { appleThumbnails, hasUsablePhoto } from './photo.ts';
+import { buildGoogleClass, buildGoogleObject, type CardContent } from './pass_data.ts';
+import { hasUsablePhoto } from './photo.ts';
 
 /** Secrets are pasted as PEM; some shells store the line breaks as a literal "\n". */
 function pem(name: string): string | null {
@@ -14,15 +12,8 @@ function pem(name: string): string | null {
   return value ? value.replace(/\\n/g, '\n') : null;
 }
 
-export function serviceClient(): SupabaseClient {
-  const url = Deno.env.get('SUPABASE_URL');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !serviceKey) throw new Error('إعدادات بطاقة المحفظة غير مكتملة.');
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
-}
-
 /** The public address of this project, as Apple, Google and phones reach it. */
-export function publicBaseUrl(): string {
+function publicBaseUrl(): string {
   return (Deno.env.get('WALLET_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
 }
 
@@ -33,8 +24,17 @@ export interface AppleConfig extends AppleSigner {
   push: ApplePushConfig;
 }
 
+// Secrets do not change while an isolate lives, so each set is read and parsed once.
+let appleConfigMemo: AppleConfig | null | undefined;
+let googleConfigMemo: GoogleConfig | null | undefined;
+
 /** null until the Apple secrets are set. */
 export function appleConfig(): AppleConfig | null {
+  if (appleConfigMemo === undefined) appleConfigMemo = readAppleConfig();
+  return appleConfigMemo;
+}
+
+function readAppleConfig(): AppleConfig | null {
   const passTypeIdentifier = Deno.env.get('APPLE_PASS_TYPE_ID')?.trim();
   const teamIdentifier = Deno.env.get('APPLE_TEAM_ID')?.trim();
   const certPem = pem('APPLE_PASS_CERT_PEM');
@@ -52,7 +52,6 @@ export function appleConfig(): AppleConfig | null {
   };
 }
 
-/** null until the Google secrets are set. */
 /** The service account's JSON key file, pasted whole (alternative to the e-mail + key secrets). */
 function serviceAccountJson(): { client_email?: string; private_key?: string } {
   const raw = Deno.env.get('GOOGLE_WALLET_SA_JSON')?.trim();
@@ -65,7 +64,13 @@ function serviceAccountJson(): { client_email?: string; private_key?: string } {
   }
 }
 
+/** null until the Google secrets are set. */
 export function googleConfig(): GoogleConfig | null {
+  if (googleConfigMemo === undefined) googleConfigMemo = readGoogleConfig();
+  return googleConfigMemo;
+}
+
+function readGoogleConfig(): GoogleConfig | null {
   const issuerId = Deno.env.get('GOOGLE_WALLET_ISSUER_ID')?.trim();
   const keyFile = serviceAccountJson();
   const serviceAccountEmail = Deno.env.get('GOOGLE_WALLET_SA_EMAIL')?.trim() || keyFile.client_email?.trim();
@@ -75,6 +80,7 @@ export function googleConfig(): GoogleConfig | null {
     issuerId, serviceAccountEmail, privateKeyPem,
     apiBase: (Deno.env.get('GOOGLE_WALLET_API_BASE')?.trim() || 'https://walletobjects.googleapis.com/walletobjects/v1').replace(/\/+$/, ''),
     tokenUrl: Deno.env.get('GOOGLE_OAUTH_TOKEN_URL')?.trim() || 'https://oauth2.googleapis.com/token',
+    publicBaseUrl: publicBaseUrl(),
   };
 }
 
@@ -104,128 +110,131 @@ export async function registerSyncUrl(service: SupabaseClient): Promise<void> {
   if (!error) syncUrlKnown = true;
 }
 
-function decodeBase64(value: string): Uint8Array {
-  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
-}
-
-// Artwork folders are revision-stamped and never rewritten, so they cache well.
-const folderCache = new Map<string, Record<string, Uint8Array>>();
-
-async function downloadFolder(service: SupabaseClient, folder: string, files: string[]) {
-  const cached = folderCache.get(folder);
-  if (cached) return cached;
-  const images: Record<string, Uint8Array> = {};
-  await Promise.all(files.map(async (file) => {
-    const { data, error } = await service.storage.from('wallet-assets').download(`${folder}/${file}`);
-    if (!error && data) images[file] = new Uint8Array(await data.arrayBuffer());
-  }));
-  if (folderCache.size > 16) folderCache.clear();
-  folderCache.set(folder, images);
-  return images;
-}
-
-/**
- * The images inside the .pkpass. The logo is the company's; a company without
- * one shows its name as text; only a card with no company carries the
- * platform's logo. The small notification icon always exists (Apple requires it).
- */
-export async function loadAppleImages(service: SupabaseClient, content: CardContent) {
-  const images: Record<string, Uint8Array> = {};
-  for (const [name, value] of Object.entries(defaultAppleImages)) {
-    if (name.startsWith('icon') || !content.company) images[name] = decodeBase64(value);
-  }
-  if (content.company?.logo_path) {
-    Object.assign(images, await downloadFolder(service, content.company.logo_path, APPLE_LOGO_FILES));
-  }
-  Object.assign(images, await appleThumbnails(service, content.photo));
-  Object.assign(images, await appleBackground(content.theme.background_color));
-  return images;
-}
-
-/** The student's pass as it should look now. Same serial, token and QR every time. */
-export async function renderApplePass(
-  service: SupabaseClient, config: AppleConfig, content: CardContent, authenticationToken: string,
-): Promise<Uint8Array> {
-  const passJson = buildApplePassJson(content, {
-    passTypeIdentifier: config.passTypeIdentifier,
-    teamIdentifier: config.teamIdentifier,
-    webServiceURL: config.webServiceURL,
-    authenticationToken,
-  });
-  return buildPkpass(passJson, await loadAppleImages(service, content), config);
-}
-
-function randomToken(): string {
+/** 256 random bits, as hex: a pass's authentication token, or a photo link's token. */
+export function newAuthToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export const newAuthToken = randomToken;
+/** What is already recorded about a student's Google card (its wallet_passes row). */
+export interface GooglePassState {
+  photo_token: string | null;
+  photo_version: string | null;
+  /** Set once the object has been written to Google. */
+  content_hash: string | null;
+  dirty_at: string | null;
+}
+
+/** null when the student has no Google card yet. */
+export async function loadGoogleState(service: SupabaseClient, studentId: string): Promise<GooglePassState | null> {
+  const { data, error } = await service.from('wallet_passes')
+    .select('photo_token, photo_version, content_hash, dirty_at')
+    .eq('student_id', studentId).eq('platform', 'google').maybeSingle();
+  if (error) throw error;
+  return data;
+}
 
 /**
  * The link Google uses to fetch the student's portrait: this project's
  * wallet-photo function plus a 256-bit random token. A new photo gets a new
- * token, so an old link stops working; no photo means no link.
+ * token, so an old link stops working; no photo means no link. The token is
+ * saved before Google is given the link.
  */
-async function googlePhotoUrl(service: SupabaseClient, studentId: string, content: CardContent): Promise<string | null> {
-  const usable = await hasUsablePhoto(service, content.photo);
-  const { data: row, error } = await service.from('wallet_passes')
-    .select('photo_token, photo_version').eq('student_id', studentId).eq('platform', 'google').maybeSingle();
-  if (error) throw error;
-  const version = usable ? content.photo!.version : null;
-  let token = row?.photo_token ?? null;
-  if (!usable) token = null;
-  else if (!token || row?.photo_version !== version) token = randomToken();
-  if (row && (token !== row.photo_token || version !== row.photo_version)) {
-    const { error: saveError } = await service.from('wallet_passes')
-      .update({ photo_token: token, photo_version: version }).eq('student_id', studentId).eq('platform', 'google');
-    if (saveError) throw saveError;
+async function googlePhotoUrl(
+  service: SupabaseClient, config: GoogleConfig, card: Card, state: GooglePassState | null,
+): Promise<string | null> {
+  const photo = card.content.photo;
+  let token: string | null = null;
+  if (photo && state?.photo_token && state.photo_version === photo.version) {
+    // This exact file was checked when its token was made: nothing to download.
+    token = state.photo_token;
+  } else if (await hasUsablePhoto(service, photo)) {
+    token = newAuthToken();
   }
-  return token ? `${publicBaseUrl()}/functions/v1/wallet-photo/${token}.jpg` : null;
+  const version = token ? photo!.version : null;
+
+  const key = { student_id: card.content.student.id, platform: 'google' };
+  if (!state) {
+    // The card's row is created here, with the token already in it.
+    const { error } = await service.from('wallet_passes')
+      .upsert({ ...key, photo_token: token, photo_version: version }, { onConflict: 'student_id,platform' });
+    if (error) throw error;
+  } else if (token !== state.photo_token || version !== state.photo_version) {
+    const { error } = await service.from('wallet_passes')
+      .update({ photo_token: token, photo_version: version }).eq('student_id', key.student_id).eq('platform', 'google');
+    if (error) throw error;
+  }
+  return token ? `${config.publicBaseUrl}/functions/v1/wallet-photo/${token}.jpg` : null;
 }
 
-let classReady = '';
+let classReady: { issuerId: string; done: Promise<void> } | null = null;
 
-/** Creates or replaces the student's Google object with the current content (same object id). */
-export async function deliverGoogle(service: SupabaseClient, config: GoogleConfig, card: Card): Promise<void> {
-  if (classReady !== config.issuerId) {
-    await upsertClass(config, buildGoogleClass(config.issuerId));
-    classReady = config.issuerId;
-  }
-  // The row must exist first: it is where the photo token is kept.
-  const { error: rowError } = await service.from('wallet_passes').upsert(
-    { student_id: card.content.student.id, platform: 'google' },
-    { onConflict: 'student_id,platform', ignoreDuplicates: true },
-  );
-  if (rowError) throw rowError;
-  const photoUrl = await googlePhotoUrl(service, card.content.student.id, card.content);
-  await upsertObject(config, buildGoogleObject(card.content, {
-    issuerId: config.issuerId, publicBaseUrl: publicBaseUrl(), photoUrl,
-  }));
+/** The shared class is written once per isolate; cards delivered meanwhile wait for that one write. */
+function ensureGoogleClass(config: GoogleConfig): Promise<void> {
+  if (classReady?.issuerId === config.issuerId) return classReady.done;
+  // It exists from the first card ever issued, so replacing it is tried first.
+  const entry = { issuerId: config.issuerId, done: upsertClass(config, buildGoogleClass(config.issuerId), true) };
+  entry.done.catch(() => { if (classReady === entry) classReady = null; });
+  classReady = entry;
+  return entry.done;
 }
 
 /**
- * Tells every device holding the student's pass that it changed. The devices
- * then fetch the new version themselves. Returns how many pushes failed.
+ * Creates or replaces the student's Google object with the current content
+ * (same object id). `state` is the card's wallet_passes row as the caller
+ * already holds it, or null when there is none yet.
  */
-export async function pushAppleDevices(service: SupabaseClient, config: AppleConfig, studentId: string): Promise<number> {
-  const { data: registrations, error } = await service.from('wallet_apple_registrations')
-    .select('device_library_id, wallet_apple_devices(push_token)').eq('student_id', studentId);
+export async function deliverGoogle(
+  service: SupabaseClient, config: GoogleConfig, card: Card, state: GooglePassState | null,
+): Promise<void> {
+  const [photoUrl] = await Promise.all([googlePhotoUrl(service, config, card, state), ensureGoogleClass(config)]);
+  await upsertObject(config, buildGoogleObject(card.content, {
+    issuerId: config.issuerId, publicBaseUrl: config.publicBaseUrl, photoUrl,
+  }), !!state?.content_hash);
+}
+
+export interface AppleDevice { device_library_id: string; push_token: string }
+
+/** The devices holding each student's Apple pass, in one query for the whole batch. */
+export async function loadAppleDevices(service: SupabaseClient, studentIds: string[]): Promise<Map<string, AppleDevice[]>> {
+  const byStudent = new Map<string, AppleDevice[]>();
+  if (studentIds.length === 0) return byStudent;
+  const { data, error } = await service.from('wallet_apple_registrations')
+    .select('student_id, device_library_id, wallet_apple_devices(push_token)').in('student_id', studentIds);
   if (error) throw error;
-  let failures = 0;
-  for (const registration of registrations ?? []) {
+  for (const row of data ?? []) {
     // deno-lint-ignore no-explicit-any
-    const pushToken = (registration as any).wallet_apple_devices?.push_token as string | undefined;
+    const pushToken = (row as any).wallet_apple_devices?.push_token as string | undefined;
     if (!pushToken) continue;
-    const result = await sendPassUpdatePush(pushToken, config.push);
+    const devices = byStudent.get(row.student_id) ?? [];
+    devices.push({ device_library_id: row.device_library_id, push_token: pushToken });
+    byStudent.set(row.student_id, devices);
+  }
+  return byStudent;
+}
+
+/**
+ * Tells every device holding a pass that it changed, all at once. The devices
+ * then fetch the new version themselves. Returns how many pushes failed.
+ * `send` is only replaced by tests.
+ */
+export async function pushAppleDevices(
+  service: SupabaseClient, config: AppleConfig, devices: AppleDevice[],
+  send: (pushToken: string, config: ApplePushConfig) => Promise<PushResult> = sendPassUpdatePush,
+): Promise<number> {
+  const results = await Promise.all(devices.map((device) => send(device.push_token, config.push)));
+  const dead: string[] = [];
+  let failures = 0;
+  results.forEach((result, index) => {
     if (result.invalidToken) {
-      // Apple: "Delete a device if APNs returns an error that the push token is invalid."
-      await service.from('wallet_apple_devices').delete().eq('device_library_id', registration.device_library_id);
+      dead.push(devices[index].device_library_id);
     } else if (!result.ok) {
       failures += 1;
       console.warn('wallet push failed', result.status, result.reason);
     }
-  }
+  });
+  // Apple: "Delete a device if APNs returns an error that the push token is invalid."
+  if (dead.length) await service.from('wallet_apple_devices').delete().in('device_library_id', dead);
   return failures;
 }
 
@@ -233,17 +242,21 @@ export async function pushAppleDevices(service: SupabaseClient, config: AppleCon
 export async function markDelivered(
   service: SupabaseClient, studentId: string, platform: 'apple' | 'google', card: Card, claimedDirtyAt: string | null,
 ): Promise<void> {
-  const { error } = await service.from('wallet_passes').update({
+  const shown = {
     content_hash: card.hash,
     company_id: card.content.company?.id ?? null,
     content_updated_at: new Date().toISOString(),
     last_error: null,
     claimed_at: null,
-  }).eq('student_id', studentId).eq('platform', platform);
+  };
+  if (claimedDirtyAt) {
+    // Usual case, one write: the card is still queued exactly as it was claimed, so it leaves the queue too.
+    const { data, error } = await service.from('wallet_passes').update({ ...shown, dirty_at: null })
+      .eq('student_id', studentId).eq('platform', platform).eq('dirty_at', claimedDirtyAt).select('student_id');
+    if (error) throw error;
+    if (data?.length) return;
+  }
+  // Not queued, or it changed again while this delivery was running: it stays queued as it is.
+  const { error } = await service.from('wallet_passes').update(shown).eq('student_id', studentId).eq('platform', platform);
   if (error) throw error;
-  // Leave the card queued if it changed again while this delivery was running.
-  const clear = service.from('wallet_passes').update({ dirty_at: null })
-    .eq('student_id', studentId).eq('platform', platform);
-  const { error: clearError } = await (claimedDirtyAt ? clear.eq('dirty_at', claimedDirtyAt) : clear.is('dirty_at', null));
-  if (clearError) throw clearError;
 }

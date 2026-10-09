@@ -1,10 +1,8 @@
 import React from 'react';
 import { CalendarClock, Send } from 'lucide-react';
 import type { LineOption, UniversityOption } from '../../lib/lineOptions';
-import {
-  BODY_MAX, CAIRO_LABEL, CAIRO_ZONE, TITLE_MAX, cairoLocalToIso, formatCairo, isoToCairoLocal, scheduleProblem,
-  type NotificationDraft,
-} from '../../lib/notifications';
+import { BODY_MAX, TITLE_MAX, scheduleProblem, type NotificationDraft } from '../../lib/notifications';
+import { CAIRO_LABEL, CAIRO_ZONE, cairoLocalToIso, formatCairo, isoToCairoLocal } from '../../lib/time';
 import { AudiencePicker } from './AudiencePicker';
 import { fieldClass, labelClass } from './parts';
 

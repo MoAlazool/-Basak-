@@ -1,18 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { SkeletonTable } from '../components/Skeleton';
 import { supabase } from '../lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
 import { keys, unwrap, usePageData } from '../lib/query';
-import { refreshUniversities, useUniversities } from '../lib/reference';
+import { refreshUniversities, UNIVERSITY_COLUMNS as UNIVERSITY, universitiesKey, useUniversities, type UniversityRow } from '../lib/reference';
+import { useGuard } from '../lib/guard';
+import { notifyDone, notifyError } from '../lib/toasts';
 import { GraduationCap, Plus, CheckCircle, XCircle, MapPin, Search } from 'lucide-react';
 
-interface University {
-  id: string;
-  name: string;
-  city: string;
-  is_active: boolean;
-  created_at: string;
-  students_count?: number;
-}
+type University = UniversityRow & { students_count?: number };
 interface College { id: string; university_id: string; name: string; is_active: boolean }
 
 /**
@@ -22,11 +18,7 @@ interface College { id: string; university_id: string; name: string; is_active: 
  */
 async function loadStudentCounts(): Promise<Record<string, number> | null> {
   const { data, error } = await supabase.rpc('university_student_counts');
-  if (error || !data || typeof data !== 'object') {
-    if (error) console.warn('university_student_counts unavailable:', error.message);
-    return null;
-  }
-  return data as Record<string, number>;
+  return error || !data || typeof data !== 'object' ? null : data as Record<string, number>;
 }
 
 export const UniversitiesPage: React.FC = () => {
@@ -52,84 +44,72 @@ export const UniversitiesPage: React.FC = () => {
   const colleges = collegesPage.data ?? [];
   const loading = page.loading;
   const pageError = page.error || collegesPage.error;
-  // After this page's own writes: every page that lists universities sees the change.
   const fetchUniversities = async () => { await Promise.all([refreshUniversities(), collegesPage.reload()]); };
   useEffect(() => {
     if (!collegeUniversityId && universities.length) setCollegeUniversityId(universities[0].id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page.data]);
 
-  const handleAddCollege = async (e: React.FormEvent) => {
+  // Each write answers with the saved row, which goes into the cached list every page
+  // reads (the forms of every company included): nothing is read again.
+  const client = useQueryClient();
+  const guard = useGuard();
+  const collegesKey = keys.shared('colleges');
+  const byName = <T extends { name: string }>(rows: T[]) => [...rows].sort((a, b) => a.name.localeCompare(b.name));
+  const putUniversity = (row: UniversityRow) => client.setQueryData<UniversityRow[]>(universitiesKey, (rows) =>
+    (rows ? byName([...rows.filter((item) => item.id !== row.id), row]) : rows));
+  const putCollege = (row: College) => client.setQueryData<College[]>(collegesKey, (rows) =>
+    (rows ? byName([...rows.filter((item) => item.id !== row.id), row]) : rows));
+  const COLLEGE = 'id, university_id, name, is_active';
+
+  const handleAddCollege = (e: React.FormEvent) => {
     e.preventDefault();
     if (!collegeName.trim() || !collegeUniversityId) return;
-    try {
+    void guard('add-college', async () => {
       setIsSubmitting(true);
-      const { error } = await supabase.from('colleges').insert({
+      const { data, error } = await supabase.from('colleges').insert({
         name: collegeName.trim(), university_id: collegeUniversityId, is_active: true,
-      });
-      if (error) throw error;
-      setCollegeName('');
-      await fetchUniversities();
-    } catch (err: any) {
-      alert('فشل إضافة الكلية: ' + err.message);
-    } finally {
+      }).select(COLLEGE).single();
       setIsSubmitting(false);
-    }
+      if (error || !data) return notifyError('فشل إضافة الكلية', error?.message);
+      setCollegeName('');
+      putCollege(data as College);
+    });
   };
 
-  const toggleCollegeStatus = async (college: College) => {
-    const { error } = await supabase.from('colleges').update({ is_active: !college.is_active }).eq('id', college.id).select('id').single();
-    if (error) alert('فشل تعديل حالة الكلية: ' + error.message);
-    else fetchUniversities();
-  };
+  const toggleCollegeStatus = (college: College) => guard(college.id, async () => {
+    const { data, error } = await supabase.from('colleges').update({ is_active: !college.is_active }).eq('id', college.id).select(COLLEGE).single();
+    if (error || !data) notifyError('فشل تعديل حالة الكلية', error?.message);
+    else putCollege(data as College);
+  });
 
-  const handleAddUniversity = async (e: React.FormEvent) => {
+  const handleAddUniversity = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-
-    try {
+    void guard('add-university', async () => {
       setIsSubmitting(true);
-      const { error } = await supabase.from('universities').insert({
+      const { data, error } = await supabase.from('universities').insert({
         name: name.trim(),
         city: city.trim() || 'المنصورة',
         is_active: true,
-      });
-
-      if (error) throw error;
+      }).select(UNIVERSITY).single();
+      setIsSubmitting(false);
+      if (error || !data) return notifyError('فشل إضافة الجامعة', error?.message);
       setName('');
       setCity('');
-      fetchUniversities();
-      alert('تمت إضافة الجامعة بنجاح!');
-    } catch (err: any) {
-      alert('فشل إضافة الجامعة: ' + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+      putUniversity(data as UniversityRow);
+      notifyDone('تمت إضافة الجامعة بنجاح');
+    });
   };
 
-  const toggleStatus = async (id: string, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('universities')
-        .update({ is_active: !currentStatus })
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchUniversities();
-    } catch (err: any) {
-      alert('فشل تعديل حالة الجامعة: ' + err.message);
-    }
-  };
-
+  const setActive = (id: string, active: boolean) => guard(id, async () => {
+    const { data, error } = await supabase.from('universities').update({ is_active: active }).eq('id', id).select(UNIVERSITY).single();
+    if (error || !data) notifyError(active ? 'فشل تفعيل الجامعة' : 'فشل تعطيل الجامعة', error?.message);
+    else putUniversity(data as UniversityRow);
+  });
+  const toggleStatus = (id: string, currentStatus: boolean) => setActive(id, !currentStatus);
   const handleDelete = async (id: string, uniName: string) => {
-    if (!confirm(`تعطيل ${uniName}؟ ستظل بياناتها محفوظة، ولن تظهر في تسجيل الطلاب.`)) return;
-    try {
-      const { error } = await supabase.from('universities').update({ is_active: false }).eq('id', id);
-      if (error) throw error;
-      fetchUniversities();
-    } catch (err: any) {
-      alert('فشل تعطيل الجامعة: ' + err.message);
-    }
+    if (confirm(`تعطيل ${uniName}؟ ستظل بياناتها محفوظة، ولن تظهر في تسجيل الطلاب.`)) await setActive(id, false);
   };
 
   const filteredUniversities = universities.filter(
@@ -250,7 +230,7 @@ export const UniversitiesPage: React.FC = () => {
                   </td>
                   <td className="p-4">
                     <button
-                      onClick={() => toggleStatus(u.id, u.is_active)}
+                      onClick={() => void toggleStatus(u.id, u.is_active)}
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition hover:opacity-80 ${
                         u.is_active
                           ? 'bg-emerald-50 text-emerald-700'
@@ -263,7 +243,7 @@ export const UniversitiesPage: React.FC = () => {
                   </td>
                   <td className="p-4 text-left">
                     <button
-                      onClick={() => handleDelete(u.id, u.name)}
+                      onClick={() => void handleDelete(u.id, u.name)}
                       className="text-rose-400 hover:text-rose-600 transition"
                       title="تعطيل الجامعة مع الاحتفاظ ببياناتها"
                     >
@@ -296,7 +276,7 @@ export const UniversitiesPage: React.FC = () => {
               const university = universities.find((item) => item.id === college.university_id);
               return <div key={college.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
                 <div><p className="font-semibold text-slate-700">{college.name}</p><p className="text-xs text-slate-500">{university?.name ?? 'جامعة غير مفعّلة'}</p></div>
-                <button onClick={() => toggleCollegeStatus(college)} className={`rounded-lg px-3 py-1 text-xs font-bold ${college.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>{college.is_active ? 'نشطة' : 'معطلة'}</button>
+                <button onClick={() => void toggleCollegeStatus(college)} className={`rounded-lg px-3 py-1 text-xs font-bold ${college.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>{college.is_active ? 'نشطة' : 'معطلة'}</button>
               </div>;
             })}
           </div>

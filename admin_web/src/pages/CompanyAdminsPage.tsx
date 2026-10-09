@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Mail, Plus, ShieldCheck, UserRound, KeyRound, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
-import { keys, usePageData } from '../lib/query';
+import { keys, unwrap, usePageData } from '../lib/query';
+import { usePlatformCompanies } from '../lib/reference';
+import { useGuard } from '../lib/guard';
 import { SkeletonTable } from '../components/Skeleton';
 
 interface Company { id: string; name: string; }
@@ -18,27 +20,28 @@ export const CompanyAdminsPage: React.FC = () => {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState('');
 
-  const page = usePageData(keys.platform('companyAdmins'), async () => {
-    const [{ data: companyRows, error: companyError }, { data: adminRows, error: adminError }] = await Promise.all([
-      supabase.from('companies').select('id,name').eq('is_active', true).order('name'),
-      supabase.from('admins').select('id,email,full_name,company_id,created_at').eq('role', 'company_admin').order('created_at', { ascending: false }),
-    ]);
-    if (companyError || adminError) throw new Error(companyError?.message || adminError?.message || 'تعذر تحميل البيانات.');
-    return { companies: (companyRows || []) as Company[], admins: (adminRows || []) as CompanyAdmin[] };
-  });
-  const companies = page.data?.companies ?? [];
-  const admins = page.data?.admins ?? [];
+  // The companies come from the platform's shared lookup (already cached by the other pages);
+  // only the admin accounts are this page's own.
+  const lookup = usePlatformCompanies();
+  const companies: Company[] = useMemo(() => (lookup.data ?? []).filter((company) => company.status === 'active'), [lookup.data]);
+  const page = usePageData(keys.platform('companyAdmins'), () => unwrap<CompanyAdmin[]>(
+    supabase.from('admins').select('id,email,full_name,company_id,created_at').eq('role', 'company_admin').order('created_at', { ascending: false })));
+  const admins = page.data ?? [];
   const loading = page.loading;
   const load = page.reload;
+  const guard = useGuard();
   useEffect(() => {
     setCompanyId((current) => current && companies.some((company) => company.id === current) ? current : (companies[0]?.id || ''));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page.data]);
+  }, [companies]);
 
-  const createAdmin = async (event: React.FormEvent) => {
+  const createAdmin = (event: React.FormEvent) => {
     event.preventDefault();
     if (!companyId) { setError('أضف شركة وفعّلها أولاً.'); return; }
     if (password && password.length < 8) { setError('كلمة المرور يجب ألا تقل عن 8 أحرف.'); return; }
+    // A second submit while the first is on its way does nothing (the account must not be created twice).
+    void guard('create', submitAdmin);
+  };
+  const submitAdmin = async () => {
     setSubmitting(true);
     setError('');
     setNotice('');
@@ -59,7 +62,7 @@ export const CompanyAdminsPage: React.FC = () => {
     setSubmitting(false);
   };
 
-  const deleteAdmin = async (admin: CompanyAdmin) => {
+  const deleteAdmin = (admin: CompanyAdmin) => guard(admin.id, async () => {
     if (!confirm(`هل أنت متأكد من حذف مدير الشركة "${admin.full_name}"؟ سيُحذف حساب الدخول الخاص به ولن يتمكن من الدخول إلى لوحة التحكم.`)) return;
     setDeletingId(admin.id);
     setError('');
@@ -72,7 +75,7 @@ export const CompanyAdminsPage: React.FC = () => {
       setError(deleteError instanceof Error ? deleteError.message : 'تعذر حذف مدير الشركة.');
     }
     setDeletingId('');
-  };
+  });
 
   return (
     <div className="space-y-6">
@@ -104,7 +107,7 @@ export const CompanyAdminsPage: React.FC = () => {
           </div>
         )}
          {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
-        {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+        {(error || page.error || lookup.error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error || page.error || lookup.error}</p>}
         <button disabled={submitting || companies.length === 0} className="flex items-center gap-2 rounded-xl bg-sky-700 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">
           {password ? <KeyRound className="h-4 w-4" /> : <Mail className="h-4 w-4" />}{submitting ? 'جاري الإنشاء...' : password ? 'إنشاء الحساب وتعيين الشركة' : 'إرسال دعوة وتعيين الشركة'}
         </button>

@@ -17,7 +17,6 @@ import 'package:basak_mobile/features/student/home/presentation/student_home_scr
 import 'package:basak_mobile/features/student/profile/data/profile_repository.dart';
 import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
 import 'package:basak_mobile/features/student/subscription/data/subscription_repository.dart';
-import 'package:basak_mobile/features/student/subscription/presentation/purchase_flow.dart';
 import 'package:basak_mobile/features/student/subscription/presentation/subscription_screen.dart';
 
 import '../support/perf_fakes.dart';
@@ -96,7 +95,8 @@ void main() {
     expect(c.read(currentSubscriptionProvider).value?.status, 'active');
     expect((await c.read(studentQrProvider.future))?.subscriptionStatus, 'active',
         reason: 'an approval reaches the card promptly');
-    expect(world.log.total, lessThanOrEqualTo(7));
+    expect(world.log.calls, {'subscriptions.all': 1, 'subscriptions.current': 1, 'receipts.list': 1},
+        reason: 'the card is made from the current subscription, and nobody is looking at the catalog');
     expect(world.log.of('storage.sign'), 0, reason: 'the photo link is reused');
   });
 
@@ -140,7 +140,6 @@ void main() {
             // tab. The card tab's provider is also what saves the pass for
             // offline use at sign-in.
             ref.watch(allSubscriptionsProvider);
-            ref.watch(saleCatalogProvider);
             final pass = ref.watch(studentQrProvider).valueOrNull;
             final photo = studentPhoto(pass?.profileImagePath);
             if (photo != null) ref.watch(signedPhotoProvider(photo));
@@ -159,15 +158,22 @@ void main() {
     await start(); // first run on this phone: fills the saved copies
     OfflineCache.resetSession();
     world.log.reset();
+    world.inbox.pageRequests = 0;
     await start();
 
     report('cold start (warm cache)', world.log);
     expect(world.log.of('role.rpc') + world.log.of('role.select'), 1);
-    expect(world.log.of('pass.student'), 1, reason: 'the pass is fetched once, through its provider');
+    expect(world.log.of('profile.summary'), 1,
+        reason: 'the student\'s own row is read once: for the home screen, the card and the password check');
+    expect(world.log.of('subscriptions.current'), 1, reason: 'once: for the home screen and the card');
+    expect(world.log.of('pass.wallet_refresh'), 1);
     expect(world.log.of('vote_settings'), 1);
-    expect(world.log.of('ride.range') + world.log.of('ride.details'), lessThanOrEqualTo(2));
+    expect(world.log.of('ride.days'), 1, reason: 'the week and the ride day\'s choices in one read');
     expect(world.log.of('storage.sign'), lessThanOrEqualTo(2), reason: 'one per photo: the student and the supervisor');
-    expect(world.log.total, lessThanOrEqualTo(13));
+    expect(world.log.of('invites.list'), 1);
+    expect(world.inbox.pageRequests, 1, reason: 'the inbox (the bell), counted apart from the rest');
+    expect(world.log.of('sale_catalog'), 0, reason: 'nothing on screen shows what is on sale');
+    expect(world.log.total, lessThanOrEqualTo(10));
   });
 
   test('(d) changing the profile photo, with its live echo', () async {

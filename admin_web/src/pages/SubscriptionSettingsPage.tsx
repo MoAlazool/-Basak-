@@ -3,7 +3,12 @@ import { CalendarRange, Save, ToggleLeft, ToggleRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Topbar } from '../components/Topbar';
 import { useAdminScope, useCompany } from '../lib/adminScope';
-import { keys, STALE, unwrap, usePageData } from '../lib/query';
+import { useQueryClient } from '@tanstack/react-query';
+import { refreshIfNotUpdated, STALE, unwrap, usePageData } from '../lib/query';
+import { settingsKey, switchesKey } from '../lib/reference';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { notifyDone, notifyError } from '../lib/toasts';
 import { SkeletonForm } from '../components/Skeleton';
 import { VoteSettingsCard } from '../components/VoteSettingsCard';
 import { optionName, reasonText, type SaleRow } from '../lib/saleOptions';
@@ -40,6 +45,9 @@ interface Switches {
   daily_effective: boolean;
 }
 
+/** The lists a change to the company's own row makes out of date (lib/sync.ts, `companies`). */
+const COMPANY_ROW_LISTS = ['company', 'overview', 'settings', 'switches', 'vote'];
+
 const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
 const Toggle: React.FC<{ on: boolean; disabled?: boolean; onClick: () => void }> = ({ on, disabled, onClick }) => (
@@ -67,10 +75,12 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   const [receiptInfo, setReceiptInfo] = useState({ phone: '', address: '', commercial_register: '', tax_number: '' });
   const [savingInfo, setSavingInfo] = useState(false);
 
-  const page = usePageData(companyId ? keys.company(companyId, 'settings') : keys.platform('defaults'), () =>
+  const client = useQueryClient();
+  const guard = useGuard();
+  const page = usePageData(settingsKey(companyId), () =>
     unwrap<Settings>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })), { staleTime: STALE.reference });
   const settings = page.data ?? null;
-  const switchesPage = usePageData(companyId ? keys.company(companyId, 'switches') : keys.platform('switches'), () =>
+  const switchesPage = usePageData(switchesKey(companyId), () =>
     unwrap<Switches>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })), { staleTime: STALE.reference });
   const switches = switchesPage.data ?? null;
   const error = page.error;
@@ -85,43 +95,79 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
     }
   }, [settings]);
 
-  const setAnnual = async (enabled: boolean, target: string | null) => {
-    const { error: setError_ } = await supabase.rpc('set_annual_subscription', {
-      p_enabled: enabled, p_company_id: target,
-    });
-    if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
-    await Promise.all([load(), switchesPage.reload()]);
+  // Every save answers with what was saved, which is shown at once. In a company's
+  // workspace the change is then announced on the live topic, and that announcement
+  // reads again only what is derived from it and not on screen yet (`derived`): never
+  // the lists already brought up to date here. The platform's defaults are announced
+  // to nobody, so they are read again directly.
+  const patchSettings = (patch: Partial<Settings>) =>
+    client.setQueryData<Settings>(settingsKey(companyId), (current) => (current ? { ...current, ...patch } : current));
+  const patchSwitches = (patch: Partial<Switches & { annual_effective: boolean }>) =>
+    client.setQueryData<Switches>(switchesKey(companyId), (current) => (current ? { ...current, ...patch } : current));
+  /** `target` is the company whose row was written (null = the platform's own settings). */
+  const afterSave = (target: string | null, derived: 'settings' | 'switches' | null) => {
+    if (!companyId || !target) {
+      if (derived === 'settings') void load();
+      if (derived === 'switches') void switchesPage.reload();
+      return;
+    }
+    // The company row's announcement would otherwise read five lists again.
+    rememberApplied([companyId], COMPANY_ROW_LISTS.filter((name) => name !== derived));
+    if (derived) refreshIfNotUpdated(derived === 'settings' ? settingsKey(companyId) : switchesKey(companyId));
   };
 
-  const setSale = async (advance: boolean | null, onSale: Record<string, boolean> | null) => {
-    const { error: setError_ } = await supabase.rpc('set_company_sale_settings', {
+  const setAnnual = (enabled: boolean, target: string | null) => guard('annual', async () => {
+    const { data, error: failed } = await supabase.rpc('set_annual_subscription', { p_enabled: enabled, p_company_id: target });
+    if (failed) return notifyError('تعذر حفظ الإعداد', failed.message);
+    const saved = (data ?? {}) as { global?: boolean; company?: boolean | null; effective?: boolean };
+    patchSettings({
+      ...(typeof saved.global === 'boolean' ? { annual_global: saved.global } : {}),
+      ...(target ? { annual_company: enabled } : {}),
+      ...(typeof saved.effective === 'boolean' && target === companyId ? { annual_effective: saved.effective } : {}),
+    });
+    if (typeof saved.effective === 'boolean' && target === companyId) patchSwitches({ annual_effective: saved.effective });
+    // Which periods can be paid for follows the switch: that part is read again.
+    if (!target) void switchesPage.reload();
+    afterSave(target, 'settings');
+  });
+
+  const setSale = (advance: boolean | null, onSale: Record<string, boolean> | null) => guard('sale', async () => {
+    const { data, error: failed } = await supabase.rpc('set_company_sale_settings', {
       p_company_id: companyId, p_advance: advance, p_on_sale: onSale,
     });
-    if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
-    await load();
-  };
+    if (failed) return notifyError('تعذر حفظ الإعداد', failed.message);
+    const saved = (data ?? {}) as { advance_enabled?: boolean | null; on_sale?: Record<string, boolean> | null };
+    patchSettings({
+      ...(saved.advance_enabled !== undefined ? { advance_enabled: saved.advance_enabled } : {}),
+      ...(saved.on_sale && settings ? { terms: settings.terms.map((term) => ({ ...term, is_on_sale: saved.on_sale![term.code] ?? term.is_on_sale })) } : {}),
+    });
+    // What each line offers follows these switches: that preview is read again.
+    afterSave(companyId, 'settings');
+  });
 
-  const saveReceiptInfo = async () => {
+  const saveReceiptInfo = () => guard('receipt', async () => {
     setSavingInfo(true);
-    const { error: saveError } = await supabase.rpc('set_company_receipt_info', {
+    const { data, error: saveError } = await supabase.rpc('set_company_receipt_info', {
       p_company_id: companyId, p_phone: receiptInfo.phone, p_address: receiptInfo.address,
       p_commercial_register: receiptInfo.commercial_register, p_tax_number: receiptInfo.tax_number,
     });
     setSavingInfo(false);
-    if (saveError) alert('تعذر حفظ بيانات الإيصال: ' + saveError.message);
-    else alert('تم الحفظ. تظهر هذه البيانات على الإيصالات التي تصدر من الآن؛ الإيصالات السابقة لا تتغير.');
-    await load();
-  };
+    if (saveError) return notifyError('تعذر حفظ بيانات الإيصال', saveError.message);
+    notifyDone('تم الحفظ', 'تظهر هذه البيانات على الإيصالات التي تصدر من الآن؛ الإيصالات السابقة لا تتغير.');
+    if (data) patchSettings({ receipt_info: data as Settings['receipt_info'] });
+    afterSave(companyId, data ? null : 'settings');
+  });
 
-  const setDaily = async (enabled: boolean, target: string | null) => {
-    const { error: setError_ } = await supabase.rpc('set_daily_subscription', {
-      p_enabled: enabled, p_company_id: target,
-    });
-    if (setError_) alert('تعذر حفظ الإعداد: ' + setError_.message);
-    await switchesPage.reload();
-  };
+  const setDaily = (enabled: boolean, target: string | null) => guard('daily', async () => {
+    const { data, error: failed } = await supabase.rpc('set_daily_subscription', { p_enabled: enabled, p_company_id: target });
+    if (failed) return notifyError('تعذر حفظ الإعداد', failed.message);
+    const saved = (data ?? {}) as { global?: boolean; effective?: boolean };
+    const known = typeof saved.global === 'boolean' && typeof saved.effective === 'boolean' && target === companyId;
+    if (known) patchSwitches({ daily_global: saved.global!, daily_effective: saved.effective!, ...(target ? { daily_company: enabled } : {}) });
+    afterSave(target, known && target ? null : 'switches');
+  });
 
-  const saveTerms = async () => {
+  const saveTerms = () => guard('terms', async () => {
     if (!settings) return;
     const changed = settings.terms.filter((term) => {
       const d = drafts[term.code];
@@ -141,7 +187,9 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
         });
         if (saveError) throw saveError;
         const moved = Number((data as { moved_subscriptions?: number } | null)?.moved_subscriptions ?? 0);
-        alert(moved > 0 ? `تم حفظ المواعيد وتحديث ${moved.toLocaleString('ar-EG')} اشتراك مفتوح.` : 'تم حفظ مواعيد الفصول الدراسية.');
+        notifyDone(moved > 0 ? `تم حفظ المواعيد وتحديث ${moved.toLocaleString('ar-EG')} اشتراك مفتوح` : 'تم حفظ مواعيد الفصول الدراسية');
+        // The saved terms are announced on the live topic, which reads the settings and the periods once.
+        refreshIfNotUpdated(settingsKey(companyId));
       } else {
         // The defaults: one term at a time; the database validates after each.
         for (const d of changed) {
@@ -151,16 +199,17 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
           }).eq('code', d.code).select('code').single();
           if (saveError) throw saveError;
         }
-        alert('تم حفظ المواعيد الافتراضية. تُطبّق على الشركات التي تُنشأ بعد الآن.');
+        notifyDone('تم حفظ المواعيد الافتراضية', 'تُطبّق على الشركات التي تُنشأ بعد الآن.');
+        await load();
       }
-      await load();
     } catch (err: any) {
-      alert('تعذر حفظ المواعيد: ' + err.message);
+      notifyError('تعذر حفظ المواعيد', err.message);
+      // Some of it may have been saved: show what the database has now.
       await load();
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const editable = companyId ? true : admin.role === 'super_admin';
   const update = (code: string, patch: Partial<Term>) => setDrafts((all) => ({ ...all, [code]: { ...all[code], ...patch } }));

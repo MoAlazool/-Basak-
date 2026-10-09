@@ -49,7 +49,7 @@ export const WeeklyRidersChart: React.FC<WeeklyChartProps> = ({ data, loading, e
               لا توجد بيانات متاحة لهذه الفترة.
             </div>
           ) : (
-            data.map((item, idx) => {
+            data.map((item) => {
               const heightPercent = item.count === 0 ? 0 : Math.max(4, Math.round((item.count / maxCount) * 100));
               return (
                 <div key={item.dateStr} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">

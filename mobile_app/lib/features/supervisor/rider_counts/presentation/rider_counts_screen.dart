@@ -4,6 +4,7 @@ import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/network/network_errors.dart';
+import '../../../../core/sync/sync_hub.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_container.dart';
@@ -33,6 +34,10 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
   List<StationRiderCountModel> _counts = [];
   String? _error;
 
+  /// The newest load wins: an older answer never overwrites a newer one
+  /// (switching day while the first is still on its way).
+  int _loads = 0;
+
   @override
   void initState() {
     super.initState();
@@ -54,19 +59,26 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
     final targetDate =
         _isTomorrowSelected ? today.add(const Duration(days: 1)) : today;
 
+    final load = ++_loads;
     try {
+      // The dashboard already lists the supervisor's lines: they are not
+      // asked for again.
+      final lines = ref.read(supervisorDashboardProvider).valueOrNull?.lines;
       final counts =
           await ref.read(riderCountsRepoProvider).getAssignedStationRiderCounts(
                 targetDate: targetDate,
+                lineIds: lines == null ? null : [for (final line in lines) line.id],
               );
-      if (mounted) {
+      if (mounted && load == _loads) {
         setState(() {
           _counts = counts;
+          _error = null;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      // A quiet refresh that failed leaves the numbers already shown.
+      if (mounted && load == _loads && !(silent && _counts.isNotEmpty)) {
         setState(() {
           _error = errorMessage(e);
           _isLoading = false;
@@ -81,6 +93,9 @@ class _RiderCountsScreenState extends ConsumerState<RiderCountsScreen> {
     ref.listen(supervisorDashboardProvider, (_, next) {
       if (next.hasValue && !next.isLoading) _loadCounts(silent: true);
     });
+    // Opened from the saved numbers and the server had newer ones: they are
+    // in memory now.
+    ref.listen(riderCountsTickProvider, (_, __) => _loadCounts(silent: true));
     final totalRiders = _counts.fold<int>(0, (sum, st) => sum + st.ridingCount);
     final totalReturners =
         _counts.fold<int>(0, (sum, st) => sum + st.returningCount);

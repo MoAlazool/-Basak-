@@ -15,6 +15,10 @@ export default defineConfig({
         // stay in the browser's cache across dashboard releases, and download in
         // parallel with the app's own code.
         manualChunks(id) {
+          // Helpers of a few hundred bytes that many pages share: one file instead of
+          // six separate requests. They import nothing of the app (only React), so
+          // grouping them cannot tie two pages' code together.
+          if (/\/src\/lib\/(guard|rpc|resetRequests|toasts|time|recentChanges)\.ts$/.test(id)) return 'kit';
           if (!id.includes('node_modules')) return undefined;
           if (/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|@remix-run)\//.test(id)) return 'react';
           if (id.includes('node_modules/@supabase/')) return 'supabase';

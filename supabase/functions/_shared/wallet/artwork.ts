@@ -1,7 +1,12 @@
-// The artwork drawn behind an Apple Wallet card: soft waves in the company's
-// own colour. It is decoration only - no text, no student data - and is
-// generated from the colour, so changing the semester colour changes it too.
-import { Image } from 'https://deno.land/x/imagescript@1.3.0/mod.ts';
+// Everything that needs the image library.
+//
+// 1. The artwork drawn behind an Apple Wallet card: soft waves in the company's
+//    own colour. It is decoration only - no text, no student data - and is
+//    generated from the colour, so changing the semester colour changes it too.
+// 2. Turning a student's photo into the small square the wallets are given.
+//    Loading this module plugs that into photo.ts.
+import { decode, Image } from 'https://deno.land/x/imagescript@1.3.0/mod.ts';
+import { imaging, PORTRAIT_SIDE, type Square } from './photo.ts';
 
 const cache = new Map<string, Record<string, Uint8Array>>();
 
@@ -40,3 +45,20 @@ export async function appleBackground(hex: string): Promise<Record<string, Uint8
   cache.set(key, files);
   return files;
 }
+
+/** The photo, centre-cropped to a square of PORTRAIT_SIDE pixels. Throws when it is not a still JPEG/PNG. */
+export async function photoSquare(original: Uint8Array): Promise<Square> {
+  const decoded = await decode(original);
+  if (!(decoded instanceof Image)) throw new Error('not a still image');
+  const side = Math.min(decoded.width, decoded.height);
+  // Portraits are framed towards the top, so keep the upper part of tall photos.
+  const top = decoded.height > decoded.width ? Math.floor((decoded.height - side) * 0.2) : 0;
+  // Only the small copy is kept: the original can be many megabytes of pixels.
+  const square = decoded.crop(Math.floor((decoded.width - side) / 2), top, side, side).resize(PORTRAIT_SIDE, PORTRAIT_SIDE);
+  return {
+    png: (size) => square.clone().resize(size, size).encode(),
+    jpeg: () => square.encodeJPEG(82),
+  };
+}
+
+imaging.square = photoSquare;

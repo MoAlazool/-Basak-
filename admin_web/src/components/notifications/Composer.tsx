@@ -2,10 +2,11 @@ import React, { useRef, useState } from 'react';
 import { CalendarClock, Megaphone, Send } from 'lucide-react';
 import { notify } from '../../lib/toasts';
 import {
-  CAIRO_LABEL, audienceToPayload, cairoLocalToIso, cairoToday, draftProblem, emptyDraft, formatCairo, idempotencyKeyFor, isDirty,
-  type AudiencePreview, type NotificationDraft,
+  audienceToPayload, draftProblem, emptyDraft, idempotencyKeyFor, isDirty, type AudiencePreview, type NotificationDraft,
 } from '../../lib/notifications';
-import { composeNotification, useAudienceOptions, useAudiencePreview, useNotificationActions } from '../../lib/notificationsData';
+import { CAIRO_LABEL, cairoLocalToIso, cairoToday, formatCairo } from '../../lib/time';
+import { composeNotification, useAudiencePreview, useNotificationActions } from '../../lib/notificationsData';
+import { useLineOptions } from '../../lib/reference';
 import { NotificationForm } from './NotificationForm';
 import { PhonePreview } from './PhonePreview';
 import { AudiencePreviewCard, ConfirmDialog } from './parts';
@@ -35,7 +36,8 @@ export const Composer: React.FC<{ companyId: string }> = ({ companyId }) => {
   const idempotencyKey = useRef<string | null>(null);
   idempotencyKey.current = idempotencyKeyFor(idempotencyKey.current, isDirty(draft));
 
-  const options = useAudienceOptions(companyId);
+  // The lines (with their trips) and universities the audience is chosen from: the cache other pages already fill.
+  const options = useLineOptions(companyId);
   const audience = audienceToPayload(draft.audience);
   const preview = useAudiencePreview(companyId, audience);
   const { refresh } = useNotificationActions(companyId);
@@ -68,7 +70,7 @@ export const Composer: React.FC<{ companyId: string }> = ({ companyId }) => {
       idempotencyKey.current = null;
       setDraft(emptyDraft(today));
       setConfirming(null);
-      void refresh();
+      void refresh(result.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر إرسال الإشعار.');
     } finally {

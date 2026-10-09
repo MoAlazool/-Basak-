@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, KeyRound, ShieldCheck, X } from 'lucide-react';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
+import { useGuard } from '../lib/guard';
 
 interface Props {
   student: { id: string; full_name: string; phone: string; university: string; company?: string | null };
@@ -21,7 +22,9 @@ export const ResetStudentPasswordDialog: React.FC<Props> = ({ student, onClose }
   const [result, setResult] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const submit = async () => {
+  const guard = useGuard();
+  // A second click must not set a second password while the first is being set.
+  const submit = () => guard('reset', async () => {
     setError('');
     if (mode === 'manual' && password.length < 8) { setError('كلمة المرور المؤقتة يجب ألا تقل عن 8 أحرف.'); return; }
     setBusy(true);
@@ -36,7 +39,7 @@ export const ResetStudentPasswordDialog: React.FC<Props> = ({ student, onClose }
     } finally {
       setBusy(false);
     }
-  };
+  });
 
   const close = () => { setResult(null); onClose(); };
 

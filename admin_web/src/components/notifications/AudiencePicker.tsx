@@ -1,6 +1,7 @@
 import React from 'react';
 import type { LineOption, UniversityOption } from '../../lib/lineOptions';
-import { AUDIENCE_KINDS, addDays, rideDayLabel, tripLabel, type AudienceDraft } from '../../lib/notifications';
+import { AUDIENCE_KINDS, rideDayLabel, tripLabel, type AudienceDraft } from '../../lib/notifications';
+import { addDays } from '../../lib/time';
 import { fieldClass, labelClass } from './parts';
 
 interface Props {

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
-/** A short notice shown on top of the dashboard when something new arrives. */
-export interface Toast { id: number; title: string; body?: string; /** Page to open when it is clicked. */ to?: string; /** `error` for something that failed. */ tone?: 'info' | 'error' }
+/** A short notice shown on top of the dashboard: something new arrived, or what the admin just did worked or failed. */
+interface Toast { id: number; title: string; body?: string; /** Page to open when it is clicked. */ to?: string; /** `error` for something that failed, `success` for something done. */ tone?: 'info' | 'error' | 'success' }
 
 let toasts: Toast[] = [];
 let nextId = 1;
@@ -30,4 +30,11 @@ export function useToasts(): Toast[] {
 }
 
 /** A failure, in the server's own words when it gave any. */
-export const notifyError = (title: string, body?: string) => notify({ title, body, tone: 'error' });
+export const notifyError = (title: string, body?: string) => notify({ title, body, tone: 'error' }, lifetimeFor(body));
+
+/** Something the admin asked for was done. A long explanation stays on screen longer. */
+export const notifyDone = (title: string, body?: string) =>
+  notify({ title, body, tone: 'success' }, lifetimeFor(body));
+
+/** Nine seconds, and more for a text that takes longer to read (at most half a minute). */
+export const lifetimeFor = (body?: string) => Math.min(30_000, Math.max(9000, (body?.length ?? 0) * 90));

@@ -16,6 +16,26 @@ async function sha1Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+// Parsing the certificates and the key is the slow part of signing and gives
+// the same objects every time, so it is done once per isolate.
+// deno-lint-ignore no-explicit-any
+let parsedSigner: { signer: AppleSigner; certificate: any; wwdr: any; key: any } | null = null;
+
+function parseSigner(signer: AppleSigner) {
+  if (
+    parsedSigner?.signer.certPem !== signer.certPem || parsedSigner.signer.keyPem !== signer.keyPem
+    || parsedSigner.signer.wwdrPem !== signer.wwdrPem
+  ) {
+    parsedSigner = {
+      signer: { certPem: signer.certPem, keyPem: signer.keyPem, wwdrPem: signer.wwdrPem },
+      certificate: forge.pki.certificateFromPem(signer.certPem),
+      wwdr: forge.pki.certificateFromPem(signer.wwdrPem),
+      key: forge.pki.privateKeyFromPem(signer.keyPem),
+    };
+  }
+  return parsedSigner;
+}
+
 /**
  * pass.json + images -> manifest.json (SHA-1 of every file) -> detached
  * PKCS#7 signature of the manifest -> zip. `images` maps file names such as
@@ -30,17 +50,17 @@ export async function buildPkpass(
     ...images,
   };
 
-  const manifest: Record<string, string> = {};
-  for (const [name, bytes] of Object.entries(files)) manifest[name] = await sha1Hex(bytes);
-  const manifestText = JSON.stringify(manifest);
+  const names = Object.keys(files);
+  const hashes = await Promise.all(names.map((name) => sha1Hex(files[name])));
+  const manifestText = JSON.stringify(Object.fromEntries(names.map((name, index) => [name, hashes[index]])));
 
-  const certificate = forge.pki.certificateFromPem(signer.certPem);
+  const { certificate, wwdr, key } = parseSigner(signer);
   const p7 = forge.pkcs7.createSignedData();
   p7.content = forge.util.createBuffer(manifestText, 'utf8');
   p7.addCertificate(certificate);
-  p7.addCertificate(forge.pki.certificateFromPem(signer.wwdrPem));
+  p7.addCertificate(wwdr);
   p7.addSigner({
-    key: forge.pki.privateKeyFromPem(signer.keyPem),
+    key,
     certificate,
     digestAlgorithm: forge.pki.oids.sha256,
     authenticatedAttributes: [

@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { keys } from './query';
+import { rpcOr } from './rpc';
+import { hhmm } from './time';
 import type { CompanyNumbers } from './overview';
 import { forgetApplied, rememberApplied } from './recentChanges';
 
 export const RECEIPTS_BUCKET = 'receipts';
 /** How many pending receipts are loaded at a time (oldest first). */
-export const RECEIPTS_PAGE = 50;
+const RECEIPTS_PAGE = 50;
 
 export interface PendingReceiptRow {
   id: string;
@@ -76,83 +78,76 @@ export function normalizeReceiptStoragePath(value: string | null | undefined): s
 
 export interface PendingReceipts { rows: PendingReceiptRow[]; hasMore: boolean }
 
-type Row = Record<string, any>;
-const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
-const byId = (rows: Row[] | null | undefined) => new Map((rows || []).map((row) => [row.id as string, row]));
-const uniq = (values: (string | null | undefined)[]) => [...new Set(values.filter((value): value is string => !!value))];
-const hhmm = (value?: string | null) => (value ? String(value).slice(0, 5) : '');
+/** One row of get_pending_receipts_page: the receipt with everything the review table shows about it. */
+export interface ReceiptAnswerRow {
+  id: string; image_url: string | null; attempt_number: number | null; created_at: string; amount: number | string | null;
+  subscription_id: string; student_id: string | null; student_name: string | null; student_phone: string | null;
+  university: string | null; college: string | null; company_id: string | null; company_name: string | null;
+  line_name: string | null; station_name: string | null; departure_time: string | null; return_time: string | null;
+  subscription_type: string | null; period_label: string | null; period_start: string | null; period_end: string | null;
+  period_phase: string | null; price: number | string | null;
+}
+export interface ReceiptsPageAnswer { rows: ReceiptAnswerRow[]; has_more: boolean; total?: number }
+
+/** The server's row as the table shows it (placeholders for what is missing, the image as a storage path). */
+export function toPendingRow(row: ReceiptAnswerRow): PendingReceiptRow {
+  const imagePath = normalizeReceiptStoragePath(row.image_url);
+  return {
+    id: row.id,
+    subscriptionId: row.subscription_id,
+    studentId: row.student_id || '',
+    studentName: row.student_name || 'بيانات الطالب غير متاحة',
+    studentPhone: row.student_phone || '—',
+    university: row.university || '—',
+    college: row.college && row.college !== 'غير محدد' ? row.college : '',
+    companyId: row.company_id || '',
+    companyName: row.company_name || '—',
+    lineName: row.line_name || '—',
+    stationName: row.station_name || '—',
+    departureTime: hhmm(row.departure_time),
+    returnTime: hhmm(row.return_time),
+    subscriptionType: row.subscription_type || 'termly',
+    periodLabel: row.period_label || '',
+    periodStart: row.period_start || '',
+    periodEnd: row.period_end || '',
+    periodPhase: row.period_phase || '',
+    // The amount recorded with the receipt; older receipts fall back to the subscription price.
+    price: Number(row.amount ?? row.price ?? 0),
+    imagePath,
+    legacyImageUrl: !imagePath && /^https?:\/\//i.test(row.image_url || '') ? String(row.image_url) : null,
+    attemptNumber: row.attempt_number || 1,
+    createdAt: row.created_at,
+  };
+}
+
+/** The oldest pending receipts of a company, in ONE request (get_pending_receipts_page). */
+export async function fetchPendingReceipts(companyId: string, limit: number = RECEIPTS_PAGE): Promise<PendingReceipts> {
+  const page = await rpcOr<ReceiptsPageAnswer>('get_pending_receipts_page',
+    () => supabase.rpc('get_pending_receipts_page', { p_company_id: companyId, p_limit: limit }),
+    // The older way's code is downloaded only if it is ever needed.
+    async () => (await import('./legacy')).legacyPendingReceipts(companyId, limit));
+  return { rows: (page?.rows ?? []).map(toPendingRow), hasMore: !!page?.has_more };
+}
+
+/** What review_receipt answers: the decision and the company's numbers after it. */
+interface ReviewAnswer { id: string; status: string; company_id: string; overview: CompanyNumbers | null; reviewed_at?: string | null }
 
 /**
- * Loads pending receipts and joins student / company / line / station details with
- * separate scoped queries. Nested embeds silently returned null when a relation
- * was ambiguous or blocked, which left the review table without student data.
+ * Whether an answer's numbers are newer than the ones already applied. Answers
+ * to decisions taken close together can arrive in another order than the
+ * decisions were saved; `reviewed_at` is when each was saved.
  */
-export async function fetchPendingReceipts(companyId: string, limit: number = RECEIPTS_PAGE): Promise<PendingReceipts> {
-  // One row more than asked for tells whether there is more to load, without a count.
-  const { data: receiptRows, error } = await supabase.from('receipts')
-    .select('id, image_url, attempt_number, created_at, subscription_id, amount')
-    .eq('company_id', companyId).eq('status', 'pending').order('created_at', { ascending: true }).range(0, limit);
-  if (error) throw error;
-  const all = (receiptRows || []) as Row[];
-  const hasMore = all.length > limit;
-  const receipts = all.slice(0, limit);
-  if (!receipts.length) return { rows: [], hasMore: false };
+export function isNewerReview(appliedAt: string | null, reviewedAt: string): boolean {
+  return appliedAt === null || Date.parse(reviewedAt) >= Date.parse(appliedAt);
+}
 
-  const { data: subRows, error: subError } = await supabase.from('subscriptions')
-    .select('id, type, price, student_id, line_id, station_id, departure_time, return_time, start_date, end_date, period_label, period_phase')
-    .in('id', uniq(receipts.map((r) => r.subscription_id)));
-  if (subError) throw subError;
-  const subscriptions = byId(subRows as Row[]);
-  const subs = [...subscriptions.values()];
-
-  const [studentsRes, linesRes, stationsRes] = await Promise.all([
-    supabase.from('students').select('id, full_name, phone, university, college').in('id', uniq(subs.map((x) => x.student_id))),
-    supabase.from('lines').select('id, name, company_id, companies(name)').in('id', uniq(subs.map((x) => x.line_id))),
-    supabase.from('stations').select('id, name').in('id', uniq(subs.map((x) => x.station_id))),
-  ]);
-  if (studentsRes.error) throw studentsRes.error;
-  if (linesRes.error) throw linesRes.error;
-  if (stationsRes.error) throw stationsRes.error;
-  const students = byId(studentsRes.data as Row[]);
-  const lines = byId(linesRes.data as Row[]);
-  const stations = byId(stationsRes.data as Row[]);
-
-  const rows = receipts.map((receipt): PendingReceiptRow => {
-    const imagePath = normalizeReceiptStoragePath(receipt.image_url);
-    const legacyImageUrl = !imagePath && /^https?:\/\//i.test(receipt.image_url || '') ? String(receipt.image_url) : null;
-
-    const subscription = subscriptions.get(receipt.subscription_id);
-    const student = subscription ? students.get(subscription.student_id) : undefined;
-    const line = subscription ? lines.get(subscription.line_id) : undefined;
-    const station = subscription ? stations.get(subscription.station_id) : undefined;
-    return {
-      id: receipt.id,
-      subscriptionId: receipt.subscription_id,
-      studentId: subscription?.student_id || '',
-      studentName: student?.full_name || 'بيانات الطالب غير متاحة',
-      studentPhone: student?.phone || '—',
-      university: student?.university || '—',
-      college: student?.college && student.college !== 'غير محدد' ? student.college : '',
-      companyId: line?.company_id || '',
-      companyName: one<Row>(line?.companies)?.name || '—',
-      lineName: line?.name || '—',
-      stationName: station?.name || '—',
-      departureTime: hhmm(subscription?.departure_time),
-      returnTime: hhmm(subscription?.return_time),
-      subscriptionType: subscription?.type || 'termly',
-      periodLabel: subscription?.period_label || '',
-      periodStart: subscription?.start_date || '',
-      periodEnd: subscription?.end_date || '',
-      periodPhase: subscription?.period_phase || '',
-      // The amount recorded with the receipt; older receipts fall back to the subscription price.
-      price: Number(receipt.amount ?? subscription?.price ?? 0),
-      imagePath,
-      legacyImageUrl,
-      attemptNumber: receipt.attempt_number || 1,
-      createdAt: receipt.created_at,
-    };
-  });
-  return { rows, hasMore };
+/**
+ * The numbers of an answer while other decisions of this tab are still on their
+ * way: those receipts have already left the screen, whether or not this answer
+ * was computed before they were saved, so the waiting number never goes back up.
+ */
+export function withOptimisticPending<T extends { pending_receipts: number }>(numbers: T, shown: T | undefined, othersRunning: number): T {
+  return othersRunning > 0 && shown ? { ...numbers, pending_receipts: Math.min(numbers.pending_receipts, shown.pending_receipts) } : numbers;
 }
 
 // ── Pure cache edits (what an approval or rejection does to what is on screen) ──
@@ -180,9 +175,11 @@ export const shouldTopUp = (list: PendingReceipts | undefined, threshold = 10) =
 
 /**
  * The receipts one company still has to review. New ones arrive through the
- * workspace's live topic. A decision is applied to the cache directly: the row
- * leaves the list, the waiting counter drops, and nothing is read again for
- * the admin who decided (other admins follow through the live topic).
+ * workspace's live topic. A decision is ONE request: the row leaves the list at
+ * once, and the server's answer carries the company's numbers after it, which
+ * replace the cached ones. Nothing is read again for the admin who decided,
+ * not even on the change's own announcement (other admins follow through the
+ * live topic).
  */
 export function usePendingReceipts(companyId: string) {
   const client = useQueryClient();
@@ -194,24 +191,27 @@ export function usePendingReceipts(companyId: string) {
     queryFn: () => fetchPendingReceipts(companyId, limit),
     placeholderData: keepPreviousData,   // "load more" keeps the rows on screen
   });
+  // Decisions under way. Answers can arrive in another order than the decisions were
+  // saved, so each is applied only if it is newer (`reviewed_at`) than the last one
+  // applied. `unordered` is for a database whose answers do not say when: after
+  // overlapping decisions the numbers are then read once instead.
+  const flight = useRef({ running: 0, unordered: false, appliedAt: null as string | null });
 
   const review = useMutation({
-    mutationFn: async ({ id, decision, reason }: ReviewInput) => {
-      const { data, error } = await supabase.from('receipts')
-        .update(decision === 'approved' ? { status: 'approved' } : { status: 'rejected', rejection_reason: reason })
-        .eq('id', id).select('id').single();
-      if (error) throw new Error(error.message);
-      if (!data) throw new Error('لم يُحفظ القرار؛ تحقق من صلاحيات الحساب ثم أعد المحاولة.');
-    },
+    mutationFn: ({ id, decision, reason }: ReviewInput) => rpcOr<ReviewAnswer | null>('review_receipt',
+      () => supabase.rpc('review_receipt', { p_receipt_id: id, p_decision: decision, p_reason: reason ?? null }),
+      async () => (await import('./legacy')).legacyReviewReceipt(id, decision, reason)),
     onMutate: async ({ id }) => {
+      flight.current.running += 1;
       // A read that is under way would bring the row back; it is repeated once the decision is saved.
       const interrupted = client.isFetching({ queryKey: root }) > 0;
       await client.cancelQueries({ queryKey: root });
       const lists = client.getQueriesData<PendingReceipts>({ queryKey: root });
       const row = lists.flatMap(([, list]) => list?.rows ?? []).find((item) => item.id === id);
-      // The database announces this change to us as well; that echo must not re-read the list.
+      // The database announces this change to us as well (the receipt and its
+      // subscription); that echo must re-read neither the queue nor the numbers.
       const echoes = [id, row?.subscriptionId];
-      rememberApplied(echoes);
+      rememberApplied(echoes, APPLIED_HERE);
       client.setQueriesData<PendingReceipts>({ queryKey: root }, (list) => withoutReceipt(list, id));
       if (row) client.setQueryData<CompanyNumbers>(overviewKey, (numbers) => withPendingDelta(numbers, -1));
       return { held: lists.filter(([, list]) => list?.rows.some((item) => item.id === id)).map(([key]) => key), row, interrupted, echoes } satisfies ReviewContext;
@@ -225,16 +225,34 @@ export function usePendingReceipts(companyId: string) {
       context.held.forEach((key) => client.setQueryData<PendingReceipts>(key, (list) => withReceipt(list, row)));
       client.setQueryData<CompanyNumbers>(overviewKey, (numbers) => withPendingDelta(numbers, +1));
     },
-    onSettled: (_data, error, _input, context) => {
-      if (error && context?.interrupted) void client.invalidateQueries({ queryKey: root });
-    },
-    onSuccess: (_data, _input, context) => {
+    onSuccess: (answer, _input, context) => {
       // The answer may have taken a while: keep recognising the echo from now.
-      rememberApplied(context?.echoes ?? []);
-      // Nothing is read again, except the next receipts once the loaded ones run out.
+      rememberApplied(context?.echoes ?? [], APPLIED_HERE);
+      const numbers = answer?.overview;
+      const others = flight.current.running - 1;
+      // No numbers in the answer (the older database): they are read once.
+      if (!numbers) void client.invalidateQueries({ queryKey: overviewKey });
+      else if (answer.reviewed_at) {
+        if (isNewerReview(flight.current.appliedAt, answer.reviewed_at)) {
+          flight.current.appliedAt = answer.reviewed_at;
+          client.setQueryData<CompanyNumbers>(overviewKey, (shown) => withOptimisticPending(numbers, shown, others));
+        }
+      } else if (others > 0 || flight.current.unordered) flight.current.unordered = true;
+      else client.setQueryData<CompanyNumbers>(overviewKey, numbers);
+      // The queue is not read again, except for the next receipts once the loaded ones run out.
       if (context?.interrupted || shouldTopUp(client.getQueryData<PendingReceipts>([...root, limit]))) {
         void client.invalidateQueries({ queryKey: root });
       }
+    },
+    onSettled: (_data, error, _input, context) => {
+      // A refused decision usually means the receipt is no longer waiting (another admin
+      // decided it first): the queue is read once to show what is really there.
+      if (error) void client.invalidateQueries({ queryKey: root });
+      flight.current.running -= 1;
+      if (flight.current.running > 0 || !flight.current.unordered) return;
+      // Overlapping decisions whose answers carry no time: one read after the last of them settles the numbers.
+      flight.current.unordered = false;
+      void client.invalidateQueries({ queryKey: overviewKey });
     },
   });
 
@@ -247,10 +265,12 @@ export function usePendingReceipts(companyId: string) {
     loading: query.isPending,
     error: query.error?.message ?? '',
     refresh: () => void query.refetch(),
-    review: (id: string, decision: 'approved' | 'rejected', reason?: string) => review.mutateAsync({ id, decision, reason }),
+    review: async (id: string, decision: 'approved' | 'rejected', reason?: string) => { await review.mutateAsync({ id, decision, reason }); },
   };
 }
 
+/** What a decision brings up to date in this tab (names as in lib/sync.ts). */
+const APPLIED_HERE = ['receipts', 'overview'] as const;
 const EMPTY: PendingReceiptRow[] = [];
 interface ReviewInput { id: string; decision: 'approved' | 'rejected'; reason?: string }
 interface ReviewContext {

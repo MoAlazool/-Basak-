@@ -129,7 +129,12 @@ class _ReceiptDraft {
 final focusedSubscriptionProvider = StateProvider<String?>((ref) => null);
 
 class SubscriptionScreen extends ConsumerStatefulWidget {
-  const SubscriptionScreen({super.key});
+  /// Whether this tab is the one in front. Behind another tab (and while it
+  /// is built in the background at start) it shows nothing of the catalog, so
+  /// it does not read it.
+  final bool visible;
+
+  const SubscriptionScreen({super.key, this.visible = true});
 
   @override
   ConsumerState<SubscriptionScreen> createState() => _SubscriptionScreenState();
@@ -157,6 +162,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// (paying the next period in advance), starting from [_buyingFrom].
   bool _buying = false;
   SubscriptionDraft _buyingFrom = const SubscriptionDraft();
+
+  /// The catalog as the "next period" card last showed it.
+  SaleCatalog? _catalogShown;
 
   @override
   void initState() {
@@ -200,6 +208,12 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   void _onCreated(SubscriptionModel created) {
+    // What is on sale changed with the new subscription. Marked stale once
+    // the purchase flow is off screen, so it is read again only by whatever
+    // shows it next (the "next period" card, or the flow when it is reopened).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(saleCatalogProvider);
+    });
     // Already on screen: subscriptionCreatorProvider applied the server's answer.
     setState(() {
       _buying = false;
@@ -441,6 +455,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             initial: _buyingFrom,
             // A cash day ride is for a student with no subscription at all.
             allowDaily: open.isEmpty,
+            visible: widget.visible,
             onCancel: open.isEmpty && !hasHistory ? null : () => setState(() => _buying = false),
             onCreated: _onCreated,
           ),
@@ -770,8 +785,12 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// "Subscribe to the next period in advance": shown only when the company
   /// allows it (the catalog then lists it), with that period's own price. It
   /// opens the flow with the same company, line and station filled in.
+  ///
+  /// It is the one thing on this page that needs the catalog, so the catalog
+  /// is read (and listened to) only while the page is in front.
   Widget _payNextCard(SubscriptionModel sub) {
-    final line = ref.watch(saleCatalogProvider).valueOrNull?.line(sub.lineId);
+    if (widget.visible) _catalogShown = ref.watch(saleCatalogProvider).valueOrNull ?? _catalogShown;
+    final line = _catalogShown?.line(sub.lineId);
     final next = (line?.options ?? const <SaleOption>[]).where((o) => o.isUpcoming).toList();
     if (line == null || next.isEmpty) return const SizedBox.shrink();
     return Container(

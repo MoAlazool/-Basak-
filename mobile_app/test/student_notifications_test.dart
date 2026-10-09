@@ -22,14 +22,7 @@ class _FakeDailyRideRepo implements DailyRideRepository {
   @override
   Future<VoteSettings> getVoteSettings(String? companyId) async => _reminding;
   @override
-  Future<Map<DateTime, bool>> getRideStatusesForRange(DateTime from, DateTime to) async => {};
-  @override
-  Future<DailyRideDetails> getRideDetailsForDate(DateTime date) async =>
-      const DailyRideDetails(isRiding: false, isReturning: false);
-  @override
-  Future<bool> getRideStatusForDate(DateTime date) async => false;
-  @override
-  Future<bool> toggleRide({required DateTime rideDate, required bool isRiding}) async => isRiding;
+  Future<RideDays> getRides(DateTime from, DateTime to) async => const RideDays({});
   @override
   Future<DailyRideDetails> confirmRide({
     required DateTime rideDate,

@@ -27,6 +27,11 @@ export 'own_changes.dart';
 /// reconnect). The home screen listens to it.
 final rideStatusTickProvider = StateProvider<int>((ref) => 0);
 
+/// Bumped when the rider counts a supervisor is looking at were opened from
+/// their saved copy and the server had newer ones. The counts screen listens
+/// to it (and gets the fresh numbers from memory, without a request).
+final riderCountsTickProvider = StateProvider<int>((ref) => 0);
+
 /// Keeps what is on screen current without the user refreshing anything.
 ///
 /// The server announces changes on private topics (ids only, never contents);
@@ -40,7 +45,7 @@ class SyncScope extends ConsumerStatefulWidget {
   /// The tables whose screens show a saved read (see OfflineCache.readThrough).
   @visibleForTesting
   static Set<String> tablesFor(String key) {
-    if (key == 'profile.summary' || key == 'student_pass') return const {'students'};
+    if (key == 'profile.summary') return const {'students'};
     // Read on their own: nothing else is fetched again for them.
     if (key == 'notification_preferences' || key == 'notification_templates') return {key};
     if (key.startsWith('subscriptions') || key.startsWith('receipts.') || key.startsWith('subscription_receipt')) {
@@ -53,6 +58,14 @@ class SyncScope extends ConsumerStatefulWidget {
     }
     return _everything;
   }
+
+  /// Changes in the company that nothing in the supervisor's app shows.
+  @visibleForTesting
+  static const supervisorUnrelatedTables = {
+    'receipts', 'complaints', 'company_payment_methods', 'wallet_card_settings', 'password_reset_requests',
+    'company_invites', 'student_correction_requests', 'line_period_prices',
+    'notifications', 'notification_preferences', 'notification_templates',
+  };
 
   static const _everything = {
     'subscriptions', 'lines', 'company_invites', 'students', 'notifications', 'supervisor_scan_events', 'supervisors',
@@ -136,9 +149,17 @@ class SyncScope extends ConsumerStatefulWidget {
         invalidate(studentProfileSummaryProvider(userId));
       }
     } else if (role == UserRole.supervisor) {
-      invalidate(supervisorDashboardProvider);
-      invalidate(tripManifestProvider);
-      invalidate(offeredSubscriptionTypesProvider);
+      // A supervisor hears of every change in the company. Most of it shows
+      // nowhere in this app (a receipt sent or reviewed, a payment method, the
+      // Wallet card's design, a password reset, an invitation, a price): for
+      // those nothing is read. Anything else, a table this version does not
+      // know included, may change the day's numbers and the trip lists.
+      if (!tables.every(supervisorUnrelatedTables.contains)) {
+        invalidate(supervisorDashboardProvider);
+        invalidate(tripManifestProvider);
+      }
+      // Which subscription types are on sale is the company's own switches.
+      if (tables.contains('companies')) invalidate(offeredSubscriptionTypesProvider);
       if (tables.contains('supervisors')) invalidate(supervisorPhotoUrlProvider);
       if (tables.contains('supervisor_scan_events')) invalidate(supervisorMonthlySummaryProvider);
     }
@@ -250,10 +271,22 @@ class SyncScope extends ConsumerStatefulWidget {
     String rest(String prefix) => key.substring(prefix.length);
     if (key == 'subscriptions') return allSubscriptionsProvider;
     if (key == 'subscriptions.current') return currentSubscriptionProvider;
-    if (key == 'student_pass') return studentQrProvider;
     if (key == 'profile.summary') return userId == null ? null : studentProfileSummaryProvider(userId);
     if (key == 'sale_catalog') return saleCatalogProvider;
     if (key == 'supervisor.photo') return supervisorPhotoUrlProvider;
+    if (key == 'supervisor.dashboard') return supervisorDashboardProvider;
+    if (key.startsWith('supervisor.offered.')) return offeredSubscriptionTypesProvider(rest('supervisor.offered.'));
+    if (key.startsWith('supervisor.monthly.')) {
+      final month = DateTime.tryParse(rest('supervisor.monthly.'));
+      return month == null ? null : supervisorMonthlySummaryProvider(DateTime(month.year, month.month));
+    }
+    if (key.startsWith('supervisor.manifest.')) {
+      // supervisor.manifest.{day}.{line}.{direction}.{trip or -}
+      final parts = rest('supervisor.manifest.').split('.');
+      if (parts.length != 4) return null;
+      return tripManifestProvider(
+          (lineId: parts[1], direction: parts[2], tripId: parts[3] == '-' ? null : parts[3]));
+    }
     if (key.startsWith('vote_settings.')) return voteSettingsProvider;
     if (key.startsWith('receipts.')) return subscriptionReceiptsProvider(rest('receipts.'));
     if (key.startsWith('payment_methods.')) return paymentMethodsProvider(rest('payment_methods.'));
@@ -274,8 +307,10 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
   final Set<String> _pendingTables = {};
   final List<SyncEvent> _pendingEvents = [];
   bool _rideVotesRefreshed = false;
+  bool _riderCountsRefreshed = false;
   DateTime _lastFullRefresh = DateTime.now();
   Timer? _offlineRetry;
+  Timer? _tidy;
 
   SupabaseClient get _client => SupabaseService.client;
 
@@ -289,6 +324,8 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     });
     OfflineCache.refreshed.addListener(_onSavedCopyRefreshed);
     OfflineCache.offlineSince.addListener(_onOfflineChanged);
+    // Well after the start: saved reads of days long gone are cleared away.
+    _tidy = Timer(const Duration(seconds: 20), () => unawaited(OfflineCache.prune()));
   }
 
   @override
@@ -297,6 +334,7 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     OfflineCache.refreshed.removeListener(_onSavedCopyRefreshed);
     OfflineCache.offlineSince.removeListener(_onOfflineChanged);
     _offlineRetry?.cancel();
+    _tidy?.cancel();
     _debounce?.cancel();
     for (final channel in _channels.values) {
       _client.removeChannel(channel);
@@ -325,6 +363,9 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
       } else if (key.startsWith('ride.')) {
         // The home screen reads its ride votes itself.
         _rideVotesRefreshed = true;
+      } else if (key.startsWith('rider_counts.') || key == 'supervisor.line_ids') {
+        // So does the supervisor's rider counts screen.
+        _riderCountsRefreshed = true;
       } else {
         _pendingTables.addAll(SyncScope.tablesFor(key));
       }
@@ -363,6 +404,10 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     if (_rideVotesRefreshed) {
       _rideVotesRefreshed = false;
       ref.read(rideStatusTickProvider.notifier).state++;
+    }
+    if (_riderCountsRefreshed) {
+      _riderCountsRefreshed = false;
+      ref.read(riderCountsTickProvider.notifier).state++;
     }
     final auth = ref.read(authStateProvider);
     // Already in memory: these cost no request.
@@ -448,7 +493,9 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
       _settlePendingReceipts();
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {
-      _invalidateFor(const {'supervisor_scan_events', 'notifications', 'supervisors'});
+      // 'companies': the platform's and the company's sale switches send
+      // nothing a supervisor's phone would hear while it slept.
+      _invalidateFor(const {'supervisor_scan_events', 'notifications', 'supervisors', 'companies'});
     }
     _retune();
   }

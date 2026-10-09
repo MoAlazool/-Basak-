@@ -9,6 +9,8 @@ export interface GoogleConfig {
   apiBase: string;
   /** https://oauth2.googleapis.com/token in production. */
   tokenUrl: string;
+  /** The public address of this project, as Google reaches it (card images, the photo link). */
+  publicBaseUrl: string;
 }
 
 const encoder = new TextEncoder();
@@ -40,11 +42,10 @@ export async function signJwt(claims: Record<string, unknown>, privateKeyPem: st
   return `${unsigned}.${base64Url(new Uint8Array(signature))}`;
 }
 
-let accessToken: { key: string; token: string; expiresAt: number } | null = null;
+interface TokenEntry { key: string; token: Promise<string>; expiresAt: number }
+let accessToken: TokenEntry | null = null;
 
-async function getAccessToken(config: GoogleConfig): Promise<string> {
-  const cacheKey = `${config.serviceAccountEmail}\n${config.tokenUrl}`;
-  if (accessToken?.key === cacheKey && accessToken.expiresAt > Date.now() + 60_000) return accessToken.token;
+async function requestAccessToken(config: GoogleConfig, entry: TokenEntry): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const assertion = await signJwt({
     iss: config.serviceAccountEmail,
@@ -62,12 +63,23 @@ async function getAccessToken(config: GoogleConfig): Promise<string> {
   if (!response.ok || !payload.access_token) {
     throw new Error(`Google sign-in failed (${response.status}): ${payload.error_description ?? payload.error ?? ''}`);
   }
-  accessToken = {
-    key: cacheKey,
-    token: payload.access_token,
-    expiresAt: Date.now() + Number(payload.expires_in ?? 3600) * 1000,
-  };
-  return accessToken.token;
+  entry.expiresAt = Date.now() + Number(payload.expires_in ?? 3600) * 1000;
+  return payload.access_token;
+}
+
+/**
+ * One token per isolate until it is about to expire. Callers that arrive while
+ * it is being fetched wait for that same request instead of each starting one.
+ */
+function getAccessToken(config: GoogleConfig): Promise<string> {
+  const key = `${config.serviceAccountEmail}\n${config.tokenUrl}`;
+  if (accessToken?.key === key && accessToken.expiresAt > Date.now() + 60_000) return accessToken.token;
+  // While the request is in flight it has no expiry yet: it is simply shared.
+  const entry: TokenEntry = { key, token: Promise.resolve(''), expiresAt: Infinity };
+  entry.token = requestAccessToken(config, entry);
+  entry.token.catch(() => { if (accessToken === entry) accessToken = null; });
+  accessToken = entry;
+  return entry.token;
 }
 
 async function call(config: GoogleConfig, method: string, path: string, body?: unknown) {
@@ -89,25 +101,30 @@ function fail(action: string, result: { status: number; text: string }): never {
   throw new Error(`Google Wallet ${action} failed (${result.status}): ${message}`);
 }
 
-/** Creates the resource, or replaces it when it already exists (same id either way). */
-async function upsert(config: GoogleConfig, kind: 'genericClass' | 'genericObject', resource: { id: string }) {
-  const inserted = await call(config, 'POST', `/${kind}`, resource);
-  if (inserted.ok) return;
-  if (inserted.status !== 409) fail(`${kind} insert`, inserted);
-  const updated = await call(config, 'PUT', `/${kind}/${encodeURIComponent(resource.id)}`, resource);
-  if (!updated.ok) fail(`${kind} update`, updated);
+/**
+ * Creates the resource, or replaces it when it already exists (same id either
+ * way). `exists` is what the caller believes: it only decides which request is
+ * tried first, so a resource that is already there costs one request, not two.
+ * A wrong belief is corrected by the other request.
+ */
+async function upsert(
+  config: GoogleConfig, kind: 'genericClass' | 'genericObject', resource: { id: string }, exists: boolean,
+) {
+  const insert = async () => ({ action: 'insert', ...await call(config, 'POST', `/${kind}`, resource) });
+  const update = async () => ({
+    action: 'update', ...await call(config, 'PUT', `/${kind}/${encodeURIComponent(resource.id)}`, resource),
+  });
+  let result = exists ? await update() : await insert();
+  if (exists && result.status === 404) result = await insert();
+  // Already there after all (first guess wrong, or created meanwhile by another request).
+  if (result.action === 'insert' && result.status === 409) result = await update();
+  if (!result.ok) fail(`${kind} ${result.action}`, result);
 }
 
-export const upsertClass = (config: GoogleConfig, resource: { id: string }) => upsert(config, 'genericClass', resource);
-export const upsertObject = (config: GoogleConfig, resource: { id: string }) => upsert(config, 'genericObject', resource);
-
-/** Applies the global theme fields to one existing object. Returns false when the object no longer exists. */
-export async function patchObject(config: GoogleConfig, objectId: string, fields: Record<string, unknown>): Promise<boolean> {
-  const result = await call(config, 'PATCH', `/genericObject/${encodeURIComponent(objectId)}`, fields);
-  if (result.status === 404) return false;
-  if (!result.ok) fail('object patch', result);
-  return true;
-}
+export const upsertClass = (config: GoogleConfig, resource: { id: string }, exists = false) =>
+  upsert(config, 'genericClass', resource, exists);
+export const upsertObject = (config: GoogleConfig, resource: { id: string }, exists = false) =>
+  upsert(config, 'genericObject', resource, exists);
 
 /** The link the app opens; Google Wallet then offers to save the (already created) object. */
 export async function buildSaveUrl(config: GoogleConfig, objectId: string): Promise<string> {

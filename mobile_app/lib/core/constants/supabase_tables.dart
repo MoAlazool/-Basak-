@@ -8,13 +8,12 @@ class SupabaseTables {
   static const String subscriptions = 'subscriptions';
   static const String receipts = 'receipts';
   static const String dailyRideStatus = 'daily_ride_status';
-  static const String chatMessages = 'chat_messages';
-  static const String complaints = 'complaints';
 }
 
 class SupabaseRpcs {
   static const String toggleStudentDailyRide = 'toggle_student_daily_ride';
   static const String getLineRiderCounts = 'get_line_rider_counts_with_returns';
+  static const String getLinesRiderCounts = 'get_lines_rider_counts';
   static const String lookupStudentByQr = 'lookup_student_by_qr';
   static const String getSupervisorDashboard = 'get_supervisor_dashboard';
   static const String supervisorCheckInStudent = 'supervisor_check_in_student';

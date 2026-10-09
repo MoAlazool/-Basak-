@@ -1,7 +1,6 @@
 import React from 'react';
-import {
-  CAIRO_LABEL, formatCairo, percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel, type HistoryRow,
-} from '../../lib/notifications';
+import { percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel, type HistoryRow } from '../../lib/notifications';
+import { CAIRO_LABEL, formatCairo } from '../../lib/time';
 import { Dialog } from './parts';
 
 const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (

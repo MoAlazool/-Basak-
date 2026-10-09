@@ -7,8 +7,6 @@ class SupabaseService {
 
   static User? get currentUser => client.auth.currentUser;
 
-  static bool get isAuthenticated => currentUser != null;
-
   static Future<void> initialize() async {
     try {
       await Supabase.initialize(
@@ -20,9 +18,5 @@ class SupabaseService {
       debugPrint('Error initializing Supabase: $e');
       rethrow;
     }
-  }
-
-  static Future<void> signOut() async {
-    await client.auth.signOut();
   }
 }

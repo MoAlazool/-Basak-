@@ -1,5 +1,8 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { appleConfig, loadCard, renderApplePass, serviceClient } from '../_shared/wallet/runtime.ts';
+import { serviceClient } from '../_shared/clients.ts';
+import { secretMatches } from '../_shared/push/message.ts';
+import { renderApplePass } from '../_shared/wallet/apple_pass.ts';
+import { appleConfig, loadCard } from '../_shared/wallet/runtime.ts';
 
 // Apple Wallet's pass web service. iPhones call this directly (never the app
 // or a browser), so there is no Supabase session and no CORS:
@@ -21,13 +24,6 @@ const empty = (status: number) => new Response(null, { status });
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 /** The pass row for this serial when the request carries its token, else null. */
 async function authorizedPass(service: SupabaseClient, request: Request, serial: string) {
   const token = request.headers.get('Authorization')?.match(/^ApplePass\s+(.+)$/i)?.[1]?.trim();
@@ -36,7 +32,7 @@ async function authorizedPass(service: SupabaseClient, request: Request, serial:
     .from('wallet_passes').select('student_id, auth_token, content_updated_at')
     .eq('student_id', serial).eq('platform', 'apple').maybeSingle();
   if (error) throw error;
-  return data && timingSafeEqual(data.auth_token, token) ? data : null;
+  return data && secretMatches(data.auth_token, token) ? data : null;
 }
 
 /** Whole seconds, because HTTP dates carry no fractions. */

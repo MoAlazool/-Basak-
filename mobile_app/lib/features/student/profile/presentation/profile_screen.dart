@@ -44,7 +44,7 @@ class ProfileScreen extends ConsumerWidget {
             onPressed: () async {
               Navigator.of(ctx).pop();
               try {
-                await ref.read(authStateProvider.notifier).deleteAccount();
+                await ref.read(authStateProvider.notifier).deleteStudentAccount();
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

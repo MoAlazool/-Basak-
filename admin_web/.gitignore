@@ -1,2 +1,16 @@
-.vercel
+# Build output (the release build and the local one)
+dist
 dist-local
+
+# Dependencies
+node_modules
+
+# Local environment files (.env.production is the committed, browser-safe build config)
+.env
+.env.local
+.env.*.local
+
+# Deployment and tool state
+.vercel
+*.tsbuildinfo
+coverage

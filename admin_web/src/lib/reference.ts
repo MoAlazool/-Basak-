@@ -19,20 +19,22 @@ import type { LineOption, LineOptions } from './lineOptions';
 const reference = { staleTime: STALE.reference } as const;
 
 // ── Universities ────────────────────────────────────────────────────
-export interface UniversityRow { id: string; name: string; city: string; is_active: boolean; created_at: string }
+export interface UniversityRow { id: string; name: string; city: string; is_active: boolean }
+/** The columns of a university the dashboard shows (also what a write to one answers with). */
+export const UNIVERSITY_COLUMNS = 'id, name, city, is_active';
 
 export const universitiesKey = keys.shared('universities');
 const loadUniversities = () => unwrap<UniversityRow[]>(
-  supabase.from('universities').select('id, name, city, is_active, created_at').order('name'));
+  supabase.from('universities').select(UNIVERSITY_COLUMNS).order('name'));
 
 export const useUniversities = (enabled = true) => usePageData(universitiesKey, loadUniversities, { ...reference, enabled });
 export const refreshUniversities = () => queryClient.invalidateQueries({ queryKey: universitiesKey });
 
 // ── Lines ───────────────────────────────────────────────────────────
 type Direction = 'departure' | 'return';
-export interface StationRow { id: string; name: string; order_index: number; is_active: boolean }
-export interface TripStopRow { station_id: string; stop_time: string }
-export interface TripRow {
+interface StationRow { id: string; name: string; order_index: number; is_active: boolean }
+interface TripStopRow { station_id: string; stop_time: string }
+interface TripRow {
   id: string; direction: Direction; label: string; start_time: string; arrival_time: string | null;
   university_id: string | null; is_active: boolean; line_trip_stops: TripStopRow[];
 }
@@ -45,7 +47,7 @@ export interface LineRow {
   line_period_prices: { option: SaleOption; price: number; is_enabled: boolean }[];
 }
 
-export const linesKey = (companyId: string) => keys.company(companyId, 'lines');
+const linesKey = (companyId: string) => keys.company(companyId, 'lines');
 const loadLines = (companyId: string) => unwrap<LineRow[]>(
   supabase.from('lines')
     .select(`id, name, company_id, origin_name, destination_university_id, price_termly, price_yearly, price_daily,
@@ -54,6 +56,10 @@ const loadLines = (companyId: string) => unwrap<LineRow[]>(
         line_trip_stops(station_id, stop_time)), line_universities(university_id),
       line_period_prices(option, price, is_enabled)`)
     .eq('company_id', companyId).order('name') as unknown as PromiseLike<{ data: LineRow[] | null; error: { message: string } | null }>);
+
+/** A line's stations that are in use, in route order. */
+export const activeStations = <S extends { is_active: boolean; order_index: number }>(line?: { stations?: S[] } | null): S[] =>
+  (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
 
 /** The company's lines in full (lines page, and what the forms choose from). */
 export const useLines = (companyId: string, enabled = true) =>
@@ -87,12 +93,6 @@ export function useLineOptions(companyId: string, enabled = true) {
   };
 }
 
-/** Warms the form's choices (hovering or focusing the form) without rendering anything. */
-export function prefetchLineOptions(companyId: string) {
-  void queryClient.prefetchQuery({ queryKey: universitiesKey, queryFn: loadUniversities, ...reference });
-  void queryClient.prefetchQuery({ queryKey: linesKey(companyId), queryFn: () => loadLines(companyId), ...reference });
-}
-
 export interface LineName { id: string; name: string; is_active: boolean }
 /** Just the names: report filters, the supervisors' line checkboxes. */
 export const useLineNames = (companyId: string) =>
@@ -101,12 +101,13 @@ export const useLineNames = (companyId: string) =>
 
 // ── Supervisors ─────────────────────────────────────────────────────
 export interface SupervisorRow {
-  id: string; phone: string; full_name: string; company_id: string; is_active: boolean; created_at: string;
-  profile_image_url?: string | null;
+  id: string; phone: string; full_name: string; is_active: boolean; profile_image_url?: string | null;
 }
+/** The columns of a supervisor the dashboard shows (also what a write to one answers with). */
+export const SUPERVISOR_COLUMNS = 'id, phone, full_name, is_active, profile_image_url';
 export const useSupervisors = (companyId: string) =>
   usePageData(keys.company(companyId, 'supervisors'), () => unwrap<SupervisorRow[]>(
-    supabase.from('supervisors').select('id, phone, full_name, company_id, is_active, created_at, profile_image_url')
+    supabase.from('supervisors').select(SUPERVISOR_COLUMNS)
       .eq('company_id', companyId).order('created_at', { ascending: false })), reference);
 
 export interface SupervisorLine { supervisor_id: string; line_id: string }

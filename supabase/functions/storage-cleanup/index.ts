@@ -1,4 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serviceClient } from '../_shared/clients.ts';
 import { secretMatches } from '../_shared/push/message.ts';
 
 // Removes receipt images that no receipt uses and that are more than a day old
@@ -17,10 +18,12 @@ Deno.serve(async (request: Request) => {
     return json({ error: 'unauthorized' }, 401);
   }
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
-  const url = Deno.env.get('SUPABASE_URL');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !serviceKey) return json({ error: 'not_configured' }, 500);
-  const service = createClient(url, serviceKey, { auth: { persistSession: false } });
+  let service: SupabaseClient;
+  try {
+    service = serviceClient();
+  } catch {
+    return json({ error: 'not_configured' }, 500);
+  }
 
   let removed = 0;
   // A few rounds at most: the list shrinks as objects go.

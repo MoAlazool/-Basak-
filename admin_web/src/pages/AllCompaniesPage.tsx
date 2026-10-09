@@ -6,8 +6,11 @@ import { SkeletonCards } from '../components/Skeleton';
 import { count, egp } from '../components/StatsRow';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
-import { companyStatusLabel, CompanyStatus } from '../lib/adminScope';
-import { prefetchCompanyOverview, usePlatformOverview } from '../lib/overview';
+import { useQueryClient } from '@tanstack/react-query';
+import { companyStatusLabel, type CompanyScope, type CompanyStatus } from '../lib/adminScope';
+import { prefetchCompanyOverview, usePlatformOverview, type PlatformNumbers } from '../lib/overview';
+import { keys, refreshIfNotUpdated } from '../lib/query';
+import { useGuard } from '../lib/guard';
 
 const input = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-[#7EC8E3] focus:outline-none';
 const statusStyle: Record<CompanyStatus, string> = {
@@ -26,7 +29,9 @@ export const AllCompaniesPage: React.FC = () => {
 
   const companies = (data?.per_company ?? []).filter((row) => filter === 'all' ? row.company.status !== 'archived' : row.company.status === filter);
 
-  const setStatus = async (id: string, name: string, status: CompanyStatus) => {
+  const client = useQueryClient();
+  const guard = useGuard();
+  const setStatus = (id: string, name: string, status: CompanyStatus) => guard(id, async () => {
     const question = {
       suspended: `إيقاف «${name}»؟ سيفقد مديروها ومشرفوها الدخول فوراً، وتختفي من تطبيق الطلاب. لا تُحذف أي بيانات.`,
       archived: `أرشفة «${name}»؟ تُخفى من القوائم ويتوقف العمل بها. لا تُحذف أي بيانات ويمكن إعادة تفعيلها.`,
@@ -35,11 +40,22 @@ export const AllCompaniesPage: React.FC = () => {
     if (!window.confirm(question)) return;
     setBusy(id);
     setActionError('');
-    const { error: updateError } = await supabase.from('companies').update({ status }).eq('id', id).select('id').single();
-    if (updateError) setActionError(updateError.message);
-    await refresh();
+    const { data: saved, error: updateError } = await supabase.from('companies').update({ status }).eq('id', id).select('id, status').single();
     setBusy(null);
-  };
+    if (updateError || !saved) {
+      setActionError(updateError?.message ?? 'تعذر تغيير حالة الشركة.');
+      return;
+    }
+    // The card shows the saved status at once, and so does the company's own workspace if it
+    // was opened before. The change is announced on the platform's topic, which reads the
+    // totals again once (the counters by status follow from there).
+    const now = saved.status as CompanyStatus;
+    client.setQueryData<PlatformNumbers>(keys.platform('overview'), (numbers) => (numbers ? {
+      ...numbers, per_company: numbers.per_company.map((row) => (row.company.id === id ? { ...row, company: { ...row.company, status: now } } : row)),
+    } : numbers));
+    client.setQueryData<CompanyScope>(keys.company(id, 'company'), (company) => (company ? { ...company, status: now } : company));
+    refreshIfNotUpdated(keys.platform('overview'));
+  });
 
   return (
     <div className="space-y-6">
@@ -158,7 +174,9 @@ const CreateCompanyWizard: React.FC<{ onClose: () => void; onCreated: () => void
     return '';
   };
 
-  const next = async () => {
+  const guard = useGuard();
+  // The last step creates the company, its admin and its payment method: never twice.
+  const next = () => guard('next', async () => {
     const message = problem();
     setError(message);
     if (message) return;
@@ -174,7 +192,7 @@ const CreateCompanyWizard: React.FC<{ onClose: () => void; onCreated: () => void
       setError(createError instanceof Error ? createError.message : 'تعذر إنشاء الشركة.');
       setSaving(false);
     }
-  };
+  });
 
   const field = (label: string, node: React.ReactNode, hint?: string) => (
     <label className="block">

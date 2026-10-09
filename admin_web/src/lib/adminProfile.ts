@@ -1,12 +1,10 @@
 import { supabase } from './supabase';
-import { keys, queryClient } from './query';
+import { keys, one, queryClient } from './query';
 import type { AdminProfile, CompanyScope } from './adminScope';
-
-const one = <T,>(value: T | T[] | null | undefined): T | null => (Array.isArray(value) ? value[0] ?? null : value ?? null);
 
 /** The pure part: an `admins` row with its embedded company, as the dashboard uses it. */
 export function toAdminProfile(row: Record<string, any>): { profile: AdminProfile; company: CompanyScope | null } {
-  const company = one<CompanyScope>(row.companies);
+  const company = one<CompanyScope>(row.companies) ?? null;
   return {
     profile: {
       id: row.id, email: row.email, full_name: row.full_name, role: row.role, company_id: row.company_id,
