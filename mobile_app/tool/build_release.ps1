@@ -22,6 +22,15 @@ $keyProps = Join-Path $src "android\key.properties"
 if (-not (Test-Path $keyProps)) { throw "android\key.properties is missing: release builds must be signed with the upload key." }
 if (-not $env:JAVA_HOME) { $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr" }
 
+# The Firebase client values (lib/core/constants/firebase_config.dart): without
+# them the app still builds, but has no push notifications at all.
+$defines = @()
+if (Test-Path (Join-Path $src "firebase.defines.json")) {
+  $defines = @("--dart-define-from-file=firebase.defines.json")
+} else {
+  Write-Warning "firebase.defines.json is missing: this build will have no push notifications."
+}
+
 robocopy $src $BuildDir /MIR /XD build .dart_tool .gradle .kotlin .idea ephemeral `
   /XF key.properties *.jks *.keystore local.properties /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
@@ -41,22 +50,22 @@ try {
     # 64-bit phones only, about half the size; 32-bit phones cannot install it.
     # (A split build: a plain one would still carry other CPUs' plugin libraries.)
     & $Flutter build apk --release --split-per-abi --target-platform android-arm64 `
-      "--android-project-arg=force-version-code-ignoring-abi=true"
+      "--android-project-arg=force-version-code-ignoring-abi=true" @defines
     if ($LASTEXITCODE -ne 0) { throw "APK build failed" }
     return
   }
   if ($ApkOnly) {
     # One file for every phone: 32- and 64-bit ARM in the same APK.
-    & $Flutter build apk --release --target-platform android-arm,android-arm64
+    & $Flutter build apk --release --target-platform android-arm,android-arm64 @defines
     if ($LASTEXITCODE -ne 0) { throw "APK build failed" }
     return
   }
   # One APK per CPU type, all with the pubspec versionCode (no ABI offset), so
   # a device-tested APK never blocks the Play Store update of the same version.
   & $Flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 `
-    "--android-project-arg=force-version-code-ignoring-abi=true"
+    "--android-project-arg=force-version-code-ignoring-abi=true" @defines
   if ($LASTEXITCODE -ne 0) { throw "APK build failed" }
-  & $Flutter build appbundle --release
+  & $Flutter build appbundle --release @defines
   if ($LASTEXITCODE -ne 0) { throw "App Bundle build failed" }
 } finally {
   Pop-Location
