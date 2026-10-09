@@ -91,7 +91,11 @@ class _ProfileSectionState extends ConsumerState<ProfileSection> {
       _refresh();
       _say('تم تغيير الصورة الشخصية.');
     } catch (e) {
-      _say(isNetworkFailure(e) ? errorMessage(e) : pickerErrorMessage(e), kind: BasakToastKind.failure);
+      if (isNetworkFailure(e)) {
+        _say(errorMessage(e), kind: BasakToastKind.failure);
+      } else if (mounted) {
+        showPickerError(context, e);
+      }
     } finally {
       if (mounted) setState(() => _changingPhoto = false);
     }

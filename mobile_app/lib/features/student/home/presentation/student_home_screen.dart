@@ -374,7 +374,6 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final invites = ref.watch(myInvitesProvider).valueOrNull ?? const <CompanyInvite>[];
     // The term's recap: only at the end of a term, and only when there is one.
     final recap = ref.watch(termRecapProvider).valueOrNull;
-    final colors = context.colors;
 
     final List<Widget> children;
     if (subAsync.hasValue) {
@@ -440,13 +439,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     }
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: colors.ground,
-        systemNavigationBarIconBrightness: Brightness.dark,
-      ),
+      value: BasakChrome.onGround,
       // The store rating is asked from here, at a calm moment, once Home has
       // loaded with a running subscription.
       child: RatingMoment(

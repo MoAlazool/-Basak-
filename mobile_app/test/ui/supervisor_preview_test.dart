@@ -34,11 +34,11 @@ Future<void> _shot(WidgetTester tester, String name, {bool settle = true}) async
   });
 }
 
-Future<void> _home(WidgetTester tester, BoardWorld world, {Size size = const Size(390, 1100), double scale = 1}) =>
+Future<void> _home(WidgetTester tester, BoardWorld world, {Size size = const Size(390, 1100), double? scale}) =>
     pumpBoard(tester, world, SupervisorHomeScreen(onOpenTrips: () {}),
         size: size, textScale: scale, boundaryKey: _key);
 
-Future<void> _trips(WidgetTester tester, BoardWorld world, {Size size = const Size(390, 1190), double scale = 1}) =>
+Future<void> _trips(WidgetTester tester, BoardWorld world, {Size size = const Size(390, 1190), double? scale}) =>
     pumpBoard(tester, world, const SupervisorTripsScreen(),
         tab: 1, size: size, textScale: scale, boundaryKey: _key);
 

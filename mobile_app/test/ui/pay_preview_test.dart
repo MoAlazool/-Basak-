@@ -215,7 +215,9 @@ void main() {
 
       // Offline with a picture chosen: it stays, sending waits.
       await pay('pending_payment', payOverrides(subs: [boardSub('pending_payment')], methods: [boardMethods().first]));
-      await tester.ensureVisible(find.byKey(const Key('receipt-camera')));
+      // A lazy list: at a larger text size the buttons are built once scrolled to.
+      await tester.scrollUntilVisible(find.byKey(const Key('receipt-camera')), 200,
+          scrollable: find.byType(Scrollable).first);
       await tester.pump();
       await tester.tap(find.byKey(const Key('receipt-camera')));
       await realTime(tester);

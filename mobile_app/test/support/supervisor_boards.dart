@@ -272,7 +272,8 @@ Future<void> pumpBoard(
   Widget screen, {
   int? tab = 0,
   Size size = const Size(390, 844),
-  double textScale = 1,
+  /// Null: the text scale of the test itself (RENDER_SCALE, see flutter_test_config.dart).
+  double? textScale,
   Key? boundaryKey,
   List<Override> more = const [],
 }) async {
@@ -293,7 +294,9 @@ Future<void> pumpBoard(
         supportedLocales: const [Locale('ar')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: textScale == null
+              ? MediaQuery.of(context)
+              : MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
         home: tab == null

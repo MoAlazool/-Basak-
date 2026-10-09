@@ -154,7 +154,6 @@ class _SupervisorMainScreenState extends ConsumerState<SupervisorMainScreen>
         onTabSelected: _selectTab,
         items: FloatingGlassNavBar.supervisorNavItems,
         collapsed: _navCollapsed,
-        onExpand: () => setState(() => _navCollapsed = false),
       ),
     );
   }

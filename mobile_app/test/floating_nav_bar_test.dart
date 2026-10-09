@@ -59,7 +59,6 @@ class _ShellState extends State<_Shell> {
         onTabSelected: _selectTab,
         items: FloatingGlassNavBar.supervisorNavItems,
         collapsed: _navCollapsed,
-        onExpand: () => setState(() => _navCollapsed = false),
       ),
     );
   }

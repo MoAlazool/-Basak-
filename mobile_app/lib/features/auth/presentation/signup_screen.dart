@@ -195,7 +195,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     try {
       framed = await (widget.pickPhoto ?? ProfilePhoto.pickAndAdjust)(context, source);
     } on PlatformException catch (e) {
-      if (mounted) BasakToast.show(context, pickerErrorMessage(e), kind: BasakToastKind.failure);
+      if (mounted) showPickerError(context, e);
       return;
     }
     if (framed != null && mounted) {

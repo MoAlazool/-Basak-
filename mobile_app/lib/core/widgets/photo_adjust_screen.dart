@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
@@ -53,7 +54,7 @@ class ProfilePhoto {
     final recorder = ui.PictureRecorder();
     final target = Rect.fromLTWH(0, 0, outputSize.toDouble(), outputSize.toDouble());
     Canvas(recorder, target)
-      ..drawColor(Colors.white, BlendMode.src)
+      ..drawColor(BasakPalette.surface, BlendMode.src)
       ..drawImageRect(image, crop, target, Paint()..filterQuality = FilterQuality.high);
     final square = await recorder.endRecording().toImage(outputSize, outputSize);
     final rgba = await square.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -174,8 +175,9 @@ class _PhotoAdjustScreenState extends State<PhotoAdjustScreen> {
     final image = _image;
     final cancel = _saving ? null : () => Navigator.of(context).pop();
 
-    return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+    // A dark page: the phone's own status icons turn light over it.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: BasakChrome.onDark(colors.scanPanel),
       child: Scaffold(
         backgroundColor: colors.scanPanel,
         body: SafeArea(

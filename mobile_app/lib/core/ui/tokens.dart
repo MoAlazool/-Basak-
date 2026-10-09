@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// The design tokens of the 2026 redesign ("The Route"). Every colour, text
 /// role, space, radius, duration and shadow the app draws with is named here;
@@ -57,6 +58,11 @@ abstract final class BasakPalette {
   static const scanPanel = Color(0xFF10222C);
   static const scanGlow = Color(0xFF2B4452);
   static const scanGlass = Color(0x24FFFFFF); // white at 14%
+
+  // Google's own "Add to Google Wallet" button: black with white words, as
+  // its brand rules ask. Nothing else in the app is black.
+  static const walletBlack = Color(0xFF000000);
+  static const walletBusy = Color(0x73000000); // black at 45%
 }
 
 /// The working palette, as a theme extension. One theme (light), so `copyWith`
@@ -111,6 +117,9 @@ class BasakColors extends ThemeExtension<BasakColors> {
   Color get scanPanel => BasakPalette.scanPanel;
   Color get scanGlow => BasakPalette.scanGlow;
   Color get scanGlass => BasakPalette.scanGlass;
+
+  Color get walletBlack => BasakPalette.walletBlack;
+  Color get walletBusy => BasakPalette.walletBusy;
 
   /// Dims what lies behind a sheet or a dialog.
   Color get scrim => BasakPalette.ink.withValues(alpha: .45);
@@ -307,6 +316,12 @@ abstract final class BasakMotion {
 
   /// The skeleton's slow pulse.
   static const skeleton = Duration(milliseconds: 1200);
+
+  /// The splash: the rail travels, then the screen fades away.
+  static const splash = Duration(milliseconds: 1800);
+
+  /// The splash when the phone asks for less motion.
+  static const splashReduced = Duration(milliseconds: 700);
 }
 
 /// The two shadows: a card's, and a floating layer's (sheets, toasts, the tab bar).
@@ -319,6 +334,34 @@ abstract final class BasakShadow {
     BoxShadow(color: Color(0x4717384A), offset: Offset(0, 16), blurRadius: 40, spreadRadius: -12),
   ];
 }
+
+/// The phone's own bars over a screen: dark icons on the ground, light ones
+/// on a dark page (the splash, the card, the scanner, the recap). A dark page
+/// wraps itself in `AnnotatedRegion<SystemUiOverlayStyle>` with [onDark]; the
+/// app's root sets [onGround] for everything else.
+abstract final class BasakChrome {
+  static const onGround = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+    systemNavigationBarColor: BasakPalette.ground,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
+
+  /// [background] is the page's own colour, so the navigation bar continues it.
+  static SystemUiOverlayStyle onDark([Color background = BasakPalette.ink]) => SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: background,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Colors.transparent,
+      );
+}
+
+/// Text follows the phone's size setting from 1.0 to this, and no further.
+const double basakMaxTextScale = 1.3;
 
 extension BasakTheme on BuildContext {
   /// The palette. Falls back to the light one so a widget also works under a

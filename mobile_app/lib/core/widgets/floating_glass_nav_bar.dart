@@ -32,9 +32,6 @@ class FloatingGlassNavBar extends StatelessWidget {
   final List<NavItem> items;
   final bool collapsed;
 
-  /// Unused since the collapsed bar keeps its tabs; kept for the shells that pass it.
-  final VoidCallback? onExpand;
-
   static const double height = 64;
   static const double collapsedHeight = 52;
   static const double sideMargin = 16;
@@ -46,7 +43,6 @@ class FloatingGlassNavBar extends StatelessWidget {
     required this.onTabSelected,
     required this.items,
     this.collapsed = false,
-    this.onExpand,
   });
 
   /// Whether a scroll should collapse (true) or expand (false) the bar, or

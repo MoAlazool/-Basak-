@@ -155,7 +155,6 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
         onTabSelected: _selectTab,
         items: FloatingGlassNavBar.studentNavItems,
         collapsed: _navCollapsed,
-        onExpand: () => setState(() => _navCollapsed = false),
       ),
     );
   }

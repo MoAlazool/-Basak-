@@ -334,6 +334,64 @@ final _scenes = <_Scene>[
     ]),
   ),
   _Scene(
+    'toast_action',
+    (context) => BasakToastBody(
+      message: 'لا يوجد إذن لاستخدام الكاميرا. اسمح لتطبيق باصك باستخدام الكاميرا من إعدادات الهاتف ثم أعد المحاولة.',
+      kind: BasakToastKind.failure,
+      actionLabel: 'فتح الإعدادات',
+      onAction: () {},
+    ),
+  ),
+  _Scene(
+    'app_prompts',
+    (context) => _column([
+      BasakCard(
+        child: _column(const [
+          PromptIntro(
+            icon: LucideIcons.download,
+            title: 'تحديث جديد متاح',
+            fact: '2.4.0',
+            semanticLabel: 'تحديث متاح',
+          ),
+          CheckLines(lines: [
+            'الدخول ببصمة الوجه أو الإصبع',
+            'ملخص الترم في نهاية كل فصل، جاهز للمشاركة مع أصحابك',
+            'إصلاحات في رفع الإيصال',
+          ]),
+        ]),
+      ),
+      const BasakCard(
+        child: PromptIntro(
+          icon: LucideIcons.star,
+          title: 'هل يعجبك باصك؟',
+          message: 'تقييمك في المتجر يساعد طلاباً آخرين على الوصول إلينا، ويأخذ أقل من دقيقة.',
+          semanticLabel: 'تقييم التطبيق',
+        ),
+      ),
+      const Center(
+        child: FactPill(facts: [(label: 'إصدارك', value: '2.1.0'), (label: 'المطلوب', value: '2.3.0')]),
+      ),
+    ]),
+  ),
+  _Scene(
+    'blocking_notice',
+    pageHeight: 640,
+    (context) => Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, BasakSpace.s40, BasakSpace.gutter, BasakSpace.s20),
+      child: BlockingNotice(
+        icon: LucideIcons.download,
+        title: 'حدّث التطبيق للمتابعة',
+        message: 'هذا الإصدار لم يعد مدعوماً. التحديث يأخذ دقيقة، ولا يغيّر حسابك أو اشتراكك.',
+        facts: const [(label: 'إصدارك', value: '2.1.0'), (label: 'المطلوب', value: '2.3.0')],
+        actions: [
+          BasakButton(label: 'تحديث من Google Play', icon: LucideIcons.download, onPressed: () {}),
+          SheetLink(label: 'عرض بطاقتي', accent: true, onTap: () {}),
+        ],
+        footnote: 'بطاقتك تعمل عند الصعود حتى قبل التحديث.',
+      ),
+    ),
+  ),
+  _Scene(
     'empty_state',
     (context) => _column([
       const EmptyState(

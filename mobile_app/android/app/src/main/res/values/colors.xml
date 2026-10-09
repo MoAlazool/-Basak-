@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Same as splashBackground in lib/features/splash/splash_gate.dart -->
-    <color name="splash_background">#F4F9FC</color>
+    <!-- Ink: the ground of the Flutter splash (lib/features/splash/splash_gate.dart, BasakPalette.ink) -->
+    <color name="splash_background">#17384A</color>
 </resources>

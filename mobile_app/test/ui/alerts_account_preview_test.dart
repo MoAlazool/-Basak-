@@ -251,12 +251,17 @@ void main() {
       await tester.tapAt(const Offset(20, 20));
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(find.byKey(const Key('profile-help')), 200,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('profile-help')));
       await _shot(tester, 'account-3-help-$w');
       await tester.tap(find.text('إغلاق'));
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.byKey(const Key('profile-delete')));
+      // The page is a lazy list: the row is built once it is scrolled to.
+      await tester.scrollUntilVisible(find.byKey(const Key('profile-delete')), 200,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('profile-delete')));
       await _shot(tester, 'account-4-delete-$w');
@@ -285,6 +290,9 @@ void main() {
       await tester.tap(find.byKey(const Key('profile-edit')));
       await _shot(tester, 'account-6-edit-full-$w');
       await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byKey(const Key('profile-help')), 200,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('profile-help')));
       await _shot(tester, 'account-7-help-two-groups-$w');

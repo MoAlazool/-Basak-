@@ -67,14 +67,7 @@ class StudentQrScreen extends ConsumerWidget {
 
     // The ground is ink: the phone's own status icons turn light on it.
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: colors.ink,
-        systemNavigationBarIconBrightness: Brightness.light,
-        systemNavigationBarDividerColor: Colors.transparent,
-      ),
+      value: BasakChrome.onDark(colors.ink),
       child: Material(
         color: colors.ink,
         child: MediaQuery.withClampedTextScaling(

@@ -226,14 +226,7 @@ class ScannerViewState extends ConsumerState<ScannerView> {
 
     // The surface is dark: the phone's own status icons turn light on it.
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: colors.scanBase,
-        systemNavigationBarIconBrightness: Brightness.light,
-        systemNavigationBarDividerColor: Colors.transparent,
-      ),
+      value: BasakChrome.onDark(colors.scanBase),
       child: Material(
         color: colors.scanBase,
         child: MediaQuery.withClampedTextScaling(maxScaleFactor: 1.3, child: body),

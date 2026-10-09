@@ -164,7 +164,8 @@ void main() {
   });
 
   testWidgets('the banner on Home', skip: skip, (tester) async {
-    tester.view.physicalSize = const Size(390, 140);
+    // Tall enough for the banner's two lines at text ×1.3 as well.
+    tester.view.physicalSize = const Size(390, 180);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(_app(

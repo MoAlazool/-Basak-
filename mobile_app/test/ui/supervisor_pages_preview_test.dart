@@ -194,6 +194,7 @@ void main() {
       await tester.tap(find.byKey(const Key('send-to-line')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key('send-custom')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('send-custom')));
       await tester.pumpAndSettle();
       await tester.enterText(

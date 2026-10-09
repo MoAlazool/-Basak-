@@ -108,7 +108,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
       final prepared = ImageOptimizer.prepareReceipt(picked.path)..ignore();
       setState(() => _draft = _ReceiptDraft(picked, ReceiptAttempt.start(subscriptionId), prepared));
     } catch (e) {
-      if (mounted) _toast(pickerErrorMessage(e), kind: BasakToastKind.failure);
+      if (mounted) showPickerError(context, e);
     }
   }
 
@@ -318,24 +318,30 @@ class _PayScreenState extends ConsumerState<PayScreen> {
             key: const Key('amount-label'),
             style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
         const SizedBox(height: BasakSpace.s2),
-        Row(
-          children: [
-            Expanded(
-              child: MoneyText(money, key: const Key('amount-value'), style: text.amount, unitSize: 16),
-            ),
-            if (!_sending) ...[
-              const SizedBox(width: BasakSpace.s12),
-              BasakButton(
-                key: const Key('amount-copy'),
-                label: 'نسخ المبلغ',
-                icon: LucideIcons.copy,
-                variant: BasakButtonVariant.surface,
-                size: BasakButtonSize.small,
-                expand: false,
-                onPressed: () => _copy(sub.price.toStringAsFixed(0)),
-              ),
+        // The amount never loses its currency: on a narrow phone with large
+        // text the copy button moves under it instead of squeezing it.
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: BasakSpace.s12,
+            runSpacing: BasakSpace.s8,
+            children: [
+              MoneyText(money, key: const Key('amount-value'), style: text.amount, unitSize: 16),
+              if (!_sending) ...[
+                BasakButton(
+                  key: const Key('amount-copy'),
+                  label: 'نسخ المبلغ',
+                  icon: LucideIcons.copy,
+                  variant: BasakButtonVariant.surface,
+                  size: BasakButtonSize.small,
+                  expand: false,
+                  onPressed: () => _copy(sub.price.toStringAsFixed(0)),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ],
     );

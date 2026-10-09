@@ -91,7 +91,15 @@ enum BasakToastKind { success, failure, info }
 /// The app's one kind of passing message: ink, with an icon that carries
 /// success or failure. One at a time, three seconds.
 abstract final class BasakToast {
-  static void show(BuildContext context, String message, {BasakToastKind kind = BasakToastKind.success}) {
+  /// [actionLabel] with [onAction]: one way out of what the message says
+  /// ("فتح الإعدادات" after a refused permission). Tapping it closes the toast.
+  static void show(
+    BuildContext context,
+    String message, {
+    BasakToastKind kind = BasakToastKind.success,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
     messenger
@@ -103,7 +111,17 @@ abstract final class BasakToast {
         elevation: 0,
         padding: EdgeInsets.zero,
         margin: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, 0, BasakSpace.gutter, BasakSpace.s16),
-        content: BasakToastBody(message: message, kind: kind),
+        content: BasakToastBody(
+          message: message,
+          kind: kind,
+          actionLabel: actionLabel,
+          onAction: onAction == null
+              ? null
+              : () {
+                  messenger.hideCurrentSnackBar();
+                  onAction();
+                },
+        ),
       ));
   }
 }
@@ -112,8 +130,16 @@ abstract final class BasakToast {
 class BasakToastBody extends StatelessWidget {
   final String message;
   final BasakToastKind kind;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
-  const BasakToastBody({super.key, required this.message, this.kind = BasakToastKind.success});
+  const BasakToastBody({
+    super.key,
+    required this.message,
+    this.kind = BasakToastKind.success,
+    this.actionLabel,
+    this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -123,9 +149,10 @@ class BasakToastBody extends StatelessWidget {
       BasakToastKind.failure => (LucideIcons.triangleAlert, colors.refusedFrame),
       BasakToastKind.info => (LucideIcons.info, colors.sky),
     };
+    final action = actionLabel != null && onAction != null;
     return Container(
       constraints: const BoxConstraints(minHeight: 48),
-      padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s12),
+      padding: EdgeInsetsDirectional.only(start: BasakSpace.s16, end: action ? BasakSpace.s4 : BasakSpace.s16),
       decoration: BoxDecoration(
         color: colors.ink,
         borderRadius: BasakRadius.all(BasakRadius.small),
@@ -135,7 +162,27 @@ class BasakToastBody extends StatelessWidget {
         children: [
           Icon(icon, size: 17, color: tint),
           const SizedBox(width: BasakSpace.s10),
-          Expanded(child: Text(message, style: context.text.bodySmall.copyWith(color: colors.onInk))),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s12),
+              child: Text(message, style: context.text.bodySmall.copyWith(color: colors.onInk)),
+            ),
+          ),
+          if (action)
+            BasakPressable(
+              onTap: onAction,
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s12),
+                  child: Text(
+                    actionLabel!,
+                    style: context.text.label.copyWith(color: colors.sky, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

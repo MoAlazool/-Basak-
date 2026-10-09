@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:basak_mobile/core/ui/ui.dart';
 
@@ -23,7 +24,7 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
   static const _leave = Interval(.84, 1, curve: Curves.easeOut);
 
   late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+      AnimationController(vsync: this, duration: BasakMotion.splash);
   bool _done = false;
   bool _started = false;
 
@@ -32,7 +33,7 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
     super.didChangeDependencies();
     // Respect the system "remove animations" setting.
     if (MediaQuery.of(context).disableAnimations && !_c.isCompleted) {
-      _c.duration = const Duration(milliseconds: 700);
+      _c.duration = BasakMotion.splashReduced;
     }
     // Play once the logo is decoded, so it never appears half-loaded, but
     // never hold the launch more than half a second for it.
@@ -96,33 +97,37 @@ class SplashView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
-    // Material: gives the name a real text style under a bare Stack.
-    return Material(
-      color: colors.ink,
-      child: Directionality(
-        textDirection: TextDirection.rtl,
-        child: MediaQuery.withNoTextScaling(
-          child: Stack(
-            children: [
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const BrandMark(size: 104),
-                    const SizedBox(height: BasakSpace.s20),
-                    Text('باصك', style: text.amount.copyWith(height: 46 / 34, color: colors.onInk)),
-                    const SizedBox(height: BasakSpace.s4),
-                    Text('النقل الجامعي', style: text.bodySmall.copyWith(color: colors.sky)),
-                  ],
+    // Material: gives the name a real text style under a bare Stack. The
+    // ground is ink, so the phone's own status icons turn light over it.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: BasakChrome.onDark(),
+      child: Material(
+        color: colors.ink,
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: MediaQuery.withNoTextScaling(
+            child: Stack(
+              children: [
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const BrandMark(size: 104),
+                      const SizedBox(height: BasakSpace.s20),
+                      Text('باصك', style: text.amount.copyWith(height: 46 / 34, color: colors.onInk)),
+                      const SizedBox(height: BasakSpace.s4),
+                      Text('النقل الجامعي', style: text.bodySmall.copyWith(color: colors.sky)),
+                    ],
+                  ),
                 ),
-              ),
-              PositionedDirectional(
-                start: 0,
-                end: 0,
-                bottom: 84,
-                child: Center(child: SplashRail(progress: progress)),
-              ),
-            ],
+                PositionedDirectional(
+                  start: 0,
+                  end: 0,
+                  bottom: 84,
+                  child: Center(child: SplashRail(progress: progress)),
+                ),
+              ],
+            ),
           ),
         ),
       ),

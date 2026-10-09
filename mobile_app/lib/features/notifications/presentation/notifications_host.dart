@@ -87,7 +87,7 @@ class _NotificationsHostState extends ConsumerState<NotificationsHost> with Widg
     });
     return Stack(children: [
       widget.child,
-      const Positioned(top: 0, left: 0, right: 0, child: _ForegroundBanner()),
+      const PositionedDirectional(top: 0, start: 0, end: 0, child: _ForegroundBanner()),
     ]);
   }
 }

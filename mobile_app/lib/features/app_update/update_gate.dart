@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/storage/offline_cache.dart';
@@ -214,22 +215,26 @@ class UpdateCardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: context.colors.ink,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, BasakSpace.s8, BasakSpace.gutter, 0),
-              child: BasakBackHeader(key: const Key('update-card-back'), onBack: () => Navigator.of(context).pop()),
-            ),
-            // The card's own page keeps its place under the back button.
-            Expanded(
-              child: MediaQuery.removePadding(context: context, removeTop: true, child: const StudentQrScreen()),
-            ),
-          ],
+    // Ink behind the card: the phone's own status icons turn light over it.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: BasakChrome.onDark(),
+      child: Material(
+        color: context.colors.ink,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, BasakSpace.s8, BasakSpace.gutter, 0),
+                child: BasakBackHeader(key: const Key('update-card-back'), onBack: () => Navigator.of(context).pop()),
+              ),
+              // The card's own page keeps its place under the back button.
+              Expanded(
+                child: MediaQuery.removePadding(context: context, removeTop: true, child: const StudentQrScreen()),
+              ),
+            ],
+          ),
         ),
       ),
     );
