@@ -109,10 +109,12 @@ function fail(action: string, result: { status: number; text: string }): never {
  */
 async function upsert(
   config: GoogleConfig, kind: 'genericClass' | 'genericObject', resource: { id: string }, exists: boolean,
+  replacement: { method: 'PUT' | 'PATCH'; body: { id: string } } = { method: 'PUT', body: resource },
 ) {
   const insert = async () => ({ action: 'insert', ...await call(config, 'POST', `/${kind}`, resource) });
   const update = async () => ({
-    action: 'update', ...await call(config, 'PUT', `/${kind}/${encodeURIComponent(resource.id)}`, resource),
+    action: 'update',
+    ...await call(config, replacement.method, `/${kind}/${encodeURIComponent(resource.id)}`, replacement.body),
   });
   let result = exists ? await update() : await insert();
   if (exists && result.status === 404) result = await insert();
@@ -121,8 +123,17 @@ async function upsert(
   if (!result.ok) fail(`${kind} ${result.action}`, result);
 }
 
-export const upsertClass = (config: GoogleConfig, resource: { id: string }, exists = false) =>
-  upsert(config, 'genericClass', resource, exists);
+/**
+ * Who may save the card (multipleDevicesAndHoldersAllowedStatus) is fixed by
+ * Google once anyone has saved one: a change is refused (400) and would stop
+ * every card. It is sent when the class is created; an update patches the rest.
+ */
+export const upsertClass = (
+  config: GoogleConfig, resource: { id: string; multipleDevicesAndHoldersAllowedStatus?: string }, exists = false,
+) => {
+  const { multipleDevicesAndHoldersAllowedStatus: _fixed, ...changeable } = resource;
+  return upsert(config, 'genericClass', resource, exists, { method: 'PATCH', body: changeable });
+};
 export const upsertObject = (config: GoogleConfig, resource: { id: string }, exists = false) =>
   upsert(config, 'genericObject', resource, exists);
 
