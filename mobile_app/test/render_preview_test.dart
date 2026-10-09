@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/theme/app_theme.dart';
+import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
 import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
 import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
 import 'package:basak_mobile/features/student/home/presentation/supervisor_contact_sheet.dart';
@@ -128,46 +129,119 @@ void main() {
     await _shot(tester, '8-expanded');
   }, skip: _dir == null);
 
-  for (final size in const [Size(402, 874), Size(375, 667), Size(430, 932)]) {
-    testWidgets('draw the student card at ${size.width.toInt()}x${size.height.toInt()}', (tester) async {
-      await tester.runAsync(_fonts);
-      tester.view.physicalSize = size * 2;
-      tester.view.devicePixelRatio = 2;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(ProviderScope(
-        overrides: [
-          studentQrProvider.overrideWith((ref) async => const StudentPassDetails(
-              qrValue: 'BASAK-STUDENT-QR-0001-EXAMPLE', fullName: 'محمد عادل إبراهيم', phone: '01055512301',
-              university: 'جامعة الدلتا للعلوم والتكنولوجيا', college: 'الهندسة', lineName: 'منيه النصر',
-              stationName: 'البجلات', subscriptionType: 'termly', subscriptionStatus: 'active')),
-        ],
-        child: RepaintBoundary(
-          key: _key,
-          child: MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            locale: const Locale('ar'),
-            supportedLocales: const [Locale('ar')],
-            localizationsDelegates: GlobalMaterialLocalizations.delegates,
-            // Framed as in the app: the floating navigation bar over the page's bottom.
-            home: Scaffold(
-              extendBody: true,
-              body: const StudentQrScreen(),
-              bottomNavigationBar: Container(
-                height: 64,
-                margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
-              ),
+  // The card tab, framed as in the app: the floating tab bar over the page's bottom.
+  Future<void> card(WidgetTester tester, Size size, StudentPassDetails? pass, {double textScale = 1}) async {
+    await tester.runAsync(_fonts);
+    tester.view.physicalSize = size * 2;
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      key: UniqueKey(),
+      overrides: [studentQrProvider.overrideWith((ref) async => pass)],
+      child: RepaintBoundary(
+        key: _key,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          locale: const Locale('ar'),
+          supportedLocales: const [Locale('ar')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)), child: child!),
+          home: Scaffold(
+            extendBody: true,
+            body: const StudentQrScreen(),
+            bottomNavigationBar: Container(
+              height: 64,
+              margin: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
             ),
           ),
         ),
-      ));
+      ),
+    ));
+  }
+
+  StudentPassDetails pass(String? status, {String phase = 'current'}) => StudentPassDetails(
+      qrValue: '11111111-2222-3333-4444-555555555555', fullName: 'محمد عادل إبراهيم', phone: '01055512301',
+      university: 'جامعة الدلتا للعلوم والتكنولوجيا', college: 'الهندسة',
+      lineName: status == null ? null : 'منيه النصر', stationName: status == null ? null : 'البجلات',
+      subscriptionId: status == null ? null : 'sub1', subscriptionType: status == null ? null : 'termly',
+      subscriptionStatus: status, periodPhase: status == null ? null : phase,
+      periodName: status == null ? null : 'الفصل الأول', academicYear: status == null ? null : 2026,
+      startDate: status == null ? null : '2026-09-20', endDate: status == null ? null : '2027-01-14',
+      companyName: status == null ? null : 'المستقبل للنقل');
+
+  void rideToday() {
+    final today = DateTime.now();
+    KnownRides.debugUserId = 'me';
+    KnownRides.voted('me', today,
+        const DailyRideDetails(isRiding: true, departureTime: '07:23:00', returnTime: '15:30:00'));
+    addTearDown(() {
+      KnownRides.clear();
+      KnownRides.debugUserId = null;
+    });
+  }
+
+  /// The page is fixed: it can be pulled to refresh, but there is nothing to scroll to.
+  void expectFixed(WidgetTester tester) {
+    final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
+    expect(scroll.position.maxScrollExtent, 0, reason: 'the card page is fixed');
+  }
+
+  for (final size in const [Size(402, 874), Size(390, 844), Size(375, 667), Size(360, 640), Size(430, 932)]) {
+    final name = '${size.width.toInt()}x${size.height.toInt()}';
+    testWidgets('draw the student card at $name', (tester) async {
+      rideToday();
+      await card(tester, size, pass('active'));
       await _shot(tester, 'card-${size.height.toInt()}');
-      expect(find.byType(Scrollable), findsNothing, reason: 'the card page is fixed');
-      expect(tester.getSize(find.byKey(const Key('student-qr'))).width, greaterThan(150));
+      expectFixed(tester);
+      expect(find.byKey(const Key('card-ride')), findsOneWidget);
+      // The code is the last thing to give way: still large on the smallest phone.
+      expect(tester.getSize(find.byKey(const Key('student-qr'))).width, greaterThan(size.height < 650 ? 130 : size.height < 700 ? 150 : 180));
       expect(find.text('الكلية'), findsNothing);
     }, skip: _dir == null);
+
+    testWidgets('draw the card that is not active at $name', (tester) async {
+      await card(tester, size, pass('pending_review'));
+      await _shot(tester, 'card-inactive-${size.height.toInt()}');
+      expectFixed(tester);
+      expect(find.text('إضافة إلى Google Wallet'), findsNothing);
+    }, skip: _dir == null);
   }
+
+  testWidgets('draw the card in its other states', (tester) async {
+    const phone = Size(390, 844);
+    for (final (name, details) in [
+      ('expired', pass('expired', phase: 'expired')),
+      ('rejected', pass('rejected')),
+      ('awaiting-payment', pass('pending_payment')),
+      ('none', pass(null)),
+    ]) {
+      await card(tester, phone, details);
+      await _shot(tester, 'card-$name');
+      expectFixed(tester);
+    }
+    await card(tester, phone, null);
+    await _shot(tester, 'card-unavailable');
+    await card(tester, const Size(360, 640), null);
+    await _shot(tester, 'card-unavailable-640');
+
+    rideToday();
+    await card(tester, const Size(360, 640), pass('active'), textScale: 1.3);
+    await _shot(tester, 'card-640-large-text');
+    expect(tester.getSize(find.byKey(const Key('student-qr'))).width, greaterThan(100));
+
+    for (final size in const [phone, Size(360, 640)]) {
+      await card(tester, size, pass('active'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('card-details-open')));
+      await _shot(tester, 'card-details-${size.height.toInt()}');
+      expect(find.byKey(const Key('card-details')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('card-details-close')));
+      await tester.pumpAndSettle();
+    }
+  }, skip: _dir == null);
 
   testWidgets('draw the supervisor sheet', (tester) async {
     await tester.runAsync(_fonts);

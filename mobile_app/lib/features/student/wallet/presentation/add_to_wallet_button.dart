@@ -88,13 +88,20 @@ class _AddToWalletButtonState extends ConsumerState<AddToWalletButton> {
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(26),
               ),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(LucideIcons.wallet, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Text('إضافة إلى Google Wallet',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.w700)),
-              ]),
+              // Beside "كل التفاصيل" on a narrow phone the label shrinks to fit.
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(horizontal: 8),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(LucideIcons.wallet, color: Colors.white, size: 20),
+                    const SizedBox(width: 10),
+                    Text('إضافة إلى Google Wallet',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                            color: Colors.white, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
             ),
           Material(
             color: _busy ? Colors.black45 : Colors.transparent,

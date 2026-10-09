@@ -32,11 +32,17 @@ class InfoRow {
 class InfoRows extends StatelessWidget {
   final List<InfoRow> rows;
 
-  const InfoRows({super.key, required this.rows});
+  /// Inside a sheet, where the surface is already white: a ground-coloured
+  /// block without a shadow, and rows 44 high.
+  final bool sunken;
+
+  const InfoRows({super.key, required this.rows, this.sunken = false});
 
   @override
   Widget build(BuildContext context) => BasakCard(
-        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s18),
+        padding: EdgeInsetsDirectional.symmetric(horizontal: sunken ? BasakSpace.s16 : BasakSpace.s18),
+        radius: sunken ? BasakRadius.control : BasakRadius.card,
+        color: sunken ? context.colors.ground : null,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -61,7 +67,8 @@ class InfoRows extends StatelessWidget {
         row.value!,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.end,
+        // A left-to-right value still sits at the row's end edge.
+        textAlign: row.ltrValue && rtl ? TextAlign.start : TextAlign.end,
         textDirection: row.ltrValue ? TextDirection.ltr : null,
         style: navigates
             ? text.bodySmall.copyWith(color: colors.ink3)
@@ -70,9 +77,9 @@ class InfoRows extends StatelessWidget {
     }
 
     final content = ConstrainedBox(
-      constraints: BoxConstraints(minHeight: row.caption == null ? 56 : 64),
+      constraints: BoxConstraints(minHeight: sunken ? 44 : (row.caption == null ? 56 : 64)),
       child: Padding(
-        padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s8),
+        padding: EdgeInsetsDirectional.symmetric(vertical: sunken ? BasakSpace.s6 : BasakSpace.s8),
         child: Row(
           children: [
             // The label keeps its words; a long value wraps beside it.

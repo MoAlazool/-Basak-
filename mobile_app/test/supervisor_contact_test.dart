@@ -13,6 +13,11 @@ void main() {
     expect(SupervisorContactSheet.whatsappNumber('010 1234-5678'), '201012345678');
     expect(SupervisorContactSheet.whatsappNumber('+20 10 1234 5678'), '201012345678');
     expect(SupervisorContactSheet.whatsappNumber('00201012345678'), '201012345678');
+    expect(SupervisorContactSheet.readable('01012345678'), '010 1234 5678');
+    expect(SupervisorContactSheet.readable('+20 10 1234 5678'), '+20 10 1234 5678');
+    expect(SupervisorContactSheet.roleLabel('الزرقا'), 'مشرف الباص · خط الزرقا');
+    expect(SupervisorContactSheet.roleLabel('خط الزرقا'), 'مشرف الباص · خط الزرقا');
+    expect(SupervisorContactSheet.roleLabel(null), 'مشرف الباص');
   });
 
   testWidgets('tapping the supervisor opens a sheet to call, save or copy', (tester) async {
@@ -33,8 +38,8 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.text('أحمد علي'), findsOneWidget);
-    expect(find.text('مشرف حافلة خط منيه النصر'), findsOneWidget);
-    expect(find.text('01012345678'), findsOneWidget);
+    expect(find.text('مشرف الباص · خط منيه النصر'), findsOneWidget);
+    expect(find.text('010 1234 5678'), findsOneWidget, reason: 'the number in groups, as it is read');
     expect(find.byKey(const Key('supervisor-call')), findsOneWidget);
     expect(find.byKey(const Key('supervisor-save')), findsOneWidget);
     expect(find.byKey(const Key('supervisor-whatsapp')), findsOneWidget);

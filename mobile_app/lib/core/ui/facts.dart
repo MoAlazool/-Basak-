@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'status_chip.dart';
 import 'tokens.dart';
 
 /// A round photo. With [ring], a ring in the subscription's status colour
@@ -57,7 +58,10 @@ class PhotoRing extends StatelessWidget {
 class FactGrid extends StatelessWidget {
   final List<(String label, String value)> facts;
 
-  const FactGrid({super.key, required this.facts});
+  /// Tighter, one line per value: the card on a short phone.
+  final bool dense;
+
+  const FactGrid({super.key, required this.facts, this.dense = false});
 
   @override
   Widget build(BuildContext context) {
@@ -68,9 +72,11 @@ class FactGrid extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(f.$1, style: text.caption.copyWith(color: colors.ink3)),
+            Text(f.$1, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.caption.copyWith(color: colors.ink3)),
             Text(f.$2,
-                maxLines: 2, overflow: TextOverflow.ellipsis, style: text.body.copyWith(fontWeight: FontWeight.w500)),
+                maxLines: dense ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: text.body.copyWith(fontWeight: FontWeight.w500)),
           ],
         );
 
@@ -78,7 +84,7 @@ class FactGrid extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < facts.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: BasakSpace.s10),
+          if (i > 0) SizedBox(height: dense ? BasakSpace.s4 : BasakSpace.s10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -98,22 +104,73 @@ class InfoStrip extends StatelessWidget {
   final String label;
   final String value;
 
-  const InfoStrip({super.key, required this.label, required this.value});
+  /// A glyph in a small round badge at the end: the tick of a confirmed ride.
+  final IconData? icon;
+
+  /// The badge's tone on the neutral strip (success: the tick).
+  final BasakTone iconTone;
+
+  /// Tints the whole strip: the receipt fact of a subscription under review.
+  final BasakTone? tone;
+
+  /// Tighter, for the card on a short phone.
+  final bool dense;
+
+  const InfoStrip({
+    super.key,
+    required this.label,
+    required this.value,
+    this.icon,
+    this.iconTone = BasakTone.success,
+    this.tone,
+    this.dense = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
+    final tinted = tone != null;
+    final foreground = tinted ? tone!.foreground(colors) : colors.ink;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s14, vertical: BasakSpace.s10),
-      decoration: BoxDecoration(color: colors.ground, borderRadius: BasakRadius.all(BasakRadius.small)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      padding: EdgeInsetsDirectional.symmetric(
+          horizontal: BasakSpace.s14, vertical: dense ? BasakSpace.s6 : BasakSpace.s10),
+      decoration: BoxDecoration(
+          color: tinted ? tone!.tint(colors) : colors.ground, borderRadius: BasakRadius.all(BasakRadius.small)),
+      child: Row(
         children: [
-          Text(label, style: text.caption.copyWith(color: colors.ink3)),
-          Text(value, style: text.body.copyWith(fontWeight: FontWeight.w500)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.caption.copyWith(color: tinted ? foreground : colors.ink3)),
+                // A time is never cut short: on a narrow phone with large
+                // text the line shrinks to fit instead.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(value, maxLines: 1, style: text.body.copyWith(color: foreground, fontWeight: FontWeight.w500)),
+                ),
+              ],
+            ),
+          ),
+          if (icon != null) ...[
+            const SizedBox(width: BasakSpace.s12),
+            ExcludeSemantics(
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                    color: tinted ? colors.surface : iconTone.tint(colors), shape: BoxShape.circle),
+                child: Icon(icon, size: 14, color: tinted ? foreground : iconTone.foreground(colors)),
+              ),
+            ),
+          ],
         ],
       ),
     );

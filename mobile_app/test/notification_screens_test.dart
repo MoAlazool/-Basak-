@@ -6,7 +6,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 import 'package:basak_mobile/core/sync/session.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
 import 'package:basak_mobile/core/theme/app_theme.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
@@ -236,7 +235,8 @@ void main() {
 
       banner.show(const PushMessage(title: 'تحرك الباص', data: {'notification_id': 'b'}));
       await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(LucideIcons.x));
+      // Flicked away upwards (the banner has no close button: a tap opens it).
+      await tester.fling(find.text('تحرك الباص'), const Offset(0, -80), 800);
       await tester.pumpAndSettle();
       expect(find.text('تحرك الباص'), findsNothing);
     });

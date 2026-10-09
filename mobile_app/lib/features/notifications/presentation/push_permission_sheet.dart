@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_icons.dart';
-import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/basak_ui.dart';
+import '../../../core/ui/ui.dart';
 import '../push/notification_platform.dart';
 import '../push/push_messaging.dart';
 import '../push/push_providers.dart';
@@ -33,8 +32,9 @@ Future<void> offerPushNotifications(BuildContext context, WidgetRef ref) async {
   }
 }
 
-/// Once per installation, shortly after signing in: the same offer, made by
-/// the app itself. Never when notifications are already on or were refused.
+/// Once per installation, shortly after signing in (students and supervisors
+/// alike): the same offer, made by the app itself. Never when notifications
+/// are already on or were refused.
 Future<void> offerPushNotificationsOnce(BuildContext context, WidgetRef ref) async {
   final controller = ref.read(pushControllerProvider);
   final store = ref.read(deviceStoreProvider);
@@ -46,10 +46,10 @@ Future<void> offerPushNotificationsOnce(BuildContext context, WidgetRef ref) asy
   if (context.mounted) await offerPushNotifications(context, ref);
 }
 
-/// The phone's own notification prompt, with nothing of the app's before it
-/// (students: there are no choices to make in the app). When the system no
-/// longer shows a prompt and [openSettingsWhenBlocked] is set, the phone's
-/// settings open instead.
+/// The phone's own notification prompt, with nothing of the app's before it:
+/// for a row that already says what it is for (the Notification Center's
+/// line). When the system no longer shows a prompt and
+/// [openSettingsWhenBlocked] is set, the phone's settings open instead.
 Future<PushPermission> requestSystemPushPermission(WidgetRef ref, {bool openSettingsWhenBlocked = false}) async {
   final controller = ref.read(pushControllerProvider);
   if (!await controller.start()) return PushPermission.blocked;
@@ -67,90 +67,56 @@ Future<PushPermission> requestSystemPushPermission(WidgetRef ref, {bool openSett
   return permission;
 }
 
-/// Once per installation, shortly after a student signs in: the system's
-/// prompt, asked plainly. Never again by itself after an answer; a refusal
-/// changes nothing else in the app (the Notification Center keeps working).
-Future<void> requestSystemPushPermissionOnce(WidgetRef ref) async {
-  final controller = ref.read(pushControllerProvider);
-  final store = ref.read(deviceStoreProvider);
-  if (!await controller.start() || await store.pushPrompted()) return;
-  final permission = await controller.permission();
-  if (permission == PushPermission.granted) return controller.sync();
-  if (permission == PushPermission.blocked) return;
-  await store.markPushPrompted();
-  await requestSystemPushPermission(ref);
-}
-
-Future<bool?> _show(BuildContext context, {required bool blocked}) => showModalBottomSheet<bool>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _PushSheet(blocked: blocked),
+Future<bool?> _show(BuildContext context, {required bool blocked}) => BasakSheet.show<bool>(
+      context,
+      builder: (context) => _PushExplainer(blocked: blocked),
+      primary: (context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          BasakButton(
+            label: blocked ? 'فتح إعدادات الهاتف' : 'تفعيل الإشعارات',
+            icon: blocked ? LucideIcons.externalLink : LucideIcons.bell,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+          const SizedBox(height: BasakSpace.s2),
+          SheetLink(label: 'ليس الآن', onTap: () => Navigator.of(context).pop(false)),
+        ],
+      ),
     );
 
-class _PushSheet extends StatelessWidget {
+/// Why the app asks, in its own words, before the phone asks its one question.
+class _PushExplainer extends StatelessWidget {
   final bool blocked;
-  const _PushSheet({required this.blocked});
+  const _PushExplainer({required this.blocked});
 
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        padding: EdgeInsets.fromLTRB(24, 10, 24, MediaQuery.paddingOf(context).bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 44,
-            height: 5,
-            decoration: BoxDecoration(
-                color: const Color(0xFFD9E3EA), borderRadius: BorderRadius.circular(3)),
+  Widget build(BuildContext context) {
+    final text = context.text;
+    return Semantics(
+      container: true,
+      label: 'تفعيل الإشعارات',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: BasakSpace.s6),
+          SheetGlyph(blocked ? LucideIcons.bellOff : LucideIcons.bell),
+          const SizedBox(height: BasakSpace.s16),
+          Semantics(
+            header: true,
+            child: Text(blocked ? 'الإشعارات متوقفة من إعدادات الهاتف' : 'فعّل إشعارات باصك', style: text.title),
           ),
-          const SizedBox(height: 22),
-          Container(
-            width: 68,
-            height: 68,
-            decoration: const BoxDecoration(color: BasakUi.softTeal, shape: BoxShape.circle),
-            child: Icon(blocked ? LucideIcons.bellOff : LucideIcons.bellRing,
-                color: BasakUi.teal, size: 30),
-          ),
-          const SizedBox(height: 16),
-          Text(blocked ? 'الإشعارات متوقفة من إعدادات الهاتف' : 'فعّل إشعارات باصك',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.titleLarge.copyWith(color: BasakUi.ink)),
-          const SizedBox(height: 8),
+          const SizedBox(height: BasakSpace.s10),
           Text(
-              blocked
-                  ? 'اسمح لباصك بإرسال الإشعارات من إعدادات الهاتف، ثم عد إلى التطبيق.'
-                  : 'لتصلك تنبيهات تأخير الباص وتحركه، وحالة اشتراكك وإيصالك، ورسائل شركتك فور صدورها.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: BasakUi.muted, height: 1.6)),
-          if (!blocked) ...[
-            const SizedBox(height: 6),
-            Text('تختار ما يصلك، أو توقفها، في أي وقت من إعدادات الإشعارات.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted, height: 1.6)),
-          ],
-          const SizedBox(height: 22),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.of(context).pop(true),
-            icon: Icon(blocked ? LucideIcons.externalLink : LucideIcons.bellRing, size: 18),
-            label: Text(blocked ? 'فتح إعدادات الهاتف' : 'تفعيل الإشعارات'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: BasakUi.teal,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            ),
+            blocked
+                ? 'اسمح لباصك بإرسال الإشعارات من إعدادات الهاتف، ثم عد إلى التطبيق.'
+                : 'لتعرف لحظة تفعيل اشتراكك، وتحرّك الباص، وأي تغيير من المشرف. بعدها يسألك الهاتف مرة واحدة.',
+            style: text.body.copyWith(color: context.colors.ink2),
           ),
-          const SizedBox(height: 6),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            style: TextButton.styleFrom(
-                foregroundColor: BasakUi.muted, minimumSize: const Size.fromHeight(44)),
-            child: const Text('ليس الآن'),
-          ),
-        ]),
-      );
+          const SizedBox(height: BasakSpace.s6),
+        ],
+      ),
+    );
+  }
 }

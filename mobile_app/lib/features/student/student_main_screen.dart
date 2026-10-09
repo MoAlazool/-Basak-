@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/sync/session.dart';
+import '../../core/sync/sync_hub.dart';
+import '../../core/widgets/connection_strip_host.dart';
 import '../../core/widgets/floating_glass_nav_bar.dart';
-import '../../core/widgets/offline_banner.dart';
+import '../auth/providers/auth_provider.dart';
+import '../notifications/data/notification_feed.dart';
 import '../notifications/notification_router.dart';
 import '../notifications/presentation/push_permission_sheet.dart';
 import '../notifications/push/push_providers.dart';
 import 'home/presentation/notifications_screen.dart';
 import 'home/presentation/student_home_screen.dart';
+import 'invites/invites.dart';
 import 'subscription/presentation/subscription_screen.dart';
 import 'qr/presentation/student_qr_screen.dart';
 import 'profile/presentation/profile_screen.dart';
@@ -49,8 +53,8 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
     });
     // Once the home screen has settled, and only the first time on this phone.
     _pushOffer = Timer(const Duration(seconds: 3), () {
-      // Only the phone's own permission prompt: students choose nothing in the app.
-      if (mounted) requestSystemPushPermissionOnce(ref);
+      // The app says why first; the phone's own question comes after a yes.
+      if (mounted) offerPushNotificationsOnce(context, ref);
     });
   }
 
@@ -91,6 +95,20 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
         _navCollapsed = false;
       });
 
+  /// "إعادة المحاولة" in the connection strip: everything the tabs show is
+  /// read again, as when the app comes back to the front.
+  void _retryConnection() {
+    final userId = ref.read(sessionUserIdProvider);
+    ref.invalidate(currentSubscriptionProvider);
+    ref.invalidate(allSubscriptionsProvider);
+    ref.invalidate(studentQrProvider);
+    ref.invalidate(myInvitesProvider);
+    ref.invalidate(notificationFeedProvider);
+    if (userId != null) ref.invalidate(studentProfileSummaryProvider(userId));
+    ref.invalidate(voteSettingsProvider);
+    ref.read(rideStatusTickProvider.notifier).state++;
+  }
+
   bool _onScroll(ScrollNotification notification) {
     final collapse = FloatingGlassNavBar.collapseOnScroll(notification);
     if (collapse != null && collapse != _navCollapsed) {
@@ -117,7 +135,11 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
       // Every tab stays alive: switching tabs never reloads or shows a spinner.
       body: NotificationListener<ScrollNotification>(
         onNotification: _onScroll,
-        child: OfflineBanner(
+        // Home places the strip itself, under its header; over the other tabs
+        // it takes the top of the screen.
+        child: ConnectionStripHost(
+          enabled: _currentIndex != 0,
+          onRetry: _retryConnection,
           child: IndexedStack(index: _currentIndex, children: [
             for (var i = 0; i < screens.length; i++)
               _built.contains(i) ? screens[i] : const SizedBox.shrink(),

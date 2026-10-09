@@ -150,6 +150,11 @@ class EmptyState extends StatelessWidget {
   final String? message;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final IconData? actionIcon;
+
+  /// A whole page on the ink ground (the card tab with no card to show):
+  /// larger, light on dark, and its action is the page's primary button.
+  final bool onInk;
 
   const EmptyState({
     super.key,
@@ -158,12 +163,48 @@ class EmptyState extends StatelessWidget {
     this.message,
     this.actionLabel,
     this.onAction,
+    this.actionIcon,
+    this.onInk = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
+    if (onInk) {
+      return Padding(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(color: colors.inkRaised, borderRadius: BasakRadius.all(22)),
+                child: Icon(icon, size: 28, color: colors.sky),
+              ),
+            ),
+            const SizedBox(height: BasakSpace.s16),
+            Text(title, textAlign: TextAlign.center, style: text.sheetTitle.copyWith(color: colors.onInk)),
+            if (message != null) ...[
+              const SizedBox(height: BasakSpace.s10),
+              Text(message!, textAlign: TextAlign.center, style: text.body.copyWith(color: colors.onInk2)),
+            ],
+            if (actionLabel != null) ...[
+              const SizedBox(height: BasakSpace.s20),
+              BasakButton(
+                label: actionLabel!,
+                onPressed: onAction,
+                icon: actionIcon,
+                size: BasakButtonSize.medium,
+                expand: false,
+              ),
+            ],
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: 22),
       child: Column(

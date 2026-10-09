@@ -201,25 +201,64 @@ void main() {
       expect(find.textContaining('فعّل الإشعارات لتصلك التنبيهات'), findsNothing, reason: 'granted: the line goes');
     });
 
-    testWidgets('after sign-in the phone\'s own prompt is asked once, plainly', (tester) async {
+    testWidgets('after sign-in the app says why first, then the phone asks its one question, once',
+        (tester) async {
       final push = FakePushMessaging(granted: PushPermission.notAsked)..promptAnswer = PushPermission.denied;
       late WidgetRef ref;
+      late BuildContext context;
       await tester.pumpWidget(app(
-          Consumer(builder: (context, r, _) {
+          Consumer(builder: (c, r, _) {
+            context = c;
             ref = r;
             return const Scaffold(body: Text('home'));
           }),
           push: push));
 
-      await tester.runAsync(() => requestSystemPushPermissionOnce(ref));
+      late Future<void> offer;
+      await tester.runAsync(() async {
+        offer = offerPushNotificationsOnce(context, ref);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('فعّل إشعارات باصك'), findsOneWidget, reason: 'the app explains before the phone asks');
+      expect(find.textContaining('بعدها يسألك الهاتف مرة واحدة'), findsOneWidget);
+      expect(push.prompts, 0, reason: 'nothing is asked of the phone until the student agrees');
+
+      await tester.tap(find.text('تفعيل الإشعارات'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => offer);
       await tester.pumpAndSettle();
       expect(push.prompts, 1);
-      expect(find.byType(BottomSheet), findsNothing);
-      expect(find.text('فعّل إشعارات باصك'), findsNothing, reason: 'nothing of the app before the system prompt');
+      expect(find.text('فعّل إشعارات باصك'), findsNothing);
 
       // Refused: the answer is respected, the app does not ask again by itself.
-      await tester.runAsync(() => requestSystemPushPermissionOnce(ref));
+      await tester.runAsync(() => offerPushNotificationsOnce(context, ref));
+      await tester.pumpAndSettle();
       expect(push.prompts, 1);
+      expect(find.text('فعّل إشعارات باصك'), findsNothing);
+    });
+
+    testWidgets('"not now" on the explainer asks the phone nothing', (tester) async {
+      final push = FakePushMessaging(granted: PushPermission.notAsked);
+      late WidgetRef ref;
+      late BuildContext context;
+      await tester.pumpWidget(app(
+          Consumer(builder: (c, r, _) {
+            context = c;
+            ref = r;
+            return const Scaffold(body: Text('home'));
+          }),
+          push: push));
+      late Future<void> offer;
+      await tester.runAsync(() async {
+        offer = offerPushNotificationsOnce(context, ref);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ليس الآن'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => offer);
+      expect(push.prompts, 0);
     });
   });
 }

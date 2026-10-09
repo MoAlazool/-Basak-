@@ -185,6 +185,41 @@ final _scenes = <_Scene>[
       ]),
     ]),
   ),
+  // What the student's card tab adds: the sheet's sunken rows, the tinted
+  // strip, and the outlined button and the empty page on the ink ground.
+  _Scene(
+    'card_parts',
+    (context) => _column([
+      const InfoRows(sunken: true, rows: [
+        InfoRow(label: 'الجامعة', value: 'جامعة المنصورة الجديدة'),
+        InfoRow(label: 'الهاتف', value: '010 2345 6789', ltrValue: true),
+      ]),
+      const InfoStrip(
+          label: 'رحلة اليوم · الأحد 11 أكتوبر', value: 'ذهاب 7:23 ص · عودة 3:30 م', icon: LucideIcons.check),
+      const InfoStrip(
+          tone: BasakTone.warning, label: 'الإيصال', value: 'أُرسل اليوم 3:40 م', icon: LucideIcons.clock3),
+      const InfoStrip(dense: true, label: 'رحلة اليوم · الأحد 11 أكتوبر', value: 'لم يؤكّد رحلة اليوم'),
+      const FactGrid(dense: true, facts: [('الخط', 'الزرقا'), ('محطة الصعود', 'كوبري السرو')]),
+      const StatusChip(BasakStatus.active, label: 'اشتراك نشط'),
+      Container(
+        padding: const EdgeInsetsDirectional.all(BasakSpace.s16),
+        color: context.colors.ink,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          InkOutlineButton(label: 'كل التفاصيل', icon: LucideIcons.idCard, onPressed: () {}),
+          _gap(),
+          EmptyState(
+            onInk: true,
+            icon: LucideIcons.qrCode,
+            title: 'البطاقة غير متاحة حالياً',
+            message: 'تعذّر تجهيز بطاقتك. سجّل دخولك مرة أخرى، أو تواصل مع الدعم.',
+            actionLabel: 'إعادة المحاولة',
+            actionIcon: LucideIcons.refreshCw,
+            onAction: () {},
+          ),
+        ]),
+      ),
+    ]),
+  ),
   _Scene(
     'status_chip',
     (context) => _column([
@@ -541,6 +576,64 @@ final _scenes = <_Scene>[
         child: ResultHeader(tone: BasakTone.warning, icon: LucideIcons.wifiOff, title: 'بدون إنترنت · لم يُسجَّل'),
       ),
     ]),
+  ),
+  _Scene(
+    'home_parts',
+    (context) => _column([
+      const Wrap(spacing: BasakSpace.s8, runSpacing: BasakSpace.s8, children: [
+        IconPill(icon: LucideIcons.clock3, label: 'حتى 6:00 ص', tone: BasakTone.warning),
+        IconPill(icon: LucideIcons.clock3, label: 'يفتح 4:00 م', tone: BasakTone.info),
+        IconPill(icon: LucideIcons.check, label: 'مؤكدة', tone: BasakTone.success),
+        IconPill(icon: LucideIcons.clock3, label: 'مغلق'),
+      ]),
+      BasakCard(
+        child: _column([
+          TimeGrid(children: [
+            for (final (i, time) in ['6:38 ص', '7:23 ص', '8:08 ص', '8:53 ص', '9:38 ص'].indexed)
+              TimeTile(label: time, selected: i == 1, onTap: () {}),
+          ]),
+          TimeTile(label: 'لن أعود بالباص', selected: false, wide: true, onTap: () {}),
+          const Row(children: [
+            Expanded(child: ValueTile(label: 'الذهاب', value: '7:23 ص')),
+            SizedBox(width: BasakSpace.s10),
+            Expanded(child: ValueTile(label: 'العودة', value: '3:30 م')),
+          ]),
+          const WeekStrip(days: [
+            (letter: 'س', day: 10, mark: WeekDayMark.confirmed),
+            (letter: 'ح', day: 11, mark: WeekDayMark.confirmed),
+            (letter: 'ن', day: 12, mark: WeekDayMark.asked),
+            (letter: 'ث', day: 13, mark: WeekDayMark.open),
+            (letter: 'ر', day: 14, mark: WeekDayMark.open),
+            (letter: 'خ', day: 15, mark: WeekDayMark.open),
+            (letter: 'ج', day: 16, mark: WeekDayMark.off),
+          ]),
+        ]),
+      ),
+      InkBanner(icon: LucideIcons.bus, title: 'الباص تحرّك من موقف الزرقا', message: 'مشرف الباص · الآن', onTap: () {}),
+      PageError(
+        title: 'لا يوجد اتصال',
+        message: 'نحتاج الإنترنت مرة واحدة لتحميل بياناتك. بعدها تعمل بطاقتك واشتراكك بدون اتصال.',
+        onAction: () {},
+      ),
+    ]),
+  ),
+  _Scene(
+    'sheet_parts',
+    (context) => BasakCard(
+      child: _column([
+        const SheetGlyph(LucideIcons.bell),
+        const SheetPoint(icon: LucideIcons.userRound, text: 'ترى الشركة اسمك وهاتفك وجامعتك وصورتك.'),
+        const SheetPoint(icon: LucideIcons.shieldCheck, text: 'لا يتغيّر حسابك ولا اشتراكاتك لدى شركات أخرى.'),
+        Row(children: [
+          Expanded(child: ActionTile(icon: LucideIcons.messageCircle, label: 'واتساب', onTap: () {})),
+          const SizedBox(width: BasakSpace.s8),
+          Expanded(child: ActionTile(icon: LucideIcons.userRoundPlus, label: 'حفظ الرقم', onTap: () {})),
+          const SizedBox(width: BasakSpace.s8),
+          Expanded(child: ActionTile(icon: LucideIcons.copy, label: 'نسخ الرقم', onTap: () {})),
+        ]),
+        SheetLink(label: 'ليس الآن', onTap: () {}),
+      ]),
+    ),
   ),
 ];
 

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/network_errors.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/sync/own_changes.dart';
 import '../../../core/sync/session.dart';
+import '../../../core/theme/app_icons.dart';
+import '../../../core/ui/ui.dart';
 import '../qr/presentation/student_qr_screen.dart';
 import '../subscription/presentation/purchase_flow.dart';
-import '../../../core/theme/app_colors.dart';
 import '../home/presentation/student_home_screen.dart';
 import '../subscription/presentation/subscription_screen.dart';
 
@@ -79,7 +81,9 @@ class MyInvitesNotifier extends AsyncNotifier<List<CompanyInvite>> {
 final myInvitesProvider =
     AsyncNotifierProvider<MyInvitesNotifier, List<CompanyInvite>>(MyInvitesNotifier.new);
 
-/// Shown on the home screen while an invitation is waiting for an answer.
+/// Shown on the home screen while an invitation is waiting for an answer:
+/// one card at a time, with "1 من 2" and a swipe to the next when there are
+/// several.
 class InvitesCard extends ConsumerStatefulWidget {
   const InvitesCard({super.key});
 
@@ -89,25 +93,13 @@ class InvitesCard extends ConsumerStatefulWidget {
 
 class _InvitesCardState extends ConsumerState<InvitesCard> {
   String? _busyId;
+  int _index = 0;
 
   Future<void> _respond(CompanyInvite invite, bool accept) async {
     // One answer at a time, however fast the buttons are tapped.
     if (_busyId != null) return;
     if (accept) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('الانضمام إلى ${invite.companyName}؟'),
-          content: Text(
-              'ستتمكن إدارة ${invite.companyName} من رؤية اسمك ورقم هاتفك وجامعتك وصورتك، '
-              'ويُفتح لك ${invite.typeLabel} على خط ${invite.lineName} بانتظار الدفع.\n\n'
-              'لا يتغير حسابك ولا اشتراكاتك لدى أي شركة أخرى.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ليس الآن')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('موافق، انضم')),
-          ],
-        ),
-      );
+      final confirmed = await InviteAcceptSheet.show(context, invite);
       if (confirmed != true || !mounted || _busyId != null) return;
     }
     setState(() => _busyId = invite.id);
@@ -133,72 +125,245 @@ class _InvitesCardState extends ConsumerState<InvitesCard> {
       }
       if (!mounted) return;
       final note = (result is Map ? result['note'] : null) as String?;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(!accept
+      BasakToast.show(
+        context,
+        !accept
             ? 'تم رفض الدعوة.'
             : note == null
                 ? 'انضممت إلى ${invite.companyName}. أكمل الدفع من صفحة الاشتراك.'
-                : 'انضممت إلى ${invite.companyName}. لم يُفتح الاشتراك تلقائياً: $note'),
-      ));
+                : 'انضممت إلى ${invite.companyName}. لم يُفتح الاشتراك تلقائياً: $note',
+        kind: accept && note != null ? BasakToastKind.info : BasakToastKind.success,
+      );
     } catch (error) {
       for (final echo in echoes) {
         echo.failed();
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.toString()), backgroundColor: AppColors.error));
+      BasakToast.show(context, errorMessage(error), kind: BasakToastKind.failure);
     } finally {
       if (mounted) setState(() => _busyId = null);
     }
+  }
+
+  void _turn(int by, int count) {
+    final next = (_index + by).clamp(0, count - 1);
+    if (next != _index) setState(() => _index = next);
   }
 
   @override
   Widget build(BuildContext context) {
     final invites = ref.watch(myInvitesProvider).valueOrNull ?? const [];
     if (invites.isEmpty) return const SizedBox.shrink();
-    return Column(
-      children: [
-        for (final invite in invites)
-          Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFBFE3F3)),
-            ),
-            child: Column(
+    final index = _index.clamp(0, invites.length - 1);
+    final invite = invites[index];
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+
+    final card = InviteCard(
+      key: ValueKey(invite.id),
+      invite: invite,
+      position: invites.length > 1 ? (index: index, count: invites.length) : null,
+      busy: _busyId == invite.id,
+      onAccept: _busyId == null ? () => _respond(invite, true) : null,
+      onDecline: _busyId == null ? () => _respond(invite, false) : null,
+    );
+    if (invites.length == 1) return card;
+    return GestureDetector(
+      // The next invitation lies towards the end side, as pages do.
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity.abs() < 120) return;
+        _turn((velocity > 0) == rtl ? 1 : -1, invites.length);
+      },
+      child: AnimatedSwitcher(duration: BasakMotion.fade, switchInCurve: BasakMotion.fadeCurve, child: card),
+    );
+  }
+}
+
+/// One invitation: who asks, for what, at what price, and the two answers.
+class InviteCard extends StatelessWidget {
+  final CompanyInvite invite;
+
+  /// With several invitations: which one this is.
+  final ({int index, int count})? position;
+  final bool busy;
+  final VoidCallback? onAccept;
+  final VoidCallback? onDecline;
+
+  const InviteCard({
+    super.key,
+    required this.invite,
+    this.position,
+    this.busy = false,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final text = context.text;
+    final company = invite.companyName.trim();
+    // The letter that tells companies apart: not the article ("النورس" → ن).
+    final initial = company.replaceFirst(RegExp('^ال'), '');
+    final where = [invite.lineName.trim(), invite.stationName.trim()].where((part) => part.isNotEmpty).join(' · ');
+    final price = invite.price;
+    final quiet = text.label.copyWith(fontWeight: FontWeight.w400);
+
+    return Semantics(
+      container: true,
+      label: 'دعوة من شركة النقل',
+      child: BasakCard(
+        radius: BasakRadius.sheet,
+        padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('دعوة من ${invite.companyName}',
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF17384A))),
-                const SizedBox(height: 6),
-                Text(
-                    '${invite.typeLabel} • خط ${invite.lineName} • محطة ${invite.stationName}'
-                    '${invite.price == null ? '' : ' • ${invite.price} ج.م'}',
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF718695))),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _busyId == null ? () => _respond(invite, true) : null,
-                        child: Text(_busyId == invite.id ? 'لحظة…' : 'قبول'),
-                      ),
+                ExcludeSemantics(
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration:
+                        BoxDecoration(color: colors.avatarTint, borderRadius: BasakRadius.all(BasakRadius.small)),
+                    child: Text(
+                      initial.isEmpty ? '' : initial.characters.first,
+                      textScaler: TextScaler.noScaling,
+                      style: text.headline.copyWith(color: colors.teal),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _busyId == null ? () => _respond(invite, false) : null,
-                        child: const Text('رفض'),
-                      ),
+                  ),
+                ),
+                const SizedBox(width: BasakSpace.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('دعوة للاشتراك من', style: quiet.copyWith(color: colors.ink3)),
+                      Text(company, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.headline),
+                    ],
+                  ),
+                ),
+                if (position != null) ...[
+                  const SizedBox(width: BasakSpace.s8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${position!.index + 1} من ${position!.count}',
+                          style: text.caption.copyWith(color: colors.ink3)),
+                      const SizedBox(width: BasakSpace.s2),
+                      for (var i = 0; i < position!.count; i++)
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsetsDirectional.only(start: BasakSpace.s4),
+                          decoration: BoxDecoration(
+                              color: i == position!.index ? colors.teal : colors.grabber, shape: BoxShape.circle),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: BasakSpace.s16),
+            Container(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s14, vertical: BasakSpace.s12),
+              decoration: BoxDecoration(color: colors.ground, borderRadius: BasakRadius.all(BasakRadius.control)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (where.isNotEmpty)
+                          Text(where,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.body.copyWith(fontWeight: FontWeight.w500)),
+                        Text(invite.typeLabel, style: quiet.copyWith(color: colors.ink2)),
+                      ],
                     ),
+                  ),
+                  if (price != null) ...[
+                    const SizedBox(width: BasakSpace.s12),
+                    Text(formatMoney(price.toDouble()), style: text.headline),
                   ],
+                ],
+              ),
+            ),
+            const SizedBox(height: BasakSpace.s16),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: BasakButton(
+                    key: const Key('invite-accept'),
+                    label: 'قبول الدعوة',
+                    size: BasakButtonSize.medium,
+                    loading: busy,
+                    onPressed: onAccept,
+                  ),
+                ),
+                const SizedBox(width: BasakSpace.s10),
+                Expanded(
+                  flex: 2,
+                  child: BasakButton(
+                    key: const Key('invite-decline'),
+                    label: 'رفض',
+                    size: BasakButtonSize.medium,
+                    variant: BasakButtonVariant.secondary,
+                    onPressed: onDecline,
+                  ),
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Before joining: exactly what the company will see and what is opened.
+/// Gives back true when the student agrees.
+abstract final class InviteAcceptSheet {
+  static Future<bool?> show(BuildContext context, CompanyInvite invite) {
+    final line = invite.lineName.trim();
+    final onLine = line.isEmpty ? '' : ' على ${line.startsWith('خط ') ? line : 'خط $line'}';
+    return BasakSheet.show<bool>(
+      context,
+      title: 'الانضمام إلى ${invite.companyName}؟',
+      largeTitle: true,
+      builder: (context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: BasakSpace.s6),
+          const SheetPoint(icon: LucideIcons.userRound, text: 'ترى الشركة اسمك وهاتفك وجامعتك وصورتك.'),
+          const SizedBox(height: BasakSpace.s16),
+          SheetPoint(icon: LucideIcons.ticket, text: 'يُفتح لك ${invite.typeLabel}$onLine بانتظار الدفع.'),
+          const SizedBox(height: BasakSpace.s16),
+          const SheetPoint(icon: LucideIcons.shieldCheck, text: 'لا يتغيّر حسابك ولا اشتراكاتك لدى شركات أخرى.'),
+          const SizedBox(height: BasakSpace.s6),
+        ],
+      ),
+      primary: (context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          BasakButton(
+            key: const Key('invite-join'),
+            label: 'موافق، انضم',
+            onPressed: () => Navigator.of(context).pop(true),
           ),
-      ],
+          const SizedBox(height: BasakSpace.s2),
+          SheetLink(label: 'ليس الآن', onTap: () => Navigator.of(context).pop(false)),
+        ],
+      ),
     );
   }
 }

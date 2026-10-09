@@ -16,6 +16,7 @@ abstract final class BasakSheet {
     String? subtitle,
     WidgetBuilder? primary,
     bool isDismissible = true,
+    bool largeTitle = false,
   }) =>
       showModalBottomSheet<T>(
         context: context,
@@ -35,6 +36,7 @@ abstract final class BasakSheet {
         builder: (context) => BasakSheetFrame(
           title: title,
           subtitle: subtitle,
+          largeTitle: largeTitle,
           primary: primary?.call(context),
           child: builder(context),
         ),
@@ -48,7 +50,12 @@ class BasakSheetFrame extends StatelessWidget {
   final Widget child;
   final Widget? primary;
 
-  const BasakSheetFrame({super.key, this.title, this.subtitle, required this.child, this.primary});
+  /// The sheet asks a question of its own ("رحلة الغد", "الانضمام إلى …؟"):
+  /// its title is set 22 / 32 and the line under it 14 / 22.
+  final bool largeTitle;
+
+  const BasakSheetFrame(
+      {super.key, this.title, this.subtitle, required this.child, this.primary, this.largeTitle = false});
 
   @override
   Widget build(BuildContext context) {
@@ -90,10 +97,16 @@ class BasakSheetFrame extends StatelessWidget {
                   if (title != null) ...[
                     Semantics(
                       header: true,
-                      child: Text(title!, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.sheetTitle),
+                      child: Text(title!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: largeTitle ? text.title : text.sheetTitle),
                     ),
                     if (subtitle != null)
-                      Text(subtitle!, style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
+                      Text(subtitle!,
+                          style: largeTitle
+                              ? text.bodySmall.copyWith(color: colors.ink2)
+                              : text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
                     const SizedBox(height: BasakSpace.s14),
                   ],
                   Flexible(child: SingleChildScrollView(child: child)),

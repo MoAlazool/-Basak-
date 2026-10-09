@@ -184,14 +184,18 @@ class _DashPainter extends CustomPainter {
 class TicketTear extends StatelessWidget {
   final Color color;
 
-  const TicketTear({super.key, required this.color});
+  /// The colour of what the ticket lies on, when that is not the ground: the
+  /// ink page behind the student's card.
+  final Color? ground;
+
+  const TicketTear({super.key, required this.color, this.ground});
 
   @override
   Widget build(BuildContext context) {
     final notch = Container(
       width: 20,
       height: 20,
-      decoration: BoxDecoration(color: context.colors.ground, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: ground ?? context.colors.ground, shape: BoxShape.circle),
     );
     return ExcludeSemantics(
       child: SizedBox(

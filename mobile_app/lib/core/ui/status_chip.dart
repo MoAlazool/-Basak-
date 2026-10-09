@@ -55,7 +55,11 @@ class StatusChip extends StatelessWidget {
   /// On the ink pass: a raised ink chip with a mint dot.
   final bool onInk;
 
-  const StatusChip(this.status, {super.key, this.onInk = false});
+  /// Where the status needs its noun: the card says "اشتراك نشط", and
+  /// "لا يوجد اشتراك" when there is nothing to name. The colour stays the status's.
+  final String? label;
+
+  const StatusChip(this.status, {super.key, this.onInk = false, this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +77,10 @@ class StatusChip extends StatelessWidget {
         children: [
           Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
           const SizedBox(width: BasakSpace.s8),
-          Text(status.label, style: context.text.label.copyWith(color: foreground)),
+          Flexible(
+            child: Text(label ?? status.label,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: context.text.label.copyWith(color: foreground)),
+          ),
         ],
       ),
     );

@@ -11,6 +11,7 @@ export 'choices.dart';
 export 'facts.dart';
 export 'feedback.dart';
 export 'grouped_fields.dart';
+export 'home.dart';
 export 'info_rows.dart';
 export 'pass_card.dart';
 export 'status_chip.dart';

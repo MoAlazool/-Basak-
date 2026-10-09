@@ -56,6 +56,7 @@ abstract final class LucideIcons {
   static const IconData history = IconData(57845, fontFamily: 'Lucide');
   static const IconData home = IconData(57589, fontFamily: 'Lucide');
   static const IconData hourglass = IconData(58006, fontFamily: 'Lucide');
+  static const IconData idCard = IconData(58903, fontFamily: 'Lucide');
   static const IconData image = IconData(57590, fontFamily: 'Lucide');
   static const IconData inbox = IconData(57591, fontFamily: 'Lucide');
   static const IconData info = IconData(57593, fontFamily: 'Lucide');
@@ -69,6 +70,7 @@ abstract final class LucideIcons {
   static const IconData mapPin = IconData(57617, fontFamily: 'Lucide');
   static const IconData mapPinOff = IconData(58022, fontFamily: 'Lucide');
   static const IconData megaphone = IconData(57909, fontFamily: 'Lucide');
+  static const IconData messageCircle = IconData(57622, fontFamily: 'Lucide');
   static const IconData pencil = IconData(57849, fontFamily: 'Lucide');
   static const IconData phone = IconData(57651, fontFamily: 'Lucide');
   static const IconData qrCode = IconData(57823, fontFamily: 'Lucide');

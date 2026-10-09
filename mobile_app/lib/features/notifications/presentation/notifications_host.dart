@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/sync/session.dart';
-import '../../../core/theme/app_icons.dart';
-import '../../../core/theme/app_text_styles.dart';
+import '../../../core/ui/ui.dart';
 import '../data/notification_feed.dart';
 import '../data/notifications_repository.dart';
 import '../notification_router.dart';
@@ -100,9 +99,9 @@ class _ForegroundBanner extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final message = ref.watch(foregroundBannerProvider);
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 260),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
+      duration: BasakMotion.sheetIn,
+      switchInCurve: BasakMotion.sheetInCurve,
+      switchOutCurve: BasakMotion.sheetOutCurve,
       transitionBuilder: (child, animation) => SlideTransition(
         position: Tween<Offset>(begin: const Offset(0, -1.2), end: Offset.zero).animate(animation),
         child: FadeTransition(opacity: animation, child: child),
@@ -126,64 +125,31 @@ class _BannerCard extends ConsumerWidget {
     final banner = ref.read(foregroundBannerProvider.notifier);
     return SafeArea(
       bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: GestureDetector(
-          // Flicked away upwards.
-          onVerticalDragEnd: (details) {
-            if ((details.primaryVelocity ?? 0) < 0) banner.dismiss();
-          },
-          child: Material(
-            color: Colors.white,
-            elevation: 10,
-            shadowColor: const Color(0x3316384A),
-            borderRadius: BorderRadius.circular(20),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () {
-                banner.dismiss();
-                ref.read(notificationRouterProvider).open(intent, NotificationTapSource.banner);
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: BasakSpace.maxContentWidth),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.s12, BasakSpace.s8, BasakSpace.s12, 0),
+            child: GestureDetector(
+              // Flicked away upwards.
+              onVerticalDragEnd: (details) {
+                if ((details.primaryVelocity ?? 0) < 0) banner.dismiss();
               },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-                child: Row(children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(color: style.background, shape: BoxShape.circle),
-                    child: Icon(style.icon, color: style.color, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (message.title.isNotEmpty)
-                          Text(message.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.titleMedium
-                                  .copyWith(color: const Color(0xFF17384A))),
-                        if (message.body.isNotEmpty)
-                          Text(message.body,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.bodyMedium
-                                  .copyWith(color: const Color(0xFF3D5566), height: 1.4)),
-                      ],
-                    ),
-                  ),
-                  // No tooltip: the banner sits above the navigator's overlay.
-                  Semantics(
-                    button: true,
-                    label: 'إغلاق',
-                    child: IconButton(
-                      onPressed: banner.dismiss,
-                      icon: const Icon(LucideIcons.x, size: 18, color: Color(0xFF718695)),
-                    ),
-                  ),
-                ]),
+              // Its own Material: the banner sits above the navigator, where
+              // text has no style to inherit.
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkBanner(
+                  icon: style.icon,
+                  // A push with no title still says something on its first line.
+                  title: message.title.isNotEmpty ? message.title : message.body,
+                  message: message.title.isNotEmpty ? message.body : null,
+                  onTap: () {
+                    banner.dismiss();
+                    ref.read(notificationRouterProvider).open(intent, NotificationTapSource.banner);
+                  },
+                ),
               ),
             ),
           ),

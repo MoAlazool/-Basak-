@@ -23,6 +23,20 @@ class StudentPassDetails {
   final String? subscriptionId;
   final String? subscriptionType;
   final String? subscriptionStatus;
+
+  /// current | upcoming | expired, as the server dated the subscription's period.
+  final String? periodPhase;
+
+  /// "الفصل الأول": the period without its year.
+  final String? periodName;
+  final int? academicYear;
+  final String? startDate;
+  final String? endDate;
+  final String? companyName;
+
+  /// The return trip's start time behind each return stop time (see
+  /// SubscriptionModel.returnStartTimes): the time a student is shown.
+  final Map<String, String> returnStartTimes;
   final bool isOfflineCache;
 
   const StudentPassDetails(
@@ -37,6 +51,13 @@ class StudentPassDetails {
       this.subscriptionId,
       this.subscriptionType,
       this.subscriptionStatus,
+      this.periodPhase,
+      this.periodName,
+      this.academicYear,
+      this.startDate,
+      this.endDate,
+      this.companyName,
+      this.returnStartTimes = const {},
       this.isOfflineCache = false});
 
   /// What is saved on the device. It holds only what the server said (no
@@ -53,6 +74,13 @@ class StudentPassDetails {
         'subscription_id': subscriptionId,
         'subscription_type': subscriptionType,
         'subscription_status': subscriptionStatus,
+        'period_phase': periodPhase,
+        'period_name': periodName,
+        'academic_year': academicYear,
+        'start_date': startDate,
+        'end_date': endDate,
+        'company_name': companyName,
+        'return_start_times': returnStartTimes,
       };
 
   factory StudentPassDetails.fromCache(Map<String, dynamic> json, {bool isOfflineCache = true}) =>
@@ -68,6 +96,16 @@ class StudentPassDetails {
         subscriptionId: json['subscription_id'] as String?,
         subscriptionType: json['subscription_type'] as String?,
         subscriptionStatus: json['subscription_status'] as String?,
+        periodPhase: json['period_phase'] as String?,
+        periodName: json['period_name'] as String?,
+        academicYear: (json['academic_year'] as num?)?.toInt(),
+        startDate: json['start_date'] as String?,
+        endDate: json['end_date'] as String?,
+        companyName: json['company_name'] as String?,
+        returnStartTimes: {
+          for (final entry in (json['return_start_times'] as Map? ?? const {}).entries)
+            entry.key.toString(): entry.value.toString(),
+        },
         isOfflineCache: isOfflineCache,
       );
 }
@@ -154,6 +192,13 @@ class StudentQrRepository {
         subscriptionId: current?.id,
         subscriptionType: current?.type,
         subscriptionStatus: current?.status,
+        periodPhase: current?.periodPhase,
+        periodName: current?.periodName,
+        academicYear: current?.academicYear,
+        startDate: current?.startDate,
+        endDate: current?.endDate,
+        companyName: current?.companyName,
+        returnStartTimes: current?.returnStartTimes ?? const {},
         isOfflineCache: OfflineCache.offlineSince.value != null,
       );
       final json = details.toCacheJson();
