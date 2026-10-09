@@ -18,7 +18,7 @@ Deno.test('an installed card with the same photo: no download, no database write
     const card = testCard({ photo: { path: `${STUDENT}/a.jpg`, version: 'v1' } });
     await deliverGoogle(fake.client, config, card, { photo_token: 'a'.repeat(64), photo_version: 'v1', content_hash: 'old', dirty_at: 't' });
     assertEquals(fake.log, []);
-    assertEquals(google.requests(), ['PUT genericClass', 'PUT genericObject']);
+    assertEquals(google.requests(), ['PATCH genericClass', 'PUT genericObject']);
     // The link Google already has keeps working.
     assertEquals(photoOf(google.calls[1].body), `https://project.test/functions/v1/wallet-photo/${'a'.repeat(64)}.jpg`);
   } finally { google.restore(); }
@@ -37,7 +37,7 @@ Deno.test('a first card: the row is created with its photo token before Google i
     assertEquals([row.student_id, row.platform, row.photo_version], [STUDENT, 'google', 'v1']);
     assertEquals(fake.db[0].options, { onConflict: 'student_id,platform' });
     // First time ever: the class and the object are both created.
-    assertEquals(google.requests(), ['PUT genericClass', 'POST genericClass', 'POST genericObject']);
+    assertEquals(google.requests(), ['PATCH genericClass', 'POST genericClass', 'POST genericObject']);
     const object = google.calls[2].body!;
     assertEquals(photoOf(object)?.match(photoLink)?.[1], row.photo_token);
     assertEquals(object.id, `${config.issuerId}.student_${STUDENT}`);
@@ -93,7 +93,7 @@ Deno.test('a batch delivered at once writes the shared class once and signs in o
       card.content.student = { ...card.content.student, id, qr_code_value: id };
       return deliverGoogle(fake.client, config, card, { photo_token: null, photo_version: null, content_hash: 'old', dirty_at: 't' });
     }));
-    assertEquals(google.requests().filter((request) => request.endsWith('genericClass')), ['PUT genericClass']);
+    assertEquals(google.requests().filter((request) => request.endsWith('genericClass')), ['PATCH genericClass']);
     assertEquals(google.requests().filter((request) => request === 'PUT genericObject').length, 6);
     assertEquals(google.tokenRequests(), 1);
   } finally { google.restore(); }

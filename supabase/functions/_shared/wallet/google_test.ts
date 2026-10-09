@@ -56,6 +56,20 @@ Deno.test('an object created by someone else between the two requests is still r
   } finally { google.restore(); }
 });
 
+Deno.test('who may save the card is set when the class is created and never sent again', async () => {
+  const config = await testGoogleConfig();
+  const resource = { id: 'issuer.class', multipleDevicesAndHoldersAllowedStatus: 'ONE_USER_ALL_DEVICES', note: 'v2' };
+  const google = fakeGoogleWallet();
+  try {
+    await upsertClass(config, resource, true);
+    await upsertClass(config, resource, true);
+    assertEquals(google.requests(), ['PATCH genericClass', 'POST genericClass', 'PATCH genericClass']);
+    assertEquals(google.calls[1].body?.multipleDevicesAndHoldersAllowedStatus, 'ONE_USER_ALL_DEVICES');
+    // Google refuses to change it once anyone has saved a card (400 on every update).
+    assertEquals(google.calls[2].body, { id: 'issuer.class', note: 'v2' });
+  } finally { google.restore(); }
+});
+
 Deno.test("Google's refusal is reported with its status and message", async () => {
   const config = await testGoogleConfig();
   const google = fakeGoogleWallet({
@@ -65,7 +79,7 @@ Deno.test("Google's refusal is reported with its status and message", async () =
   try {
     const error = await assertRejects(() => upsertClass(config, { id: 'issuer.class' }, true), Error);
     assertEquals(error.message, 'Google Wallet genericClass update failed (400): Invalid resource');
-    assertEquals(google.requests(), ['PUT genericClass']);
+    assertEquals(google.requests(), ['PATCH genericClass']);
   } finally { google.restore(); }
 });
 
