@@ -84,7 +84,7 @@ void main() {
       expect(find.text('حركة الباص'), findsOneWidget);
       expect(find.text('الاشتراك والدفع'), findsOneWidget);
       expect(find.text('إعلانات الشركة والمشرف'), findsOneWidget);
-      expect(find.text('تذكير تأكيد الرحلة'), findsOneWidget);
+      expect(find.text('تذكير تأكيد الرحلة'), findsNothing, reason: 'reminders are the student app\'s own');
 
       await tester.tap(find.text('حركة الباص'));
       await tester.pumpAndSettle();
@@ -97,17 +97,6 @@ void main() {
       expect(repo.savedPreferences.pushEnabled, isFalse);
       expect(switchOf(tester, 'الاشتراك والدفع').onChanged, isNull);
       expect(switchOf(tester, 'الاشتراك والدفع').value, isFalse);
-      // The app's own reminders are not a push: their switch stays.
-      expect(switchOf(tester, 'تذكير تأكيد الرحلة').onChanged, isNotNull);
-      expect(switchOf(tester, 'تذكير تأكيد الرحلة').value, isTrue);
-    });
-
-    testWidgets('a supervisor has no vote reminders to switch', (tester) async {
-      await tester.pumpWidget(app(const NotificationPreferencesScreen(),
-          repo: FakeNotificationsRepo(), role: UserRole.supervisor));
-      await tester.pumpAndSettle();
-      expect(find.text('حركة الباص'), findsOneWidget);
-      expect(find.text('تذكير تأكيد الرحلة'), findsNothing);
     });
 
     testWidgets('a refused change moves the switch back and shows the server\'s words', (tester) async {

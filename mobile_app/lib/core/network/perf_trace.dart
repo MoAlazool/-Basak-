@@ -23,10 +23,6 @@ class PerfTrace {
     }
   }
 
-  static Map<String, int> get counts => Map.unmodifiable(_counts);
-  static Map<String, Duration> get times => Map.unmodifiable(_times);
-  static int get total => _counts.values.fold(0, (a, b) => a + b);
-
   static void reset() {
     _counts.clear();
     _times.clear();

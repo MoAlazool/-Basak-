@@ -137,13 +137,12 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       final saturday = DateTime(rideDate.year, rideDate.month, rideDate.day)
           .subtract(Duration(days: saturdayOffset));
       final repository = ref.read(dailyRideRepoProvider);
-      // One read for the week shown here and the days the reminders look at
-      // (the ride day and the six after it).
-      final statusesFuture = repository.getRideStatusesForRange(
+      // One read for the week shown here, the ride day's own choices and
+      // the days the reminders look at (the ride day and the six after it).
+      final rides = await repository.getRides(
           saturday, DateTime(rideDate.year, rideDate.month, rideDate.day + 6));
-      final detailsFuture = repository.getRideDetailsForDate(rideDate);
-      final statuses = await statusesFuture;
-      final details = await detailsFuture;
+      final statuses = rides.statuses;
+      final details = rides.detailsFor(rideDate);
       if (mounted) {
         setState(() {
           _loadedRideDate = rideDate;
@@ -169,9 +168,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final subscription = ref.read(currentSubscriptionProvider);
     if (settings == null || !subscription.hasValue) return; // not known yet
     final sub = subscription.value;
-    // No reminders without a running subscription, when the company switched
-    // them off, or when the student did (notification settings).
-    // (Whether they are shown is the phone's own notification permission.)
+    // No reminders without a running subscription, or when the company
+    // switched them off. (Whether they are shown is the phone's own
+    // notification permission; students have no switch for them in the app.)
     if (sub == null || !sub.isActive || settings.reminderMinutes <= 0) {
       await VoteReminders.cancelAll();
       return;
@@ -182,8 +181,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       // The votes just read for the home screen cover these days already.
       final voted = loaded != null && DateUtils.isSameDay(loaded, first)
           ? _weeklyRideStatuses
-          : await ref.read(dailyRideRepoProvider).getRideStatusesForRange(
-              first, DateTime(first.year, first.month, first.day + 6));
+          : (await ref.read(dailyRideRepoProvider)
+                  .getRides(first, DateTime(first.year, first.month, first.day + 6)))
+              .statuses;
       await VoteReminders.plan(
         settings: settings,
         validFrom: DateTime.tryParse(sub.startDate ?? ''),
@@ -209,6 +209,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   Future<void> _confirmRide(SubscriptionModel sub,
       {required bool isRiding}) async {
+    // One vote at a time, however fast the button is tapped.
+    if (_isSavingRide) return;
     final repository = ref.read(dailyRideRepoProvider);
     final vote = _vote;
     final now = DateTime.now();

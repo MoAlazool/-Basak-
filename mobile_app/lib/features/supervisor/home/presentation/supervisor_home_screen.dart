@@ -44,7 +44,7 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
         ),
         body: page,
       ),
-    )).then((_) => ref.invalidate(supervisorDashboardProvider));
+    ));
   }
 
   @override

@@ -244,10 +244,7 @@ class ReceiptModel {
     this.reviewedAt,
   });
 
-  bool get isPending => status == 'pending';
-  bool get isApproved => status == 'approved';
   bool get isRejected => status == 'rejected';
-  bool get canReupload => isRejected && attemptNumber < 5;
 
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
     return ReceiptModel(

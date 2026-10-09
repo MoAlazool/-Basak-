@@ -46,3 +46,25 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Dart/Flutter tooling output
+.flutter-plugins
+.packages
+.kotlin/
+
+# iOS build state
+**/Pods/
+**/DerivedData/
+**/xcuserdata/
+ios/Flutter/ephemeral/
+ios/.symlinks/
+
+# Signing keys and local environment: never in git
+android/key.properties
+android/local.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+.env
+.env.*

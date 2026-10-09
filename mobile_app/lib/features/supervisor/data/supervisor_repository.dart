@@ -4,15 +4,47 @@ import '../../../core/constants/supabase_tables.dart';
 import '../../../core/media/signed_url_cache.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
+import '../../../core/sync/own_changes.dart';
 import '../../../core/sync/session.dart';
 import '../models/supervisor_models.dart';
 import '../qr_scanner/data/qr_scanner_repository.dart';
 
+/// The requests behind the supervisor's screens (replaced in tests).
+abstract class SupervisorGateway {
+  String? get userId;
+
+  /// A database function, by name.
+  Future<dynamic> rpc(String function, [Map<String, dynamic>? params]);
+
+  /// The supervisor's own row: where their photo is stored.
+  Future<Map<String, dynamic>?> photoRow(String userId);
+}
+
+class SupabaseSupervisorGateway implements SupervisorGateway {
+  const SupabaseSupervisorGateway();
+
+  SupabaseClient get _client => SupabaseService.client;
+
+  @override
+  String? get userId => _client.auth.currentUser?.id;
+
+  @override
+  Future<dynamic> rpc(String function, [Map<String, dynamic>? params]) => _client.rpc(function, params: params);
+
+  @override
+  Future<Map<String, dynamic>?> photoRow(String userId) =>
+      _client.from('supervisors').select('profile_image_url').eq('id', userId).maybeSingle();
+}
+
 /// Supervisor backend: every call goes through SECURITY DEFINER RPCs that are
 /// scoped to auth.uid() and the supervisor's assigned lines on the server.
 class SupervisorRepository {
-  final SupabaseClient _client = SupabaseService.client;
-  final QrScannerRepository _lookup = QrScannerRepository();
+  final SupervisorGateway _gateway;
+  final QrScannerRepository _lookup;
+
+  SupervisorRepository({SupervisorGateway? gateway, QrScannerRepository? lookup})
+      : _gateway = gateway ?? const SupabaseSupervisorGateway(),
+        _lookup = lookup ?? QrScannerRepository();
 
   Future<SupervisorDashboard> getDashboard() async =>
       SupervisorDashboard.fromJson(await getDashboardJson());
@@ -20,7 +52,7 @@ class SupervisorRepository {
   /// [getDashboard] as the server sent it, so it can be saved for the next start.
   Future<Map<String, dynamic>> getDashboardJson() async {
     final response = await OfflineCache.readThrough('supervisor.dashboard',
-        () => _client.rpc(SupabaseRpcs.getSupervisorDashboard));
+        () => _gateway.rpc(SupabaseRpcs.getSupervisorDashboard));
     return Map<String, dynamic>.from(response as Map);
   }
 
@@ -28,24 +60,31 @@ class SupervisorRepository {
   /// Offline: falls back to the cached read-only lookup (nothing is recorded).
   Future<CheckInResult> checkIn(String qrValue, {required String direction, String? tripId}) async {
     final qr = qrValue.trim();
+    // Every scan is logged, and the server announces it back to this phone
+    // too. The scanner refreshes what shows it itself, so that one
+    // announcement is not acted on again (another supervisor's still is).
+    final echo = OwnChanges.begin('supervisor_scan_events', op: 'INSERT', once: true);
     try {
-      final response = await _client.rpc(SupabaseRpcs.supervisorCheckInStudent,
-          params: {'p_qr_code': qr, 'p_direction': direction, if (tripId != null) 'p_trip_id': tripId});
+      final response = await _gateway.rpc(SupabaseRpcs.supervisorCheckInStudent,
+          {'p_qr_code': qr, 'p_direction': direction, if (tripId != null) 'p_trip_id': tripId});
+      echo.done();
       final json = Map<String, dynamic>.from(response as Map);
       if (json['student'] is Map) {
-        final me = _client.auth.currentUser?.id;
+        final me = _gateway.userId;
         if (me != null) {
           await OfflineCache.saveStudentLookup(me, qr, Map<String, dynamic>.from(json['student'] as Map));
         }
       }
       return CheckInResult.fromJson(json);
     } on PostgrestException catch (error) {
+      echo.failed();
       // An invalid (non-UUID) code is a "not found", not a crash.
       if (error.code == '22P02') {
         return CheckInResult(outcome: CheckInOutcome.notFound, direction: direction);
       }
       rethrow;
     } catch (error) {
+      echo.failed();
       final details = await _lookup.lookupStudentByQr(qr); // offline cache path
       if (!details.isOfflineCache) rethrow;
       return CheckInResult(
@@ -60,7 +99,7 @@ class SupervisorRepository {
     final day = DateTime.now().toIso8601String().substring(0, 10);
     final response = await OfflineCache.readThrough(
         'supervisor.manifest.$day.$lineId.$direction.${tripId ?? '-'}',
-        () => _client.rpc(SupabaseRpcs.getSupervisorTripManifest, params: {
+        () => _gateway.rpc(SupabaseRpcs.getSupervisorTripManifest, {
               'p_line_id': lineId,
               'p_direction': direction,
               if (tripId != null) 'p_trip_id': tripId,
@@ -71,8 +110,7 @@ class SupervisorRepository {
   Future<({bool annual, bool daily})> getOfferedTypes(String companyId) async {
     final response = await OfflineCache.readThrough(
         'supervisor.offered.$companyId',
-        () => _client.rpc(SupabaseRpcs.getSubscriptionSwitches,
-            params: {'p_company_id': companyId}));
+        () => _gateway.rpc(SupabaseRpcs.getSubscriptionSwitches, {'p_company_id': companyId}));
     final switches = Map<String, dynamic>.from(response as Map);
     return (annual: switches['annual_effective'] == true, daily: switches['daily_effective'] == true);
   }
@@ -82,18 +120,29 @@ class SupervisorRepository {
     final monthStr = first.toIso8601String().substring(0, 10);
     final response = await OfflineCache.readThrough(
         'supervisor.monthly.$monthStr',
-        () => _client.rpc(SupabaseRpcs.getSupervisorMonthlySummary,
-            params: {'p_month': monthStr}));
+        () => _gateway.rpc(SupabaseRpcs.getSupervisorMonthlySummary, {'p_month': monthStr}));
+
     return SupervisorMonthlySummary.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
+  /// Where the supervisor's own photo is stored (null: none).
+  Future<String?> getPhotoPath(String userId) async {
+    final row = await OfflineCache.readThrough('supervisor.photo', () => _gateway.photoRow(userId));
+    final path = (row as Map?)?['profile_image_url'] as String?;
+    return path == null || path.isEmpty ? null : path;
   }
 }
 
 final supervisorRepoProvider = Provider((ref) => SupervisorRepository());
 
 /// Subscription types the company offers now (platform AND company switches).
+/// Kept for the session, so coming back to the home tab does not ask again;
+/// refreshed when the company changes and on return to the app.
 final offeredSubscriptionTypesProvider =
-    FutureProvider.autoDispose.family<({bool annual, bool daily}), String>(
-        (ref, companyId) => ref.watch(supervisorRepoProvider).getOfferedTypes(companyId));
+    FutureProvider.family<({bool annual, bool daily}), String>((ref, companyId) {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(supervisorRepoProvider).getOfferedTypes(companyId);
+});
 
 /// The supervisor's lines and today's numbers: from the saved copy at once, then
 /// from the server; kept between tabs and refreshed by live events.
@@ -118,11 +167,8 @@ final supervisorPhotoUrlProvider = FutureProvider<String?>((ref) async {
   final userId = ref.watch(sessionUserIdProvider);
   if (userId == null) return null;
   try {
-    final client = SupabaseService.client;
-    final row = await OfflineCache.readThrough('supervisor.photo',
-        () => client.from('supervisors').select('profile_image_url').eq('id', userId).maybeSingle());
-    final path = (row as Map?)?['profile_image_url'] as String?;
-    if (path == null || path.isEmpty) return null;
+    final path = await ref.watch(supervisorRepoProvider).getPhotoPath(userId);
+    if (path == null) return null;
     return await SignedUrlCache.urlOrOffline('supervisor-avatars', path);
   } catch (_) {
     return null;

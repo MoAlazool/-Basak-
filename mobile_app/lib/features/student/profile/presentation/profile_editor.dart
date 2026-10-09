@@ -67,6 +67,8 @@ class _ProfileSectionState extends ConsumerState<ProfileSection> {
   }
 
   Future<void> _changePhoto() async {
+    // One photo at a time: a second tap while one is on its way does nothing.
+    if (_changingPhoto) return;
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.white,
@@ -92,7 +94,7 @@ class _ProfileSectionState extends ConsumerState<ProfileSection> {
     try {
       // Framed in a circle and compressed before anything is uploaded.
       final photo = await ProfilePhoto.pickAndAdjust(context, source);
-      if (photo == null || !mounted) return;
+      if (photo == null || !mounted || _changingPhoto) return;
       setState(() {
         _changingPhoto = true;
         _newPhoto = MemoryImage(photo);

@@ -49,7 +49,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     await ref.read(tripManifestProvider(key).future);
   }
 
-  Future<void> _scan(TripManifest m, ManifestKey key) async {
+  Future<void> _scan(TripManifest m) async {
     final trip = m.trip;
     if (trip == null) return;
     await Navigator.of(context).push(MaterialPageRoute(
@@ -67,8 +67,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
         ),
       ),
     ));
-    ref.invalidate(tripManifestProvider(key));
-    ref.invalidate(supervisorDashboardProvider);
+    // Nothing to read here: each check-in refreshed the list when it was made.
   }
 
   @override
@@ -225,7 +224,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
             padding: const EdgeInsets.symmetric(vertical: 15),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           ),
-          onPressed: () => _scan(m, key),
+          onPressed: () => _scan(m),
           icon: const Icon(LucideIcons.scanLine),
           label: Text('مسح QR لرحلة ${m.isReturn ? 'العودة' : 'الذهاب'} ${BasakUi.time12(trip.startTime)}'),
         ),

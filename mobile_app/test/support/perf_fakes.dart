@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException,
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
 import 'package:basak_mobile/features/student/daily_ride/models/vote_settings.dart';
+import 'package:basak_mobile/features/student/invites/invites.dart';
 import 'package:basak_mobile/features/student/profile/data/profile_repository.dart';
 import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
 import 'package:basak_mobile/features/student/subscription/data/subscription_gateway.dart';
@@ -204,6 +206,8 @@ class FakeSubscriptionServer implements SubscriptionGateway {
   }
 }
 
+/// What the card asks of the server itself (the Wallet refresh), and the
+/// student's row as the fake server holds it.
 class FakePassServer implements StudentPassGateway {
   final RequestLog log;
   final FakeSubscriptionServer server;
@@ -216,27 +220,7 @@ class FakePassServer implements StudentPassGateway {
   String? userId = studentId;
 
   @override
-  Future<Map<String, dynamic>?> studentRow(String userId) async {
-    log.hit('pass.student');
-    return {
-      'qr_code_value': 'QR-1', 'full_name': 'محمد عادل فؤاد العزول', 'phone': '01055512301',
-      'university': 'جامعة الدلتا', 'college': college, 'profile_image_url': photoPath,
-    };
-  }
-
-  @override
-  Future<Map<String, dynamic>?> subscriptionRow(String userId, String today) async {
-    log.hit('pass.subscription');
-    if (server.subs.isEmpty) return null;
-    final s = server.subs.first;
-    return {
-      'id': s['id'], 'type': s['type'], 'status': s['status'], 'departure_time': s['departure_time'],
-      'return_time': s['return_time'], 'lines': {'name': 'منية النصر'}, 'stations': {'name': 'البجلات'},
-    };
-  }
-
-  @override
-  void refreshWalletCard() => log.hit('pass.wallet_refresh');
+  Future<void> refreshWalletCard() async => log.hit('pass.wallet_refresh');
 }
 
 class FakeProfileServer implements ProfileGateway {
@@ -247,6 +231,7 @@ class FakeProfileServer implements ProfileGateway {
   final Set<String> files = {'$studentId/avatar-1.jpg'};
   Object? setPhotoFails;
   String? email;
+  bool mustChangePassword = false;
 
   @override
   String? userId = studentId;
@@ -257,6 +242,7 @@ class FakeProfileServer implements ProfileGateway {
     return {
       'full_name': 'محمد عادل فؤاد العزول', 'phone': '01055512301', 'university': 'جامعة الدلتا',
       'college': pass.college, 'email': email, 'birth_date': null, 'profile_image_url': pass.photoPath,
+      'qr_code_value': 'QR-1', 'must_change_password': mustChangePassword,
     };
   }
 
@@ -331,19 +317,53 @@ class FakeRides implements DailyRideRepository {
   }
 
   @override
-  Future<Map<DateTime, bool>> getRideStatusesForRange(DateTime start, DateTime end) async {
-    log.hit('ride.range');
-    return {};
+  Future<RideDays> getRides(DateTime start, DateTime end) async {
+    log.hit('ride.days');
+    return const RideDays({});
   }
 
   @override
-  Future<DailyRideDetails> getRideDetailsForDate(DateTime date) async {
-    log.hit('ride.details');
-    return const DailyRideDetails(isRiding: false);
+  Future<DailyRideDetails> confirmRide({
+    required DateTime rideDate,
+    required bool isRiding,
+    required String? departureTime,
+    required String? returnTime,
+    required bool isReturning,
+  }) async {
+    log.hit('ride.confirm');
+    return DailyRideDetails(
+        isRiding: isRiding, departureTime: departureTime, returnTime: returnTime, isReturning: isReturning);
+  }
+}
+
+/// The invitations a company sent this student, and the answers given.
+class FakeInvites implements InvitesGateway {
+  final RequestLog log;
+  final FakeSubscriptionServer server;
+  FakeInvites(this.log, this.server);
+
+  final List<Map<String, dynamic>> waiting = [];
+  final List<({String id, bool accept})> answers = [];
+
+  /// While set, an answer waits here before it reaches the server.
+  Completer<void>? gate;
+
+  @override
+  Future<dynamic> myInvites() async {
+    log.hit('invites.list');
+    return [for (final invite in waiting) Map<String, dynamic>.from(invite)];
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  Future<dynamic> respond(String inviteId, bool accept) async {
+    log.hit('invites.respond');
+    await gate?.future;
+    answers.add((id: inviteId, accept: accept));
+    waiting.removeWhere((invite) => invite['id'] == inviteId);
+    // Joining opens a subscription on the server; it is not in the answer.
+    if (accept) server.subs.insert(0, subscriptionRow(id: 'sub-invited'));
+    return {'note': null};
+  }
 }
 
 /// Signs like the storage service does: a new token every time it is asked.

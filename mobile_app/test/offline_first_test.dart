@@ -186,4 +186,42 @@ void main() {
     expect(await OfflineCache.readThrough('subscriptions', () async => offline()), ['sub']);
     expect(await OfflineCache.readThrough('sale_catalog', () async => offline()), {'companies': ['c']});
   });
+
+  test('saved reads of days long gone are cleared away; everything else stays', () async {
+    final now = DateTime(2026, 10, 9);
+    for (final key in [
+      'ride.days.2026-09-12.2026-09-18', // an old week
+      'ride.days.2026-10-03.2026-10-15', // this week
+      'supervisor.manifest.2026-09-01.line-1.departure.-',
+      'supervisor.manifest.2026-10-09.line-1.departure.-',
+      'rider_counts.2026-09-01.line-1,line-2',
+      'rider_counts.2026-10-10.line-1,line-2',
+      'ride.range.2026-10-03.2026-10-15', // read by earlier versions only
+      'ride.details.2026-10-09',
+      'student_pass',
+      'subscriptions',
+      'profile.summary',
+      'supervisor.monthly.2026-01-01',
+    ]) {
+      await OfflineCache.put(key, {'k': key});
+    }
+    await OfflineCache.saveStudentPass({'qr_value': 'QR-1'});
+
+    await OfflineCache.prune(now: now);
+
+    Future<bool> kept(String key) async => await OfflineCache.peek(key) != null;
+    expect(await kept('ride.days.2026-09-12.2026-09-18'), isFalse);
+    expect(await kept('supervisor.manifest.2026-09-01.line-1.departure.-'), isFalse);
+    expect(await kept('rider_counts.2026-09-01.line-1,line-2'), isFalse);
+    expect(await kept('ride.range.2026-10-03.2026-10-15'), isFalse);
+    expect(await kept('ride.details.2026-10-09'), isFalse);
+    expect(await kept('student_pass'), isFalse);
+    expect(await kept('ride.days.2026-10-03.2026-10-15'), isTrue);
+    expect(await kept('supervisor.manifest.2026-10-09.line-1.departure.-'), isTrue);
+    expect(await kept('rider_counts.2026-10-10.line-1,line-2'), isTrue);
+    expect(await kept('subscriptions'), isTrue);
+    expect(await kept('profile.summary'), isTrue);
+    expect(await kept('supervisor.monthly.2026-01-01'), isTrue);
+    expect((await OfflineCache.readStudentPass())?['qr_value'], 'QR-1', reason: 'the pass kept for offline use stays');
+  });
 }

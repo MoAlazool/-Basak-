@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/network/supabase_service.dart';
+import '../../../core/storage/offline_cache.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/basak_ui.dart';
@@ -10,16 +11,25 @@ import '../providers/auth_provider.dart';
 
 /// True when the Super Admin reset this student's password and the student has
 /// not chosen a new one yet (students.must_change_password, set server-side).
+///
+/// It is part of the student's own row, which the home screen reads anyway
+/// (studentProfileSummaryProvider): asking for it costs no request of its own.
 final mustChangePasswordProvider = FutureProvider.autoDispose<bool>((ref) async {
-  final user = ref.watch(authStateProvider).user;
-  if (user == null) return false;
+  final userId = ref.watch(authStateProvider.select((s) => s.user?.id));
+  if (userId == null) return false;
   try {
-    final row = await SupabaseService.client
-        .from('students')
-        .select('must_change_password')
-        .eq('id', user.id)
-        .maybeSingle();
-    return row?['must_change_password'] as bool? ?? false;
+    final row = await ref.watch(studentProfileSummaryProvider(userId).future);
+    final mustChange = row?['must_change_password'] as bool? ?? false;
+    if (mustChange) {
+      // The row may be the copy saved last time, with the server already
+      // asked behind it. While this screen stands in for the app nothing
+      // else shows what the server answered (SyncScope is not up), so it is
+      // taken here: a password already changed elsewhere lets the student in.
+      void onFresh() => ref.invalidate(studentProfileSummaryProvider(userId));
+      OfflineCache.refreshed.addListener(onFresh);
+      ref.onDispose(() => OfflineCache.refreshed.removeListener(onFresh));
+    }
+    return mustChange;
   } catch (_) {
     return false; // offline: never lock a student out of their bus pass
   }
@@ -50,6 +60,8 @@ class _ForcePasswordChangeScreenState extends ConsumerState<ForcePasswordChangeS
   }
 
   Future<void> _submit() async {
+    // One change at a time, however fast the button is tapped.
+    if (_busy) return;
     setState(() => _error = null);
     if (_password.text.length < 8) {
       setState(() => _error = 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.');
@@ -67,7 +79,14 @@ class _ForcePasswordChangeScreenState extends ConsumerState<ForcePasswordChangeS
       if (data is Map && data['error'] != null) throw Exception(data['error']);
       _password.clear();
       _confirm.clear();
-      ref.invalidate(mustChangePasswordProvider);
+      // The function cleared the flag: this phone shows that from its own
+      // copy of the student's row, without reading it again.
+      final userId = ref.read(authStateProvider).user?.id;
+      final applied = await OfflineCache.applyLocal(
+          'profile.summary', (row) => row is Map ? {...row, 'must_change_password': false} : row);
+      if (!mounted) return;
+      if (userId != null) ref.invalidate(studentProfileSummaryProvider(userId));
+      if (!applied) ref.invalidate(mustChangePasswordProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('تم تغيير كلمة المرور. استخدمها في المرات القادمة.'),
@@ -75,11 +94,13 @@ class _ForcePasswordChangeScreenState extends ConsumerState<ForcePasswordChangeS
         ));
       }
     } on FunctionException catch (e) {
+      if (!mounted) return;
       final details = e.details;
       setState(() => _error = details is Map && details['error'] is String
           ? details['error'] as String
           : 'تعذر تغيير كلمة المرور. حاول مرة أخرى.');
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);

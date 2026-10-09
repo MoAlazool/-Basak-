@@ -36,7 +36,11 @@ class SupabaseProfileGateway implements ProfileGateway {
     PerfTrace.count('profile.summary');
     return _client
         .from('students')
-        .select('full_name, phone, university, college, email, birth_date, profile_image_url')
+        // Everything the app shows of the student's own row, in one read: the
+        // home screen and the profile, the card (qr_code_value) and whether a
+        // new password must be chosen first (must_change_password).
+        .select('full_name, phone, university, college, email, birth_date, profile_image_url, '
+            'qr_code_value, must_change_password')
         .eq('id', userId)
         .maybeSingle();
   }
@@ -89,7 +93,8 @@ class ProfileRepository {
   /// Saves the optional details. An empty value clears the field.
   ///
   /// The server's answer (the saved values) is written into what this phone
-  /// holds, so the profile and the card show it without being read again;
+  /// holds, so the profile and the card (which is made from it) show it
+  /// without being read again;
   /// the caller only invalidates their providers.
   Future<void> updateDetails({String? email, String? college, DateTime? birthDate}) async {
     final echo = OwnChanges.begin('students');
@@ -108,8 +113,6 @@ class ProfileRepository {
               'birth_date': birthDate == null ? null : _isoDate(birthDate),
             };
       await OfflineCache.applyLocal('profile.summary', (row) => row is Map ? {...row, ...values} : row);
-      await OfflineCache.applyLocal(
-          'student_pass', (pass) => pass is Map ? {...pass, 'college': values['college']} : pass);
     } catch (error) {
       echo.failed();
       if (error is PostgrestException) throw Exception(error.message);
@@ -145,8 +148,6 @@ class ProfileRepository {
     }
     await OfflineCache.applyLocal(
         'profile.summary', (row) => row is Map ? {...row, 'profile_image_url': path} : row);
-    await OfflineCache.applyLocal(
-        'student_pass', (pass) => pass is Map ? {...pass, 'profile_image_path': path} : pass);
     // After the caller has been answered: the screen is not kept waiting.
     unawaited(Future(() => removeOldPhotos(userId, keep: path)));
     return path;

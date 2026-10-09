@@ -19,10 +19,6 @@ final activeUniversitiesProvider =
     FutureProvider<List<Map<String, String>>>((ref) {
   return ref.watch(authRepositoryProvider).getActiveUniversities();
 });
-final activeCollegesProvider =
-    FutureProvider.family<List<String>, String>((ref, universityId) {
-  return ref.watch(authRepositoryProvider).getActiveColleges(universityId);
-});
 
 /// The student's own row. The photo is its storage path
 /// (`profile_image_url`); screens sign a link to it with signedPhotoProvider.
@@ -55,7 +51,6 @@ class AuthState {
   bool get isAuthenticated => user != null;
   bool get isStudent => role == UserRole.student;
   bool get isSupervisor => role == UserRole.supervisor;
-  bool get isAdmin => role == UserRole.admin;
 
   AuthState copyWith({
     User? user,
@@ -83,7 +78,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// must be told to the server as this account (detaching its push token).
   final Future<void> Function()? beforeSignOut;
 
-  /// Loads the signed-in student's pass (see [_refreshOfflineStudentPass]).
+  /// Puts together the signed-in student's pass (see [_refreshOfflineStudentPass]).
   final Future<void> Function()? refreshStudentPass;
 
   AuthNotifier(this._repo, {this.beforeSignOut, this.refreshStudentPass})
@@ -229,8 +224,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> deleteAccount() async => deleteStudentAccount();
-
   Future<void> signOut() async {
     try {
       // Best effort and bounded: signing out never waits for the network.
@@ -257,9 +250,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await OfflineCache.clearAll(also: SnapshotStore.isSnapshotKey);
   }
 
-  /// The pass is loaded as soon as the student is known, so it is saved for
-  /// offline use before the card tab is opened. It goes through the same
-  /// provider the card tab reads, so it is fetched once, not twice.
+  /// The pass is put together as soon as the student is known, so it is saved
+  /// for offline use before the card tab is opened. It is made from the two
+  /// reads the home screen needs anyway (see studentQrProvider).
   Future<void> _refreshOfflineStudentPass() async {
     try {
       // After the new state has reached the providers that watch it.
@@ -278,9 +271,3 @@ final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
       beforeSignOut: () => ref.read(pushControllerProvider).detach(),
       refreshStudentPass: () => ref.read(studentQrProvider.future));
 });
-
-/// The signed-in user's id. Every provider holding per-user data watches it,
-/// so its cached result is dropped as soon as another user signs in on this
-/// device (or the user signs out) and is never shown to the next person.
-final currentUserIdProvider = Provider<String?>(
-    (ref) => ref.watch(authStateProvider.select((s) => s.user?.id)));

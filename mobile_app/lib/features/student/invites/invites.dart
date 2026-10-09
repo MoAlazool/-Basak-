@@ -45,12 +45,24 @@ class CompanyInvite {
       };
 }
 
+/// The two requests behind the invitations (replaced in tests).
+class InvitesGateway {
+  const InvitesGateway();
+
+  Future<dynamic> myInvites() => SupabaseService.client.rpc('get_my_invites');
+
+  Future<dynamic> respond(String inviteId, bool accept) => SupabaseService.client
+      .rpc('respond_company_invite', params: {'p_invite_id': inviteId, 'p_accept': accept});
+}
+
+final invitesGatewayProvider = Provider((ref) => const InvitesGateway());
+
 /// The invitations waiting for this student's answer.
 class MyInvitesNotifier extends AsyncNotifier<List<CompanyInvite>> {
   @override
   Future<List<CompanyInvite>> build() async {
     if (ref.watch(sessionUserIdProvider) == null) return const [];
-    final response = await SupabaseService.client.rpc('get_my_invites');
+    final response = await ref.watch(invitesGatewayProvider).myInvites();
     return (response as List<dynamic>? ?? const [])
         .map((e) => CompanyInvite.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
@@ -79,6 +91,8 @@ class _InvitesCardState extends ConsumerState<InvitesCard> {
   String? _busyId;
 
   Future<void> _respond(CompanyInvite invite, bool accept) async {
+    // One answer at a time, however fast the buttons are tapped.
+    if (_busyId != null) return;
     if (accept) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -94,7 +108,7 @@ class _InvitesCardState extends ConsumerState<InvitesCard> {
           ],
         ),
       );
-      if (confirmed != true) return;
+      if (confirmed != true || !mounted || _busyId != null) return;
     }
     setState(() => _busyId = invite.id);
     // What the server will announce back to this phone about its own answer.
@@ -104,8 +118,7 @@ class _InvitesCardState extends ConsumerState<InvitesCard> {
       if (accept) OwnChanges.begin('subscriptions', op: 'INSERT'),
     ];
     try {
-      final result = await SupabaseService.client.rpc('respond_company_invite',
-          params: {'p_invite_id': invite.id, 'p_accept': accept});
+      final result = await ref.read(invitesGatewayProvider).respond(invite.id, accept);
       for (final echo in echoes) {
         echo.done();
       }

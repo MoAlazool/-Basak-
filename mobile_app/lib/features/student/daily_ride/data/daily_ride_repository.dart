@@ -19,6 +19,33 @@ class DailyRideDetails {
   });
 }
 
+/// The votes of a stretch of days, as one read returned them.
+class RideDays {
+  final Map<String, DailyRideDetails> _byDay;
+
+  const RideDays(this._byDay);
+
+  factory RideDays.fromRows(List<dynamic> rows) => RideDays({
+        for (final row in rows)
+          (row['ride_date'] as String).substring(0, 10): DailyRideDetails(
+            isRiding: row['is_riding'] as bool? ?? false,
+            departureTime: row['departure_time'] as String?,
+            returnTime: row['return_time'] as String?,
+            isReturning: row['is_returning'] as bool? ?? true,
+          ),
+      });
+
+  /// Every day voted for (riding or not).
+  Map<DateTime, bool> get statuses =>
+      {for (final entry in _byDay.entries) DateTime.parse(entry.key): entry.value.isRiding};
+
+  /// The vote for [date]; "not riding" when there is none.
+  DailyRideDetails detailsFor(DateTime date) =>
+      _byDay[_day(date)] ?? const DailyRideDetails(isRiding: false);
+}
+
+String _day(DateTime date) => date.toIso8601String().substring(0, 10);
+
 class DailyRideRepository {
   final SupabaseClient _client = SupabaseService.client;
 
@@ -34,88 +61,22 @@ class DailyRideRepository {
         : VoteSettings.fallback;
   }
 
-  /// Get ride status for a specific date
-  Future<bool> getRideStatusForDate(DateTime date) async {
+  /// The student's votes from [start] to [end], in one request: whether they
+  /// ride each day, and the times they chose.
+  Future<RideDays> getRides(DateTime start, DateTime end) async {
     final user = _client.auth.currentUser;
-    if (user == null) return false;
-
-    final dateStr = date.toIso8601String().substring(0, 10);
-    final response = await OfflineCache.readThrough(
-        'ride.status.$dateStr',
-        () => _client
-            .from(SupabaseTables.dailyRideStatus)
-            .select('is_riding')
-            .eq('student_id', user.id)
-            .eq('ride_date', dateStr)
-            .maybeSingle());
-
-    if (response == null) return false;
-    return response['is_riding'] as bool? ?? false;
-  }
-
-  Future<DailyRideDetails> getRideDetailsForDate(DateTime date) async {
-    final user = _client.auth.currentUser;
-    if (user == null) return const DailyRideDetails(isRiding: false);
-
-    final dateStr = date.toIso8601String().substring(0, 10);
-    final row = await OfflineCache.readThrough(
-        'ride.details.$dateStr',
-        () => _client
-            .from(SupabaseTables.dailyRideStatus)
-            .select('is_riding, departure_time, return_time, is_returning')
-            .eq('student_id', user.id)
-            .eq('ride_date', dateStr)
-            .maybeSingle());
-    if (row == null) return const DailyRideDetails(isRiding: false);
-    return DailyRideDetails(
-      isRiding: row['is_riding'] as bool? ?? false,
-      departureTime: row['departure_time'] as String?,
-      returnTime: row['return_time'] as String?,
-      isReturning: row['is_returning'] as bool? ?? true,
-    );
-  }
-
-  Future<Map<DateTime, bool>> getRideStatusesForRange(
-      DateTime start, DateTime end) async {
-    final user = _client.auth.currentUser;
-    if (user == null) return const {};
-    final from = start.toIso8601String().substring(0, 10);
-    final to = end.toIso8601String().substring(0, 10);
+    if (user == null) return const RideDays({});
+    final from = _day(start);
+    final to = _day(end);
     final rows = await OfflineCache.readThrough(
-        'ride.range.$from.$to',
+        'ride.days.$from.$to',
         () => _client
             .from(SupabaseTables.dailyRideStatus)
-            .select('ride_date, is_riding')
+            .select('ride_date, is_riding, departure_time, return_time, is_returning')
             .eq('student_id', user.id)
             .gte('ride_date', from)
             .lte('ride_date', to));
-    return {
-      for (final row in rows as List<dynamic>)
-        DateTime.parse(row['ride_date'] as String):
-            (row['is_riding'] as bool? ?? false),
-    };
-  }
-
-  /// Toggle ride status for a specific date (the database enforces the vote window)
-  Future<bool> toggleRide({
-    required DateTime rideDate,
-    required bool isRiding,
-  }) async {
-    final dateStr = rideDate.toIso8601String().substring(0, 10);
-
-    final response = await requireOnline(() => _client.rpc(
-          SupabaseRpcs.toggleStudentDailyRide,
-          params: {
-            'p_ride_date': dateStr,
-            'p_is_riding': isRiding,
-          },
-        ));
-
-    if (response != null && response['success'] == true) {
-      return response['is_riding'] as bool? ?? false;
-    }
-
-    throw Exception('فشل تحديث حالة الركوب.');
+    return RideDays.fromRows(rows as List<dynamic>);
   }
 
   Future<DailyRideDetails> confirmRide({
@@ -125,7 +86,7 @@ class DailyRideRepository {
     required String? returnTime,
     required bool isReturning,
   }) async {
-    final dateStr = rideDate.toIso8601String().substring(0, 10);
+    final dateStr = _day(rideDate);
     final response = await requireOnline(() => _client.rpc(
           SupabaseRpcs.toggleStudentDailyRide,
           params: {

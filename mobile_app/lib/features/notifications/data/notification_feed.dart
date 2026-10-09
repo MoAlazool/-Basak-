@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/sync/own_changes.dart';
 import '../../../core/sync/session.dart';
 import 'notifications_repository.dart';
 
@@ -236,7 +237,14 @@ class NotificationFeedNotifier extends AsyncNotifier<NotificationFeed> {
     try {
       if (feed == null) {
         // Opened from a push before the inbox was read (a cold start).
-        await _repo.opened(id);
+        final echo = OwnChanges.begin('notifications', op: 'READ', once: true);
+        try {
+          await _repo.opened(id);
+          echo.done();
+        } catch (_) {
+          echo.failed();
+          rethrow;
+        }
       } else {
         await _mark([id], () => _repo.opened(id));
       }
@@ -269,9 +277,14 @@ class NotificationFeedNotifier extends AsyncNotifier<NotificationFeed> {
     _show(marked(feed));
     if (_allFeed != null) _allFeed = marked(_allFeed!);
 
+    // The server tells every phone of the account that something was read,
+    // this one included: it already shows it, so that is not read again.
+    final echo = OwnChanges.begin('notifications', op: 'READ', once: true);
     try {
       await send();
+      echo.done();
     } catch (_) {
+      echo.failed();
       if (_userId == userId) {
         NotificationFeed unmarked(NotificationFeed f) => f.copyWith(
               items: [for (final n in f.items) changed.contains(n.id) ? n.markedUnread() : n],

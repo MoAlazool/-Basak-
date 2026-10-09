@@ -122,11 +122,12 @@ void main() {
     await watchScreens(c);
 
     final profile = await OfflineCache.peek('profile.summary') as Map;
-    final pass = await OfflineCache.peek('student_pass') as Map;
+    final pass = (await OfflineCache.readStudentPass())!;
     expect(profile['profile_image_url'], '$studentId/avatar-1.jpg');
     expect(profile.keys, isNot(contains('profile_image_signed_url')));
     expect(pass['profile_image_path'], '$studentId/avatar-1.jpg');
     expect(pass.keys, isNot(contains('cached_at')));
+    pass.remove('_saved_at'); // when it was saved, not a link
     expect('$profile$pass', isNot(contains('token=')), reason: 'no link is saved');
     expect((await c.read(studentQrProvider.future))?.profileImagePath, '$studentId/avatar-1.jpg');
 

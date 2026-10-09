@@ -6,7 +6,7 @@ import '../../../../core/storage/offline_cache.dart';
 import '../models/scanned_student_details.dart';
 
 class QrScannerRepository {
-  final SupabaseClient _client = SupabaseService.client;
+  SupabaseClient get _client => SupabaseService.client;
 
   /// Scan QR to LOOK UP student details only.
   /// Strictly does NOT write any attendance record.

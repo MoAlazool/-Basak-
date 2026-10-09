@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../core/network/network_errors.dart';
+import '../../../core/sync/own_changes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/basak_ui.dart';
@@ -28,6 +29,21 @@ class SupervisorNotificationsScreen extends StatelessWidget {
           children: [_SendCard(), _QuickActions()],
         ),
       );
+}
+
+/// Sends a notification. The server announces the new notification back to
+/// this phone too; the inbox is read once for it, when the sheet closes (see
+/// [_announceSent]), and not again for that announcement.
+Future<SendResult> sendAnnouncedOnce(Future<SendResult> Function() send) async {
+  final echo = OwnChanges.begin('notifications', op: 'INSERT', once: true);
+  try {
+    final result = await send();
+    echo.done();
+    return result;
+  } catch (_) {
+    echo.failed();
+    rethrow;
+  }
 }
 
 /// Tells the supervisor what was sent, after a sheet closed with its result.
@@ -360,16 +376,17 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet>
       showError('اكتب عنوان الإشعار ونصه.');
       return;
     }
+    if (_sending) return;
     setState(() => _sending = true);
     try {
-      final result = await ref.read(notificationsRepoProvider).send(
+      final result = await sendAnnouncedOnce(() => ref.read(notificationsRepoProvider).send(
             title: title,
             body: body,
             lineId: lineId,
             tripId: trip?.tripId,
             rideDate: rideDate,
             idempotencyKey: _key.of('$lineId|${trip?.tripId}|$rideDate|$title|$body'),
-          );
+          ));
       if (mounted) Navigator.of(context).pop(result);
     } catch (error) {
       if (!mounted) return;
@@ -464,9 +481,10 @@ class _QuickNotificationSheetState extends ConsumerState<QuickNotificationSheet>
   String? get direction => widget.template.direction;
 
   Future<void> _send() async {
+    if (_sending) return;
     setState(() => _sending = true);
     try {
-      final result = await ref.read(notificationsRepoProvider).sendQuick(
+      final result = await sendAnnouncedOnce(() => ref.read(notificationsRepoProvider).sendQuick(
             templateKey: widget.template.key,
             lineId: lineId,
             tripId: trip?.tripId,
@@ -474,7 +492,7 @@ class _QuickNotificationSheetState extends ConsumerState<QuickNotificationSheet>
             minutes: _minutes,
             idempotencyKey:
                 _key.of('${widget.template.key}|$lineId|${trip?.tripId}|$rideDate|$_minutes'),
-          );
+          ));
       if (mounted) Navigator.of(context).pop(result);
     } catch (error) {
       if (!mounted) return;

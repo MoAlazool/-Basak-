@@ -98,7 +98,6 @@ void main() {
     test('a saved copy that turned out stale re-reads exactly the provider that shows it', () {
       expect(SyncScope.providerFor('subscriptions', studentId), allSubscriptionsProvider);
       expect(SyncScope.providerFor('subscriptions.current', studentId), currentSubscriptionProvider);
-      expect(SyncScope.providerFor('student_pass', studentId), studentQrProvider);
       expect(SyncScope.providerFor('profile.summary', studentId), studentProfileSummaryProvider(studentId));
       expect(SyncScope.providerFor('sale_catalog', studentId), saleCatalogProvider);
       expect(SyncScope.providerFor('receipts.sub-9', studentId), subscriptionReceiptsProvider('sub-9'));
@@ -217,7 +216,7 @@ void main() {
       expect(world.log.calls, {'subscriptions.insert': 1}, reason: 'no list is read again, echo included');
     });
 
-    test('the purchase flow: lists from the answer, the catalog read once, the echo reads nothing', () async {
+    test('the purchase flow: lists from the answer, nothing read after it, the echo reads nothing', () async {
       final world = StudentWorld();
       final c = world.open();
       await watchScreens(c);
@@ -233,7 +232,8 @@ void main() {
 
       expect(c.read(allSubscriptionsProvider).value?.map((s) => s.id), contains(created.id));
       expect(world.log.of('subscriptions.all') + world.log.of('subscriptions.current'), 0);
-      expect(world.log.of('sale_catalog'), 1, reason: 'what is on sale does change with a new subscription');
+      expect(settled, {'subscriptions.insert': 1},
+          reason: 'the card follows the current subscription, and the catalog waits until it is shown again');
       expect(world.log.calls, settled, reason: 'the echo adds nothing');
     });
 

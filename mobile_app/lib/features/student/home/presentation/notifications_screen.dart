@@ -47,9 +47,10 @@ final _votedDaysProvider = FutureProvider.autoDispose<Map<DateTime, bool>>((ref)
   ref.watch(sessionUserIdProvider);
   final vote = await ref.watch(voteSettingsProvider.future);
   final first = vote.rideDateFor(DateTime.now());
-  return ref
+  final rides = await ref
       .watch(dailyRideRepoProvider)
-      .getRideStatusesForRange(first, DateTime(first.year, first.month, first.day + 7));
+      .getRides(first, DateTime(first.year, first.month, first.day + 7));
+  return rides.statuses;
 });
 
 /// The student's notifications, opened from the bell on the home screen, under

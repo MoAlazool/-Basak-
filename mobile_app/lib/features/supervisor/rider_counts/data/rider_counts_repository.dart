@@ -4,48 +4,104 @@ import '../../../../core/network/supabase_service.dart';
 import '../../../../core/storage/offline_cache.dart';
 import '../models/station_rider_count_model.dart';
 
-class RiderCountsRepository {
-  final SupabaseClient _client = SupabaseService.client;
+/// The requests behind the rider counts, one method each (replaced in tests).
+abstract class RiderCountsGateway {
+  /// The supervisor's lines: rows of `{line_id}`.
+  Future<dynamic> assignedLineIds();
 
+  /// The counts of every line in [lineIds] on [date], in one request: an
+  /// object `{line id: that line's rows}`. Throws [LinesRiderCountsUnavailable]
+  /// when the database has no such function yet.
+  Future<dynamic> countsForLines(List<String> lineIds, String date);
+
+  /// The counts of one line on [date] (what [countsForLines] holds per line).
+  Future<dynamic> countsForLine(String lineId, String date);
+}
+
+/// The database is older than `get_lines_rider_counts`.
+class LinesRiderCountsUnavailable implements Exception {
+  const LinesRiderCountsUnavailable();
+}
+
+class SupabaseRiderCountsGateway implements RiderCountsGateway {
+  const SupabaseRiderCountsGateway();
+
+  SupabaseClient get _client => SupabaseService.client;
+
+  @override
+  Future<dynamic> assignedLineIds() => _client.rpc('get_supervisor_assigned_line_ids');
+
+  @override
+  Future<dynamic> countsForLines(List<String> lineIds, String date) async {
+    try {
+      return await _client
+          .rpc(SupabaseRpcs.getLinesRiderCounts, params: {'p_line_ids': lineIds, 'p_ride_date': date});
+    } on PostgrestException catch (error) {
+      // PGRST202: not in the schema cache; 42883: undefined function.
+      if (error.code == 'PGRST202' || error.code == '42883' || error.code == '404') {
+        throw const LinesRiderCountsUnavailable();
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<dynamic> countsForLine(String lineId, String date) =>
+      _client.rpc(SupabaseRpcs.getLineRiderCounts, params: {'p_line_id': lineId, 'p_ride_date': date});
+}
+
+class RiderCountsRepository {
+  final RiderCountsGateway _gateway;
+
+  /// Asked once per run of the app, not on every refresh.
+  bool _batchMissing = false;
+
+  RiderCountsRepository({RiderCountsGateway? gateway}) : _gateway = gateway ?? const SupabaseRiderCountsGateway();
+
+  /// Live rider counts per station on [targetDate], for every line of the
+  /// supervisor, in one request.
+  ///
+  /// [lineIds] are the supervisor's lines when the caller already knows them
+  /// (the dashboard lists them); otherwise they are asked for first. On a
+  /// database without `get_lines_rider_counts` the lines are read one by one,
+  /// side by side, as before.
   Future<List<StationRiderCountModel>> getAssignedStationRiderCounts({
     required DateTime targetDate,
+    List<String>? lineIds,
   }) async {
-    final assigned = await OfflineCache.readThrough('supervisor.line_ids',
-        () => _client.rpc('get_supervisor_assigned_line_ids'));
-    final lineIds = (assigned as List<dynamic>)
-        .map((row) => row['line_id'] as String)
-        .toSet()
-        .toList();
-    if (lineIds.isEmpty) return const [];
+    final ids = (lineIds ?? await _assignedLineIds()).toSet().toList()..sort();
+    if (ids.isEmpty) return const [];
+    final date = targetDate.toIso8601String().substring(0, 10);
 
-    final results = await Future.wait(lineIds.map((lineId) =>
-        getStationRiderCounts(lineId: lineId, targetDate: targetDate)));
-    return results.expand((counts) => counts).toList()
-      ..sort((a, b) {
-        final byLine = a.lineName.compareTo(b.lineName);
-        return byLine != 0 ? byLine : a.orderIndex.compareTo(b.orderIndex);
+    final byLine = await OfflineCache.readThrough('rider_counts.$date.${ids.join(',')}', () => _fetch(ids, date));
+    return [
+      for (final rows in (byLine as Map).values)
+        for (final row in rows as List? ?? const [])
+          StationRiderCountModel.fromJson(Map<String, dynamic>.from(row as Map)),
+    ]..sort((a, b) {
+        final byName = a.lineName.compareTo(b.lineName);
+        return byName != 0 ? byName : a.orderIndex.compareTo(b.orderIndex);
       });
   }
 
-  /// Fetch live rider counts per station for a specific line and date (Today or Tomorrow)
-  Future<List<StationRiderCountModel>> getStationRiderCounts({
-    required String lineId,
-    required DateTime targetDate,
-  }) async {
-    final dateStr = targetDate.toIso8601String().substring(0, 10);
+  Future<List<String>> _assignedLineIds() async {
+    final assigned = await OfflineCache.readThrough('supervisor.line_ids', _gateway.assignedLineIds);
+    return [for (final row in assigned as List<dynamic>) row['line_id'] as String];
+  }
 
-    final response = await OfflineCache.readThrough(
-        'rider_counts.$lineId.$dateStr',
-        () => _client.rpc(
-              SupabaseRpcs.getLineRiderCounts,
-              params: {
-                'p_line_id': lineId,
-                'p_ride_date': dateStr,
-              },
-            ));
-
-    return (response as List<dynamic>)
-        .map((e) => StationRiderCountModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+  /// `{line id: rows}`, however the database can answer it.
+  Future<Map<String, dynamic>> _fetch(List<String> ids, String date) async {
+    if (!_batchMissing) {
+      try {
+        final response = await _gateway.countsForLines(ids, date);
+        return {
+          for (final entry in (response as Map? ?? const {}).entries) '${entry.key}': entry.value ?? const [],
+        };
+      } on LinesRiderCountsUnavailable {
+        _batchMissing = true;
+      }
+    }
+    final perLine = await Future.wait([for (final id in ids) _gateway.countsForLine(id, date)]);
+    return {for (final (i, id) in ids.indexed) id: perLine[i] ?? const []};
   }
 }

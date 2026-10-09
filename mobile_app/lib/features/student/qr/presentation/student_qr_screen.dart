@@ -12,14 +12,32 @@ import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../wallet/data/wallet_pass_repository.dart';
 import '../../wallet/presentation/add_to_wallet_button.dart';
+import '../../../auth/providers/auth_provider.dart';
+import '../../home/presentation/student_home_screen.dart';
 import '../data/student_qr_repository.dart';
 import '../../subscription/models/subscription_model.dart';
 
 final studentQrRepoProvider = Provider((ref) => StudentQrRepository());
+
+/// The student's card. It reads nothing itself: it is put together from the
+/// student's own row and the current subscription, which the home screen and
+/// the profile load anyway, and follows them when they change.
 final FutureProvider<StudentPassDetails?> studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
-  ref.watch(sessionUserIdProvider);
-  return ref.watch(studentQrRepoProvider).getStudentPassDetails();
+  final userId = ref.watch(sessionUserIdProvider);
+  if (userId == null) return null;
+  return ref.watch(studentQrRepoProvider).getStudentPassDetails(
+        student: () => ref.watch(studentProfileSummaryProvider(userId).future),
+        subscription: () => ref.watch(currentSubscriptionProvider.future),
+      );
 });
+
+/// Reads the card's data from the server again (pull to refresh, "retry").
+void refreshStudentPass(WidgetRef ref) {
+  final userId = ref.read(sessionUserIdProvider);
+  if (userId != null) ref.invalidate(studentProfileSummaryProvider(userId));
+  ref.invalidate(currentSubscriptionProvider);
+  ref.invalidate(studentQrProvider);
+}
 
 class StudentQrScreen extends ConsumerWidget {
   const StudentQrScreen({super.key});
@@ -39,12 +57,14 @@ class StudentQrScreen extends ConsumerWidget {
           child: RefreshIndicator(
             color: _teal,
             onRefresh: () async {
-              ref.invalidate(studentQrProvider);
+              refreshStudentPass(ref);
               try {
                 await ref.read(studentQrProvider.future);
               } catch (_) {}
             },
             child: passAsync.when(
+              // The card stays while what it is made of is read again.
+              skipLoadingOnReload: true,
               // Only when the card has never been loaded on this phone.
               loading: () => const StudentCardSkeleton(),
               error: (error, _) => SingleChildScrollView(
@@ -54,7 +74,7 @@ class StudentQrScreen extends ConsumerWidget {
                 child: SizedBox(
                   height: MediaQuery.of(context).size.height * 0.7,
                   child: _message('تعذر تحميل بطاقة الطالب',
-                      errorMessage(error), () => ref.invalidate(studentQrProvider)),
+                      errorMessage(error), () => refreshStudentPass(ref)),
                 ),
               ),
               data: (pass) {
@@ -68,7 +88,7 @@ class StudentQrScreen extends ConsumerWidget {
                       child: _message(
                           'البطاقة غير متاحة حالياً',
                           'سجل دخولك مرة أخرى أو تواصل مع إدارة الجامعة.',
-                          () => ref.invalidate(studentQrProvider)),
+                          () => refreshStudentPass(ref)),
                     ),
                   );
                 }

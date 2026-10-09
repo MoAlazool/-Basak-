@@ -6,6 +6,7 @@ import 'package:basak_mobile/features/auth/models/user_role.dart';
 import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
 import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
 import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
+import 'package:basak_mobile/features/student/subscription/models/subscription_model.dart';
 
 /// Auth state the test can switch between accounts (no Supabase needed).
 class _SwitchableAuth extends AuthNotifier {
@@ -25,7 +26,10 @@ class _FakeQrRepository implements StudentQrRepository {
   int fetches = 0;
 
   @override
-  Future<StudentPassDetails?> getStudentPassDetails() async {
+  Future<StudentPassDetails?> getStudentPassDetails({
+    required Future<Map<String, dynamic>?> Function() student,
+    required Future<SubscriptionModel?> Function() subscription,
+  }) async {
     fetches++;
     return StudentPassDetails(fullName: signedIn);
   }

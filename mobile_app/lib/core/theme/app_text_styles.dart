@@ -12,14 +12,6 @@ import 'app_colors.dart';
 class AppTextStyles {
   static const fontFamily = 'ReadexPro';
 
-  static TextStyle get displayLarge => const TextStyle(
-        fontFamily: AppTextStyles.fontFamily,
-        fontSize: 28,
-        fontWeight: FontWeight.bold,
-        color: AppColors.textPrimary,
-        height: 1.3,
-      );
-
   static TextStyle get displayMedium => const TextStyle(
         fontFamily: AppTextStyles.fontFamily,
         fontSize: 22,
@@ -66,12 +58,5 @@ class AppTextStyles {
         fontWeight: FontWeight.w500,
         color: AppColors.textMuted,
         height: 1.5,
-      );
-
-  static TextStyle get buttonText => const TextStyle(
-        fontFamily: AppTextStyles.fontFamily,
-        fontSize: 15,
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
       );
 }
