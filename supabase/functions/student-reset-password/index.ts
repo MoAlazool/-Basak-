@@ -1,5 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders, errorMessage, jsonResponse } from '../_shared/admin-auth.ts';
+import { serviceClient } from '../_shared/clients.ts';
+import { errorMessage, jsonResponse, preflight } from '../_shared/http.ts';
 
 // Step 3 of the student "Forgot password" flow (see migration
 // 20261004000003_student_password_reset.sql). Called by the app before sign-in
@@ -13,8 +13,8 @@ const reasons: Record<string, string> = {
 };
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
+  const early = preflight(request);
+  if (early) return early;
 
   try {
     const body = await request.json();
@@ -26,10 +26,8 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.' }, 400);
     }
 
-    const url = Deno.env.get('SUPABASE_URL');
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!url || !serviceKey) throw new Error('إعدادات استعادة كلمة المرور غير مكتملة.');
-    const service = createClient(url, serviceKey, { auth: { persistSession: false } });
+    // No session exists yet: the one-time code, checked by the database, is the credential.
+    const service = serviceClient();
 
     const { data: check, error: checkError } = await service.rpc('check_student_password_reset_code', {
       p_phone: phone,

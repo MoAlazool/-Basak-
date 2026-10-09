@@ -1,7 +1,12 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders, errorMessage, errorStatus, HttpError, jsonResponse, requireAdmin } from '../_shared/admin-auth.ts';
+import { requireAdmin } from '../_shared/admin-auth.ts';
+import { serviceClient } from '../_shared/clients.ts';
+import { errorMessage, errorStatus, HttpError, jsonResponse, preflight } from '../_shared/http.ts';
+import { secretMatches } from '../_shared/push/message.ts';
+import '../_shared/wallet/artwork.ts'; // the picture decoder: a new photo is checked before Google is given its link
 import {
-  appleConfig, deliverGoogle, googleConfig, loadCard, markDelivered, pushAppleDevices, registerSyncUrl, serviceClient,
+  type AppleDevice, appleConfig, type Card, deliverGoogle, googleConfig, type GooglePassState, loadAppleDevices, loadCard,
+  markDelivered, pushAppleDevices, registerSyncUrl,
 } from '../_shared/wallet/runtime.ts';
 
 // Brings installed Wallet cards up to date. The database marks a card as out
@@ -23,14 +28,39 @@ import {
 
 const BATCH = 20;
 
-interface DirtyPass {
+/** A claimed wallet_passes row (wallet_claim_dirty returns the whole row). */
+interface DirtyPass extends GooglePassState {
   student_id: string;
   platform: 'apple' | 'google';
-  dirty_at: string | null;
 }
 
-async function deliver(service: SupabaseClient, pass: DirtyPass): Promise<number> {
-  const card = await loadCard(service, pass.student_id);
+/** What a batch loads once and its passes share. */
+interface BatchContext {
+  /** A student with both an Apple and a Google card is worked out once. */
+  card(studentId: string): Promise<Card | null>;
+  /** The devices of every Apple pass in the batch, from one query. */
+  appleDevices: Promise<Map<string, AppleDevice[]>>;
+}
+
+function batchContext(service: SupabaseClient, batch: DirtyPass[]): BatchContext {
+  const cards = new Map<string, Promise<Card | null>>();
+  const appleDevices = loadAppleDevices(
+    service, batch.filter((pass) => pass.platform === 'apple').map((pass) => pass.student_id),
+  );
+  // Looked at only by the Apple passes; a failure must not surface as an unhandled rejection.
+  appleDevices.catch(() => {});
+  return {
+    card(studentId) {
+      let card = cards.get(studentId);
+      if (!card) cards.set(studentId, card = loadCard(service, studentId));
+      return card;
+    },
+    appleDevices,
+  };
+}
+
+async function deliver(service: SupabaseClient, pass: DirtyPass, context: BatchContext): Promise<number> {
+  const card = await context.card(pass.student_id);
   if (!card) {
     // The student is gone; so is the card.
     await service.from('wallet_passes').delete().eq('student_id', pass.student_id).eq('platform', pass.platform);
@@ -39,7 +69,7 @@ async function deliver(service: SupabaseClient, pass: DirtyPass): Promise<number
   if (pass.platform === 'google') {
     const google = googleConfig();
     if (!google) throw new Error('Google Wallet غير مفعّل.');
-    await deliverGoogle(service, google, card);
+    await deliverGoogle(service, google, card, pass);
     await markDelivered(service, pass.student_id, 'google', card, pass.dirty_at);
     return 0;
   }
@@ -47,7 +77,7 @@ async function deliver(service: SupabaseClient, pass: DirtyPass): Promise<number
   if (!apple) throw new Error('Apple Wallet غير مفعّل.');
   // Mark first: a device that asks "what changed?" must already see this card.
   await markDelivered(service, pass.student_id, 'apple', card, pass.dirty_at);
-  return pushAppleDevices(service, apple, pass.student_id);
+  return pushAppleDevices(service, apple, (await context.appleDevices).get(pass.student_id) ?? []);
 }
 
 async function pendingCount(service: SupabaseClient, companyId: string | null): Promise<number> {
@@ -59,8 +89,8 @@ async function pendingCount(service: SupabaseClient, companyId: string | null): 
 }
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
+  const early = preflight(request);
+  if (early) return early;
 
   try {
     const body = await request.json().catch(() => ({}));
@@ -73,7 +103,7 @@ Deno.serve(async (request: Request) => {
       service = serviceClient();
       const { data: runtime, error } = await service.from('wallet_runtime').select('sync_secret').eq('id', true).single();
       if (error) throw error;
-      if (runtime.sync_secret !== secret) throw new HttpError(401, 'غير مصرح.');
+      if (!secretMatches(runtime.sync_secret, secret)) throw new HttpError(401, 'غير مصرح.');
       companyId = null;
       fromDatabase = true;
     } else {
@@ -84,18 +114,21 @@ Deno.serve(async (request: Request) => {
         : String(body.companyId ?? '').trim() || null;
       if (!companyId) throw new HttpError(400, 'اختر الشركة.');
     }
-    await registerSyncUrl(service);
-
-    const { data, error } = await service.rpc('wallet_claim_dirty', { p_company_id: companyId, p_limit: BATCH });
+    // The caller is known and scoped from here on.
+    const [{ data, error }] = await Promise.all([
+      service.rpc('wallet_claim_dirty', { p_company_id: companyId, p_limit: BATCH }),
+      registerSyncUrl(service),
+    ]);
     if (error) throw error;
     const batch = (data ?? []) as DirtyPass[];
+    const context = batchContext(service, batch);
 
     let updated = 0;
     let pushFailures = 0;
     const errors: string[] = [];
     await Promise.all(batch.map(async (pass) => {
       try {
-        pushFailures += await deliver(service, pass);
+        pushFailures += await deliver(service, pass, context);
         updated += 1;
       } catch (error) {
         const message = errorMessage(error, 'تعذر تحديث بطاقة.');

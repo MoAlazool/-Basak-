@@ -1,8 +1,10 @@
-import { corsHeaders, errorMessage, errorStatus, jsonResponse, assertCompanyAccess, requireAdmin } from '../_shared/admin-auth.ts';
+import { deleteAccount } from '../_shared/accounts.ts';
+import { assertCompanyAccess, requireAdmin } from '../_shared/admin-auth.ts';
+import { errorMessage, errorStatus, jsonResponse, preflight } from '../_shared/http.ts';
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
+  const early = preflight(request);
+  if (early) return early;
 
   try {
     const context = await requireAdmin(request);
@@ -20,19 +22,13 @@ Deno.serve(async (request: Request) => {
 
     // Deleting the Auth user cascades the supervisors row and its supervisor_lines;
     // each line's primary contact is then recomputed by the database.
-    const { error: deleteAuthError } = await serviceClient.auth.admin.deleteUser(supervisorId);
-    if (deleteAuthError && !/not found|does not exist/i.test(deleteAuthError.message)) {
-      throw deleteAuthError;
-    }
-    // Legacy rows can exist without a matching Auth user.
-    const { error: deleteRowError } = await serviceClient.from('supervisors').delete().eq('id', supervisorId);
-    if (deleteRowError) throw deleteRowError;
+    await deleteAccount(serviceClient, supervisor.id, 'supervisors');
     // Their photos go too. A leftover file is harmless (nobody can see it), so
     // a storage hiccup does not fail the deletion.
-    const { data: photos } = await serviceClient.storage.from('supervisor-avatars').list(supervisorId);
+    const { data: photos } = await serviceClient.storage.from('supervisor-avatars').list(supervisor.id);
     if (photos?.length) {
       await serviceClient.storage.from('supervisor-avatars')
-        .remove(photos.map((photo) => `${supervisorId}/${photo.name}`));
+        .remove(photos.map((photo) => `${supervisor.id}/${photo.name}`));
     }
     return jsonResponse({ deleted: true });
   } catch (error) {

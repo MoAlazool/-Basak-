@@ -1,57 +1,57 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// Who is calling a dashboard function, and what they may act on.
+import type { SupabaseClient, User } from 'https://esm.sh/@supabase/supabase-js@2';
+import { type Clients, requireUser, serviceClient } from './clients.ts';
+import { HttpError } from './http.ts';
 
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-/** An error with an HTTP status: 401 = not signed in / invalid session, 403 = not allowed. */
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
+export interface AdminRow {
+  id: string;
+  role: 'super_admin' | 'company_admin';
+  company_id: string | null;
 }
 
-export function errorStatus(error: unknown): number {
-  return error instanceof HttpError ? error.status : 400;
+export interface AdminContext {
+  user: User;
+  admin: AdminRow;
+  /** Full access: use it only for what the checks above allow this admin to do. */
+  serviceClient: SupabaseClient;
 }
 
-export async function requireAdmin(request: Request) {
-  const authorization = request.headers.get('Authorization');
-  const token = authorization?.replace(/^Bearer\s+/i, '');
-  if (!token) throw new HttpError(401, 'يلزم تسجيل الدخول كمسؤول.');
+/**
+ * The caller must be a signed-in admin: the platform admin, or the admin of a
+ * company that is active. `clients` is only passed by tests.
+ */
+export async function requireAdmin(request: Request, clients?: Clients): Promise<AdminContext> {
+  const user = await requireUser(request, {
+    missing: 'يلزم تسجيل الدخول كمسؤول.',
+    invalid: 'انتهت جلسة الدخول. سجّل الدخول مرة أخرى.',
+  }, clients?.anon);
 
-  const url = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !anonKey || !serviceKey) throw new Error('إعدادات وظيفة الإدارة غير مكتملة.');
-
-  const authClient = createClient(url, anonKey, { auth: { persistSession: false } });
-  const { data: { user }, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !user) throw new HttpError(401, 'انتهت جلسة الدخول. سجّل الدخول مرة أخرى.');
-
-  const serviceClient = createClient(url, serviceKey, { auth: { persistSession: false } });
-  const { data: admin, error: adminError } = await serviceClient
-    .from('admins').select('id,role,company_id').eq('id', user.id).maybeSingle();
+  // The row is looked up by the id Auth just vouched for, never by anything the
+  // request says. Its company comes back in the same query.
+  const service = clients?.service ?? serviceClient();
+  const { data: admin, error: adminError } = await service
+    .from('admins').select('id,role,company_id,company:companies(status)').eq('id', user.id).maybeSingle();
   if (adminError || !admin) throw new HttpError(403, 'هذا الإجراء متاح للمسؤولين فقط.');
 
-  // A company's admins lose access while the company is suspended or archived.
   if (admin.role === 'company_admin') {
-    const { data: company, error: companyError } = await serviceClient
-      .from('companies').select('status').eq('id', admin.company_id).maybeSingle();
-    if (companyError || company?.status !== 'active') {
+    // A company's admins lose access while the company is suspended or archived.
+    const company = admin.company as { status?: string } | null;
+    if (!admin.company_id || company?.status !== 'active') {
       throw new HttpError(403, 'حساب شركتك موقوف حالياً. تواصل مع إدارة المنصة.');
     }
+  } else if (admin.role !== 'super_admin') {
+    throw new HttpError(403, 'هذا الإجراء متاح للمسؤولين فقط.');
   }
 
-  return { user, admin, serviceClient };
+  return {
+    user,
+    admin: { id: admin.id, role: admin.role, company_id: admin.company_id },
+    serviceClient: service,
+  };
 }
 
-export type AdminContext = Awaited<ReturnType<typeof requireAdmin>>;
-
-export async function requireSuperAdmin(request: Request) {
-  const context = await requireAdmin(request);
+export async function requireSuperAdmin(request: Request, clients?: Clients): Promise<AdminContext> {
+  const context = await requireAdmin(request, clients);
   if (context.admin.role !== 'super_admin') {
     throw new HttpError(403, 'هذا الإجراء متاح لمدير النظام فقط. (الحساب المسجل حالياً ليس مدير النظام)');
   }
@@ -80,20 +80,4 @@ export async function resolveCompany(context: AdminContext, requested: unknown):
   if (error) throw error;
   if (!company) throw new HttpError(404, 'الشركة غير موجودة.');
   return companyId;
-}
-
-export function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
-/** Readable message for thrown Errors and for PostgREST / Auth error objects. */
-export function errorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = String((error as { message?: unknown }).message ?? '').trim();
-    if (message) return message;
-  }
-  return fallback;
 }

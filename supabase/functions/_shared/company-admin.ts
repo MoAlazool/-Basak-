@@ -1,5 +1,6 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { HttpError } from './admin-auth.ts';
+import { createLogin, finishOrRemoveLogin } from './accounts.ts';
+import { HttpError } from './http.ts';
 
 export interface NewCompanyAdmin {
   email: string;
@@ -20,30 +21,30 @@ export function validateCompanyAdmin(email: string, fullName: string, password: 
   }
 }
 
-/** Creates the sign-in account and the admins row together; leaves nothing half-made. */
+/** Refuses (409) an e-mail that already belongs to an admin. Checked before anything is created. */
+export async function assertAdminEmailFree(service: SupabaseClient, email: string): Promise<void> {
+  const { data: existing, error } = await service.from('admins').select('id').eq('email', email).maybeSingle();
+  if (error) throw error;
+  if (existing) throw new HttpError(409, 'هذا البريد مسجل بالفعل كمسؤول.');
+}
+
+/**
+ * Creates the sign-in account and the admins row together; leaves nothing
+ * half-made. The caller has already run assertAdminEmailFree.
+ */
 export async function createCompanyAdmin(service: SupabaseClient, input: NewCompanyAdmin) {
   const { email, fullName, companyId, password, createdBy } = input;
-  const { data: existingAdmin, error: existingError } = await service
-    .from('admins').select('id').eq('email', email).maybeSingle();
-  if (existingError) throw existingError;
-  if (existingAdmin) throw new HttpError(409, 'هذا البريد مسجل بالفعل كمسؤول.');
-
   const metadata = { role: 'company_admin', company_id: companyId, full_name: fullName };
   let authUserId: string;
   let invited = false;
 
   if (password) {
     // Direct creation: works without a custom SMTP server.
-    const { data, error } = await service.auth.admin.createUser({
-      email, password, email_confirm: true, user_metadata: metadata,
+    authUserId = await createLogin(service, {
+      email, password, metadata,
+      takenMessage: 'هذا البريد مستخدم بالفعل لحساب آخر.',
+      failedMessage: 'تعذر إنشاء حساب مدير الشركة.',
     });
-    if (error || !data.user) {
-      if (error && /already|registered|exists/i.test(error.message)) {
-        throw new HttpError(409, 'هذا البريد مستخدم بالفعل لحساب آخر.');
-      }
-      throw error ?? new Error('تعذر إنشاء حساب مدير الشركة.');
-    }
-    authUserId = data.user.id;
   } else {
     // Invitation e-mail: requires custom SMTP (Supabase default SMTP only mails project members).
     const { data, error } = await service.auth.admin.inviteUserByEmail(email, {
@@ -59,13 +60,12 @@ export async function createCompanyAdmin(service: SupabaseClient, input: NewComp
     invited = true;
   }
 
-  const { error: adminError } = await service.from('admins').insert({
-    id: authUserId, email, full_name: fullName, role: 'company_admin',
-    company_id: companyId, created_by_admin_id: createdBy,
+  await finishOrRemoveLogin(service, authUserId, 'create-company-admin', async () => {
+    const { error } = await service.from('admins').insert({
+      id: authUserId, email, full_name: fullName, role: 'company_admin',
+      company_id: companyId, created_by_admin_id: createdBy,
+    });
+    if (error) throw error;
   });
-  if (adminError) {
-    await service.auth.admin.deleteUser(authUserId);
-    throw adminError;
-  }
   return { id: authUserId, invited };
 }

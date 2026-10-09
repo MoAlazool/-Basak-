@@ -1,5 +1,6 @@
-import { portraitJpeg } from '../_shared/wallet/photo.ts';
-import { loadCard, serviceClient } from '../_shared/wallet/runtime.ts';
+import { serviceClient } from '../_shared/clients.ts';
+import '../_shared/wallet/artwork.ts'; // the picture decoder
+import { portraitForToken } from '../_shared/wallet/photo.ts';
 
 // Serves ONE thing: a small portrait of a student, for Google Wallet's details
 // view, at  .../wallet-photo/<token>.jpg
@@ -19,14 +20,7 @@ Deno.serve(async (request: Request) => {
     const token = new URL(request.url).pathname.match(/\/([0-9a-f]{64})\.jpg$/)?.[1];
     if (!token) return notFound();
 
-    const service = serviceClient();
-    const { data: pass, error } = await service.from('wallet_passes')
-      .select('student_id').eq('photo_token', token).eq('platform', 'google').maybeSingle();
-    if (error) throw error;
-    if (!pass) return notFound();
-
-    const card = await loadCard(service, pass.student_id);
-    const jpeg = card ? await portraitJpeg(service, card.content.photo) : null;
+    const jpeg = await portraitForToken(serviceClient(), token);
     if (!jpeg) return notFound();
     return new Response(request.method === 'HEAD' ? null : jpeg.slice().buffer, {
       status: 200,

@@ -1,23 +1,24 @@
-import { corsHeaders, errorMessage, errorStatus, jsonResponse, requireAdmin, resolveCompany } from '../_shared/admin-auth.ts';
+import { createLogin, finishOrRemoveLogin } from '../_shared/accounts.ts';
+import { requireAdmin, resolveCompany } from '../_shared/admin-auth.ts';
+import { errorMessage, errorStatus, jsonResponse, preflight, together } from '../_shared/http.ts';
+import { isEgyptianMobile, loginEmail, normalizeEgyptianPhone } from '../_shared/phone.ts';
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ error: 'طريقة الطلب غير مدعومة.' }, 405);
+  const early = preflight(request);
+  if (early) return early;
 
   try {
     const context = await requireAdmin(request);
     const { user, serviceClient } = context;
     const body = await request.json();
     const fullName = String(body.fullName ?? '').trim();
-    let phone = String(body.phone ?? '').replace(/\D/g, '');
-    if (phone.startsWith('20') && phone.length >= 12) phone = phone.substring(2);
-    if (phone.length === 10 && phone.startsWith('1')) phone = `0${phone}`;
+    const phone = normalizeEgyptianPhone(body.phone);
     const password = String(body.password ?? '');
     const lineIds: string[] = Array.isArray(body.lineIds)
       ? [...new Set(body.lineIds.map((id: unknown) => String(id ?? '').trim()).filter(Boolean))] as string[]
       : [];
 
-    if (!fullName || !/^01[0125][0-9]{8}$/.test(phone)) {
+    if (!fullName || !isEgyptianMobile(phone)) {
       return jsonResponse({ error: 'أدخل اسم المشرف ورقم هاتف مصري صحيح.' }, 400);
     }
     if (password.length < 8) {
@@ -27,57 +28,47 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: 'اختر خطاً واحداً على الأقل يكون المشرف مسؤولاً عنه.' }, 400);
     }
 
-    const companyId = await resolveCompany(context, body.companyId);
-
-    const { data: lines, error: linesError } = await serviceClient
-      .from('lines').select('id').eq('company_id', companyId).in('id', lineIds);
-    if (linesError) throw linesError;
-    if ((lines ?? []).length !== lineIds.length) {
+    // The company and its lines on one side, the phone on the other: asked at once.
+    const [scope, taken] = await together([
+      (async () => {
+        const companyId = await resolveCompany(context, body.companyId);
+        const { data: lines, error } = await serviceClient
+          .from('lines').select('id').eq('company_id', companyId).in('id', lineIds);
+        if (error) throw error;
+        return { companyId, lines: lines ?? [] };
+      })(),
+      serviceClient.from('supervisors').select('id').eq('phone', phone).maybeSingle(),
+    ]);
+    if (scope.lines.length !== lineIds.length) {
       return jsonResponse({ error: 'بعض الخطوط المختارة لا تتبع شركة المشرف.' }, 400);
     }
+    if (taken.error) throw taken.error;
+    if (taken.data) return jsonResponse({ error: 'رقم الهاتف مسجل بالفعل لمشرف آخر.' }, 409);
 
-    const { data: existing, error: existingError } = await serviceClient
-      .from('supervisors').select('id').eq('phone', phone).maybeSingle();
-    if (existingError) throw existingError;
-    if (existing) return jsonResponse({ error: 'رقم الهاتف مسجل بالفعل لمشرف آخر.' }, 409);
-
-    const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
-      email: `${phone}@busak.app`,
-      password,
-      email_confirm: true,
-      user_metadata: { role: 'supervisor', phone, full_name: fullName },
+    const supervisorId = await createLogin(serviceClient, {
+      email: loginEmail(phone), password, metadata: { role: 'supervisor', phone, full_name: fullName },
+      takenMessage: 'رقم الهاتف مستخدم بالفعل لحساب آخر (طالب أو مشرف).',
+      failedMessage: 'تعذر إنشاء حساب المشرف.',
     });
-    if (createError || !created.user) {
-      if (createError && /already|registered|exists/i.test(createError.message)) {
-        return jsonResponse({ error: 'رقم الهاتف مستخدم بالفعل لحساب آخر (طالب أو مشرف).' }, 409);
-      }
-      throw createError ?? new Error('تعذر إنشاء حساب المشرف.');
-    }
-
-    const { error: insertError } = await serviceClient.from('supervisors').insert({
-      id: created.user.id,
-      full_name: fullName,
-      phone,
-      company_id: companyId,
-      created_by_admin_id: user.id,
-      is_active: true,
+    // Deleting the Auth user cascades the supervisors row: nothing half-created remains.
+    await finishOrRemoveLogin(serviceClient, supervisorId, 'admin-create-supervisor', async () => {
+      const { error: insertError } = await serviceClient.from('supervisors').insert({
+        id: supervisorId,
+        full_name: fullName,
+        phone,
+        company_id: scope.companyId,
+        created_by_admin_id: user.id,
+        is_active: true,
+      });
+      if (insertError) throw insertError;
+      // Company -> Line -> Supervisor. Stored in supervisor_lines (validated in the DB).
+      const { error: assignError } = await serviceClient.rpc('set_supervisor_lines', {
+        p_supervisor_id: supervisorId,
+        p_line_ids: lineIds,
+      });
+      if (assignError) throw assignError;
     });
-    if (insertError) {
-      await serviceClient.auth.admin.deleteUser(created.user.id);
-      throw insertError;
-    }
-
-    // Company -> Line -> Supervisor. Stored in supervisor_lines (validated in the DB).
-    const { error: assignError } = await serviceClient.rpc('set_supervisor_lines', {
-      p_supervisor_id: created.user.id,
-      p_line_ids: lineIds,
-    });
-    if (assignError) {
-      // Deleting the Auth user cascades the supervisors row: nothing half-created remains.
-      await serviceClient.auth.admin.deleteUser(created.user.id);
-      throw assignError;
-    }
-    return jsonResponse({ id: created.user.id, lineIds });
+    return jsonResponse({ id: supervisorId, lineIds });
   } catch (error) {
     return jsonResponse({ error: errorMessage(error, 'تعذر إضافة المشرف.') }, errorStatus(error));
   }

@@ -41,12 +41,12 @@ export interface CardContent {
   route: { line: string | null; station: string | null; term?: string | null } | null;
 }
 
-export const ASSET_BUCKET = 'wallet-assets';
+const ASSET_BUCKET = 'wallet-assets';
 export const APPLE_LOGO_FILES = ['icon.png', 'icon@2x.png', 'icon@3x.png', 'logo.png', 'logo@2x.png', 'logo@3x.png'];
-export const GOOGLE_ASSET_FILE = 'google.png';
+const GOOGLE_ASSET_FILE = 'google.png';
 
 /** The platform's own name: the main brand only on a card with no company. */
-export const PLATFORM_NAME = 'باصك';
+const PLATFORM_NAME = 'باصك';
 const CARD_KIND = 'بطاقة نقل طلاب';
 const VALIDITY_NOTE = 'هذه البطاقة للتعريف بالطالب. صلاحية الاشتراك يتحقق منها المشرف عند مسح الرمز.';
 const POWERED_BY = 'تشغيل منصة باصك · Powered by Basak.app';
@@ -54,7 +54,7 @@ const POWERED_BY = 'تشغيل منصة باصك · Powered by Basak.app';
  * The credit printed under the QR code on both wallets. Latin only: Apple
  * draws this line in the barcode's own encoding (ISO-8859-1).
  */
-export const BARCODE_CREDIT = 'Powered by Basak.app';
+const BARCODE_CREDIT = 'Powered by Basak.app';
 const DEFAULT_CONTACT_LABEL = 'للتواصل';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,7 +80,7 @@ export function hexToRgb(hex: string): string {
   return `rgb(${parseInt(match[1], 16)}, ${parseInt(match[2], 16)}, ${parseInt(match[3], 16)})`;
 }
 
-export function assetUrl(publicBaseUrl: string, folder: string, file: string): string {
+function assetUrl(publicBaseUrl: string, folder: string, file: string): string {
   return `${publicBaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/${ASSET_BUCKET}/${folder}/${file}`;
 }
 
