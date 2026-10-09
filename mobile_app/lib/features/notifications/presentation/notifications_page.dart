@@ -74,7 +74,14 @@ List<NotificationDay> groupNotificationsByDay(List<AppNotification> items, DateT
 class NotificationsPage extends ConsumerStatefulWidget {
   final Widget? header;
 
-  const NotificationsPage({super.key, this.header});
+
+  /// Whether the user has notification settings in the app (supervisors). A
+  /// student has none: no settings button, and when the phone does not let the
+  /// app show notifications, one line that leads to the system's own prompt
+  /// or settings. The inbox itself is the same either way.
+  final bool preferences;
+
+  const NotificationsPage({super.key, this.header, this.preferences = true});
 
   static const months = [
     'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -162,7 +169,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                 padding: const EdgeInsets.only(top: 18, bottom: 32),
                 children: [
                   if (widget.header != null) ...[widget.header!, const SizedBox(height: 18)],
-                  const _PushOffer(),
+                  _PushOffer(plain: !widget.preferences),
                   _padded(_searchField()),
                   const SizedBox(height: 14),
                   _padded(_filters(feed)),
@@ -258,11 +265,12 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
               textStyle: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          IconButton(
-            tooltip: 'إعدادات الإشعارات',
-            onPressed: () => NotificationPreferencesScreen.open(context),
-            icon: const Icon(LucideIcons.settings, color: _ink, size: 21),
-          ),
+          if (widget.preferences)
+            IconButton(
+              tooltip: 'إعدادات الإشعارات',
+              onPressed: () => NotificationPreferencesScreen.open(context),
+              icon: const Icon(LucideIcons.settings, color: _ink, size: 21),
+            ),
         ]),
       );
 
@@ -420,7 +428,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 /// Shown while this phone could receive pushes but the system does not let
 /// the app show them: one tap away from switching them on.
 class _PushOffer extends ConsumerWidget {
-  const _PushOffer();
+  /// Ask the system directly, with no explanation sheet of the app's own.
+  final bool plain;
+  const _PushOffer({this.plain = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -434,18 +444,23 @@ class _PushOffer extends ConsumerWidget {
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: () => offerPushNotifications(context, ref),
+          onTap: () => plain
+              ? requestSystemPushPermission(ref, openSettingsWhenBlocked: true)
+              : offerPushNotifications(context, ref),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Row(children: [
               const Icon(LucideIcons.bellRing, color: NotificationsPage.teal, size: 20),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('فعّل الإشعارات لتصلك التنبيهات حتى والتطبيق مغلق.',
+                child: Text(
+                    plain && permission == PushPermission.blocked
+                        ? 'الإشعارات متوقفة من إعدادات الهاتف.'
+                        : 'فعّل الإشعارات لتصلك التنبيهات حتى والتطبيق مغلق.',
                     style: AppTextStyles.bodyMedium.copyWith(color: NotificationsPage.ink)),
               ),
               const SizedBox(width: 8),
-              Text('تفعيل',
+              Text(plain && permission == PushPermission.blocked ? 'فتح الإعدادات' : 'تفعيل',
                   style: AppTextStyles.bodyMedium
                       .copyWith(color: NotificationsPage.teal, fontWeight: FontWeight.w700)),
             ]),

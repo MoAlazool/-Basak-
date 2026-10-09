@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/supabase_tables.dart';
+import '../../../core/media/signed_url_cache.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
 import '../../../core/sync/session.dart';
@@ -122,7 +123,7 @@ final supervisorPhotoUrlProvider = FutureProvider<String?>((ref) async {
         () => client.from('supervisors').select('profile_image_url').eq('id', userId).maybeSingle());
     final path = (row as Map?)?['profile_image_url'] as String?;
     if (path == null || path.isEmpty) return null;
-    return await client.storage.from('supervisor-avatars').createSignedUrl(path, 3600);
+    return await SignedUrlCache.urlOrOffline('supervisor-avatars', path);
   } catch (_) {
     return null;
   }

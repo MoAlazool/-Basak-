@@ -58,7 +58,7 @@ class ComplaintsRepository {
         'complaints',
         () => _client
             .from(SupabaseTables.complaints)
-            .select()
+            .select('id, student_id, title, message, status, created_at')
             .eq('student_id', user.id)
             .order('created_at', ascending: false));
 

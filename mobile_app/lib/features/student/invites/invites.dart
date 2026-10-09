@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/supabase_service.dart';
+import '../../../core/sync/own_changes.dart';
 import '../../../core/sync/session.dart';
+import '../qr/presentation/student_qr_screen.dart';
+import '../subscription/presentation/purchase_flow.dart';
 import '../../../core/theme/app_colors.dart';
 import '../home/presentation/student_home_screen.dart';
 import '../subscription/presentation/subscription_screen.dart';
@@ -42,13 +45,27 @@ class CompanyInvite {
       };
 }
 
-final myInvitesProvider = FutureProvider<List<CompanyInvite>>((ref) async {
-  if (ref.watch(sessionUserIdProvider) == null) return const [];
-  final response = await SupabaseService.client.rpc('get_my_invites');
-  return (response as List<dynamic>? ?? const [])
-      .map((e) => CompanyInvite.fromJson(Map<String, dynamic>.from(e as Map)))
-      .toList();
-});
+/// The invitations waiting for this student's answer.
+class MyInvitesNotifier extends AsyncNotifier<List<CompanyInvite>> {
+  @override
+  Future<List<CompanyInvite>> build() async {
+    if (ref.watch(sessionUserIdProvider) == null) return const [];
+    final response = await SupabaseService.client.rpc('get_my_invites');
+    return (response as List<dynamic>? ?? const [])
+        .map((e) => CompanyInvite.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  /// The student answered [inviteId] on this phone: it is gone from the list
+  /// at once, without asking the server for the list again.
+  void applyAnswered(String inviteId) {
+    final invites = state.valueOrNull;
+    if (invites != null) state = AsyncData([for (final i in invites) if (i.id != inviteId) i]);
+  }
+}
+
+final myInvitesProvider =
+    AsyncNotifierProvider<MyInvitesNotifier, List<CompanyInvite>>(MyInvitesNotifier.new);
 
 /// Shown on the home screen while an invitation is waiting for an answer.
 class InvitesCard extends ConsumerStatefulWidget {
@@ -80,12 +97,27 @@ class _InvitesCardState extends ConsumerState<InvitesCard> {
       if (confirmed != true) return;
     }
     setState(() => _busyId = invite.id);
+    // What the server will announce back to this phone about its own answer.
+    final echoes = [
+      OwnChanges.begin('company_invites', id: invite.id),
+      if (accept) OwnChanges.begin('company_students'),
+      if (accept) OwnChanges.begin('subscriptions', op: 'INSERT'),
+    ];
     try {
       final result = await SupabaseService.client.rpc('respond_company_invite',
           params: {'p_invite_id': invite.id, 'p_accept': accept});
-      ref.invalidate(myInvitesProvider);
-      ref.invalidate(currentSubscriptionProvider);
-      ref.invalidate(allSubscriptionsProvider);
+      for (final echo in echoes) {
+        echo.done();
+      }
+      ref.read(myInvitesProvider.notifier).applyAnswered(invite.id);
+      if (accept) {
+        // Joining opens a subscription on the server (it is not in the
+        // answer): read once, here, not again when the announcement arrives.
+        ref.invalidate(currentSubscriptionProvider);
+        ref.invalidate(allSubscriptionsProvider);
+        ref.invalidate(saleCatalogProvider);
+        ref.invalidate(studentQrProvider);
+      }
       if (!mounted) return;
       final note = (result is Map ? result['note'] : null) as String?;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -96,6 +128,9 @@ class _InvitesCardState extends ConsumerState<InvitesCard> {
                 : 'انضممت إلى ${invite.companyName}. لم يُفتح الاشتراك تلقائياً: $note'),
       ));
     } catch (error) {
+      for (final echo in echoes) {
+        echo.failed();
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error.toString()), backgroundColor: AppColors.error));

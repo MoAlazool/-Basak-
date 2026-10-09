@@ -1,10 +1,56 @@
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/supabase_tables.dart';
+import '../../../core/network/perf_trace.dart';
 import '../../../core/network/supabase_service.dart';
 import '../models/user_role.dart';
 
+/// How the role of an account is asked from the server (replaced in tests).
+abstract class RoleLookup {
+  /// 'admin' | 'supervisor' | 'student', or null when the account has no role.
+  /// Throws [RoleRpcUnavailable] when the database has no such function.
+  Future<String?> myRole();
+
+  /// Whether [userId] has a row in [table] (the lookup used before `my_role`).
+  Future<bool> isIn(String table, String userId);
+}
+
+/// The database is older than `my_role()`.
+class RoleRpcUnavailable implements Exception {
+  const RoleRpcUnavailable();
+}
+
+class SupabaseRoleLookup implements RoleLookup {
+  const SupabaseRoleLookup();
+
+  @override
+  Future<String?> myRole() async {
+    PerfTrace.count('role.rpc');
+    try {
+      return await SupabaseService.client.rpc('my_role') as String?;
+    } on PostgrestException catch (error) {
+      // PGRST202: not in the schema cache; 42883: undefined function.
+      if (error.code == 'PGRST202' || error.code == '42883' || error.code == '404') {
+        throw const RoleRpcUnavailable();
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> isIn(String table, String userId) async {
+    PerfTrace.count('role.select');
+    return await SupabaseService.client.from(table).select('id').eq('id', userId).maybeSingle() != null;
+  }
+}
+
 class AuthRepository {
+  final RoleLookup _roles;
+
+  bool _roleRpcMissing = false;
+
+  AuthRepository({RoleLookup? roles}) : _roles = roles ?? const SupabaseRoleLookup();
+
   SupabaseClient get _client => SupabaseService.client;
 
   // Format phone to internal email identifier to enable immediate password auth without SMS gateway costs
@@ -211,32 +257,24 @@ class AuthRepository {
     return UserRole.unknown;
   }
 
-  /// Detect role by checking tables
+  /// The account's role: one request (`my_role`), or, on a database that
+  /// does not have that function yet, the three table lookups side by side.
   Future<UserRole> detectUserRole(String userId) async {
-    // 1. Check if Admin
-    final admin = await _client
-        .from(SupabaseTables.admins)
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-    if (admin != null) return UserRole.admin;
-
-    // 2. Check if Supervisor
-    final supervisor = await _client
-        .from(SupabaseTables.supervisors)
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-    if (supervisor != null) return UserRole.supervisor;
-
-    // 3. Check if Student
-    final student = await _client
-        .from(SupabaseTables.students)
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-    if (student != null) return UserRole.student;
-
+    if (!_roleRpcMissing) {
+      try {
+        return UserRole.fromString(await _roles.myRole());
+      } on RoleRpcUnavailable {
+        _roleRpcMissing = true; // asked once per run, not on every start
+      }
+    }
+    final found = await Future.wait([
+      _roles.isIn(SupabaseTables.admins, userId),
+      _roles.isIn(SupabaseTables.supervisors, userId),
+      _roles.isIn(SupabaseTables.students, userId),
+    ]);
+    if (found[0]) return UserRole.admin;
+    if (found[1]) return UserRole.supervisor;
+    if (found[2]) return UserRole.student;
     return UserRole.unknown;
   }
 

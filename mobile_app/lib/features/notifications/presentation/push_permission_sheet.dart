@@ -46,6 +46,41 @@ Future<void> offerPushNotificationsOnce(BuildContext context, WidgetRef ref) asy
   if (context.mounted) await offerPushNotifications(context, ref);
 }
 
+/// The phone's own notification prompt, with nothing of the app's before it
+/// (students: there are no choices to make in the app). When the system no
+/// longer shows a prompt and [openSettingsWhenBlocked] is set, the phone's
+/// settings open instead.
+Future<PushPermission> requestSystemPushPermission(WidgetRef ref, {bool openSettingsWhenBlocked = false}) async {
+  final controller = ref.read(pushControllerProvider);
+  if (!await controller.start()) return PushPermission.blocked;
+  var permission = await controller.permission();
+  if (permission == PushPermission.granted) {
+    await controller.sync();
+    return permission;
+  }
+  if (permission == PushPermission.blocked) {
+    if (openSettingsWhenBlocked) await NotificationPlatform.openSystemSettings();
+    return permission;
+  }
+  permission = await controller.requestPermission();
+  ref.invalidate(pushPermissionProvider);
+  return permission;
+}
+
+/// Once per installation, shortly after a student signs in: the system's
+/// prompt, asked plainly. Never again by itself after an answer; a refusal
+/// changes nothing else in the app (the Notification Center keeps working).
+Future<void> requestSystemPushPermissionOnce(WidgetRef ref) async {
+  final controller = ref.read(pushControllerProvider);
+  final store = ref.read(deviceStoreProvider);
+  if (!await controller.start() || await store.pushPrompted()) return;
+  final permission = await controller.permission();
+  if (permission == PushPermission.granted) return controller.sync();
+  if (permission == PushPermission.blocked) return;
+  await store.markPushPrompted();
+  await requestSystemPushPermission(ref);
+}
+
 Future<bool?> _show(BuildContext context, {required bool blocked}) => showModalBottomSheet<bool>(
       context: context,
       useSafeArea: true,

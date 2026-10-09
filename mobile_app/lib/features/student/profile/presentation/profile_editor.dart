@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/media/picker_errors.dart';
+import '../../../../core/media/signed_photo.dart';
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -11,8 +12,8 @@ import '../../../../core/widgets/photo_adjust_screen.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../qr/presentation/student_qr_screen.dart';
 import '../data/profile_repository.dart';
+export '../data/profile_repository.dart' show profileRepositoryProvider;
 
-final profileRepositoryProvider = Provider((ref) => ProfileRepository());
 
 const _months = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -43,9 +44,16 @@ class ProfileSection extends ConsumerStatefulWidget {
 class _ProfileSectionState extends ConsumerState<ProfileSection> {
   bool _changingPhoto = false;
 
+  /// The photo just chosen on this phone: shown at once, from memory, for as
+  /// long as the profile points at it ([_newPhotoPath]; null while it uploads).
+  MemoryImage? _newPhoto;
+  String? _newPhotoPath;
+
   static const _ink = Color(0xFF17384A);
   static const _teal = Color(0xFF00658D);
 
+  /// The repository already wrote the change into what this phone holds, so
+  /// these re-reads are answered from memory (no request).
   void _refresh() {
     ref.invalidate(studentProfileSummaryProvider(widget.userId));
     // The card and the QR screen show the same photo and college.
@@ -85,8 +93,17 @@ class _ProfileSectionState extends ConsumerState<ProfileSection> {
       // Framed in a circle and compressed before anything is uploaded.
       final photo = await ProfilePhoto.pickAndAdjust(context, source);
       if (photo == null || !mounted) return;
-      setState(() => _changingPhoto = true);
-      await ref.read(profileRepositoryProvider).changePhoto(photo);
+      setState(() {
+        _changingPhoto = true;
+        _newPhoto = MemoryImage(photo);
+        _newPhotoPath = null;
+      });
+      try {
+        _newPhotoPath = await ref.read(profileRepositoryProvider).changePhoto(photo);
+      } catch (_) {
+        if (mounted) setState(() => _newPhoto = null);
+        rethrow;
+      }
       _refresh();
       _say('تم تغيير الصورة الشخصية.');
     } catch (e) {
@@ -114,7 +131,11 @@ class _ProfileSectionState extends ConsumerState<ProfileSection> {
   @override
   Widget build(BuildContext context) {
     final p = widget.profile;
-    final photo = p?['profile_image_signed_url'] as String?;
+    final stored = studentPhoto(p?['profile_image_url'] as String?);
+    final photoUrl = stored == null ? null : ref.watch(signedPhotoProvider(stored)).valueOrNull;
+    // Changed again elsewhere since: the stored photo is the newer one.
+    final mine = _newPhoto != null && (_changingPhoto || _newPhotoPath == stored?.path);
+    final ImageProvider? photo = mine ? _newPhoto : (photoUrl == null ? null : avatarImage(photoUrl));
     final email = (p?['email'] as String?)?.trim() ?? '';
     final college = (p?['college'] as String?)?.trim() ?? '';
     final birth = DateTime.tryParse(p?['birth_date'] as String? ?? '');
@@ -127,7 +148,7 @@ class _ProfileSectionState extends ConsumerState<ProfileSection> {
           CircleAvatar(
             radius: 44,
             backgroundColor: const Color(0xFFE2F2F9),
-            backgroundImage: photo == null ? null : avatarImage(photo),
+            backgroundImage: photo,
             child: photo == null ? const Icon(LucideIcons.user, size: 40, color: _teal) : null,
           ),
           if (_changingPhoto)

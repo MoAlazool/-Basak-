@@ -2,15 +2,18 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/media/signed_url_cache.dart';
 import '../../../core/network/network_errors.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
 import '../../../core/storage/snapshot_store.dart';
+import '../../../core/sync/own_changes.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
 import '../../notifications/push/push_providers.dart';
 import '../../student/daily_ride/data/vote_reminders.dart';
-import '../../student/qr/data/student_qr_repository.dart';
+import '../../student/profile/data/profile_repository.dart';
+import '../../student/qr/presentation/student_qr_screen.dart';
 
 final activeUniversitiesProvider =
     FutureProvider<List<Map<String, String>>>((ref) {
@@ -21,26 +24,12 @@ final activeCollegesProvider =
   return ref.watch(authRepositoryProvider).getActiveColleges(universityId);
 });
 
+/// The student's own row. The photo is its storage path
+/// (`profile_image_url`); screens sign a link to it with signedPhotoProvider.
 final studentProfileSummaryProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
-  final cached = await OfflineCache.readThrough('profile.summary', () async {
-    final response = await SupabaseService.client
-        .from('students')
-        .select('full_name, phone, university, college, email, birth_date, profile_image_url')
-        .eq('id', userId)
-        .maybeSingle();
-    if (response == null) return null;
-    final path = response['profile_image_url'] as String?;
-    if (path == null || path.isEmpty) return response;
-    try {
-      final signed = await SupabaseService.client.storage
-          .from('student-avatars')
-          .createSignedUrl(path, 600);
-      return {...response, 'profile_image_signed_url': signed};
-    } catch (_) {
-      return response;
-    }
-  });
+  final cached = await OfflineCache.readThrough(
+      'profile.summary', () => ref.read(profileRepositoryProvider).summaryRow(userId));
   return cached == null ? null : Map<String, dynamic>.from(cached as Map);
 });
 
@@ -94,7 +83,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// must be told to the server as this account (detaching its push token).
   final Future<void> Function()? beforeSignOut;
 
-  AuthNotifier(this._repo, {this.beforeSignOut}) : super(const AuthState(isInitialLoading: true)) {
+  /// Loads the signed-in student's pass (see [_refreshOfflineStudentPass]).
+  final Future<void> Function()? refreshStudentPass;
+
+  AuthNotifier(this._repo, {this.beforeSignOut, this.refreshStudentPass})
+      : super(const AuthState(isInitialLoading: true)) {
     _init();
     _watchSession();
   }
@@ -106,8 +99,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _sessionSubscription = SupabaseService.client.auth.onAuthStateChange.listen((change) async {
         if (change.event == AuthChangeEvent.signedOut && state.isAuthenticated) {
           // Everything saved for this account goes with the session.
-          await OfflineCache.clearAll();
-          await SnapshotStore.clear();
+          await _clearAccountData();
           if (mounted) state = const AuthState();
         }
       });
@@ -229,8 +221,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await requireOnline(_repo.deleteStudentAccount);
       await VoteReminders.cancelAll();
-      await OfflineCache.clearAll();
-      await SnapshotStore.clear();
+      await _clearAccountData();
       state = const AuthState();
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
@@ -254,14 +245,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     // The next account on this phone must not get this student's reminders.
     await VoteReminders.cancelAll();
-    await OfflineCache.clearAll();
-    await SnapshotStore.clear();
+    await _clearAccountData();
     state = const AuthState();
   }
 
+  /// Everything kept for the account, on the device and in memory, in one
+  /// pass (one listing of the storage, the deletions side by side).
+  Future<void> _clearAccountData() async {
+    SignedUrlCache.clear();
+    OwnChanges.clear();
+    await OfflineCache.clearAll(also: SnapshotStore.isSnapshotKey);
+  }
+
+  /// The pass is loaded as soon as the student is known, so it is saved for
+  /// offline use before the card tab is opened. It goes through the same
+  /// provider the card tab reads, so it is fetched once, not twice.
   Future<void> _refreshOfflineStudentPass() async {
     try {
-      await StudentQrRepository().getStudentPassDetails();
+      // After the new state has reached the providers that watch it.
+      await Future<void>.delayed(Duration.zero);
+      await refreshStudentPass?.call();
     } catch (_) {
       // The app remains available. The last encrypted pass is used when offline.
     }
@@ -271,7 +274,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
   // After signing out this phone must get nothing meant for the account.
-  return AuthNotifier(repo, beforeSignOut: () => ref.read(pushControllerProvider).detach());
+  return AuthNotifier(repo,
+      beforeSignOut: () => ref.read(pushControllerProvider).detach(),
+      refreshStudentPass: () => ref.read(studentQrProvider.future));
 });
 
 /// The signed-in user's id. Every provider holding per-user data watches it,

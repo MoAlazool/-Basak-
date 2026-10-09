@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/sync/session.dart';
 import 'notifications_repository.dart';
 
-/// The user's push switches: from the device at once, then from the server.
+/// A supervisor's push switches: from the device at once, then from the server.
+/// (Students have no switches in the app: what reaches them is decided by the
+/// phone's own notification permission, and this is never read for them.)
 /// A change shows immediately and is taken back if the server refuses it.
 class NotificationPreferencesNotifier extends AsyncNotifier<NotificationPreferences> {
   /// The newest change wins: an older answer never overwrites a newer switch.
@@ -41,9 +43,3 @@ class NotificationPreferencesNotifier extends AsyncNotifier<NotificationPreferen
 final notificationPreferencesProvider =
     AsyncNotifierProvider<NotificationPreferencesNotifier, NotificationPreferences>(
         NotificationPreferencesNotifier.new);
-
-/// Whether the student wants the app's own ride-vote reminders. On until the
-/// preferences say otherwise, so nothing changes for who never opened them.
-final voteRemindersEnabledProvider = Provider<bool>((ref) =>
-    ref.watch(notificationPreferencesProvider).valueOrNull?.allows(NotificationCategory.reminder) ??
-    true);

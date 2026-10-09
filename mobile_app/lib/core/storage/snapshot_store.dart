@@ -2,12 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'offline_cache.dart';
+
 /// The last good copy of a few screens' data, kept per account in the device's
 /// encrypted storage. The app shows it at once on start and refreshes behind it.
 /// It is never the source of truth and holds nothing that is not already shown.
 class SnapshotStore {
   static const _storage = FlutterSecureStorage();
   static const _prefix = 'basak.snapshot.v1.';
+
+  static bool isSnapshotKey(String key) => key.startsWith(_prefix);
 
   static String _key(String userId, String name) => '$_prefix$userId.$name';
 
@@ -32,10 +36,7 @@ class SnapshotStore {
   /// Removes every snapshot. Called on sign-out and account deletion.
   static Future<void> clear() async {
     try {
-      final all = await _storage.readAll();
-      for (final key in all.keys.toList()) {
-        if (key.startsWith(_prefix)) await _storage.delete(key: key);
-      }
+      await OfflineCache.deleteWhere(isSnapshotKey);
     } catch (_) {}
   }
 }

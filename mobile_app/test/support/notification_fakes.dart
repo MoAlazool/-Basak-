@@ -47,6 +47,9 @@ class FakeNotificationsRepo implements NotificationsRepository {
   String? refusal;
 
   int pageRequests = 0;
+
+  /// Reads and writes of the push switches.
+  int preferenceRequests = 0;
   final List<List<String>?> marked = [];
   final List<String> openedIds = [];
   final List<Map<String, Object?>> sent = [];
@@ -133,12 +136,14 @@ class FakeNotificationsRepo implements NotificationsRepository {
 
   @override
   Future<NotificationPreferences> preferences() async {
+    preferenceRequests++;
     if (offline) throw const SocketException('Failed host lookup');
     return savedPreferences;
   }
 
   @override
   Future<NotificationPreferences> setPreferences(NotificationPreferences preferences) async {
+    preferenceRequests++;
     _write();
     return savedPreferences = preferences;
   }

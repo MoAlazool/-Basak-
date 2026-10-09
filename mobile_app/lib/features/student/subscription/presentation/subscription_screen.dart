@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/media/image_optimizer.dart';
 import '../../../../core/media/picker_errors.dart';
+import '../../../../core/sync/own_changes.dart';
 import '../../../../core/sync/session.dart';
+import '../../qr/presentation/student_qr_screen.dart';
+import '../data/subscription_repository.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/network/network_errors.dart';
+import '../../../../core/network/perf_trace.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
@@ -51,6 +56,74 @@ final subscriptionReceiptDocProvider =
   return ref.watch(subscriptionRepoProvider).getSubscriptionReceipt(id);
 });
 
+/// Sends receipts and shows the result on this phone from the server's own
+/// answer: the uploading phone never waits for the live announcement and
+/// reads nothing again.
+final receiptSubmitterProvider = Provider((ref) => ReceiptSubmitter(ref));
+
+class ReceiptSubmitter {
+  final Ref _ref;
+  ReceiptSubmitter(this._ref);
+
+  Future<ReceiptModel> submit({
+    required ReceiptAttempt attempt,
+    required Uint8List bytes,
+    String? paymentMethodId,
+    void Function(ReceiptPhase phase)? onPhase,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    // The server announces the new receipt and the subscription's new status
+    // to this phone too; both are already shown, so they are not read again.
+    final receiptEcho = OwnChanges.begin('receipts', op: 'INSERT');
+    final statusEcho = OwnChanges.begin('subscriptions', id: attempt.subscriptionId, op: 'UPDATE');
+    try {
+      final receipt = await _ref.read(subscriptionRepoProvider).uploadReceipt(
+          attempt: attempt, fileBytes: bytes, paymentMethodId: paymentMethodId, onPhase: onPhase, onProgress: onProgress);
+      receiptEcho.done(id: receipt.id, keep: const Duration(minutes: 1));
+      statusEcho.done();
+      _show(attempt.subscriptionId);
+      return receipt;
+    } catch (_) {
+      receiptEcho.failed();
+      statusEcho.failed();
+      rethrow;
+    }
+  }
+
+  /// The saved copies already hold the receipt and the new status (see
+  /// SubscriptionRepository.applyReceiptSubmitted): these re-reads are
+  /// answered from memory.
+  void _show(String subscriptionId) {
+    _ref.invalidate(currentSubscriptionProvider);
+    _ref.invalidate(allSubscriptionsProvider);
+    _ref.invalidate(subscriptionReceiptsProvider(subscriptionId));
+    _ref.invalidate(studentQrProvider);
+  }
+
+  /// Receipt images from earlier whose outcome was never learned: adopted when
+  /// the receipt turned out saved, removed otherwise.
+  Future<void> settlePending() async {
+    try {
+      for (final subscriptionId in await _ref.read(subscriptionRepoProvider).reconcilePendingReceipts()) {
+        _show(subscriptionId);
+      }
+    } catch (_) {
+      // Nothing saved for this phone, or storage unavailable: next time.
+    }
+  }
+}
+
+/// The image the student chose for a subscription's receipt: its file, the
+/// attempt it belongs to (which names the stored file across retries) and its
+/// preparation, started the moment it was chosen.
+class _ReceiptDraft {
+  final XFile file;
+  final ReceiptAttempt attempt;
+  final Future<Uint8List> prepared;
+
+  _ReceiptDraft(this.file, this.attempt, this.prepared);
+}
+
 /// The subscription a notification was about: its card opens when the
 /// subscriptions tab is shown, then this is cleared.
 final focusedSubscriptionProvider = StateProvider<String?>((ref) => null);
@@ -63,9 +136,17 @@ class SubscriptionScreen extends ConsumerStatefulWidget {
 }
 
 class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
-  bool _isUploadingReceipt = false;
   bool _isExporting = false;
-  XFile? _receiptPreview;
+  _ReceiptDraft? _draft;
+
+  /// Where the receipt being sent is (null: nothing is being sent).
+  ReceiptPhase? _phase;
+
+  /// The part of the image that has left the phone, when it can be known.
+  double? _progress;
+  Timer? _sentTimer;
+
+  bool get _sending => _phase != null && _phase != ReceiptPhase.done;
   String? _paymentMethodId;
   /// Cards whose details are open. A card that needs the student to act
   /// (pay, re-upload) opens by itself; the rest stay compact.
@@ -97,6 +178,12 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _sentTimer?.cancel();
+    super.dispose();
+  }
+
   void _refreshSubscriptions() {
     ref.invalidate(currentSubscriptionProvider);
     ref.invalidate(allSubscriptionsProvider);
@@ -113,11 +200,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   void _onCreated(SubscriptionModel created) {
-    _refreshSubscriptions();
+    // Already on screen: subscriptionCreatorProvider applied the server's answer.
     setState(() {
       _buying = false;
       _expanded.add(created.id);
-      _receiptPreview = null;
+      if (!_sending) _draft = null;
       _paymentMethodId = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -128,12 +215,20 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     ));
   }
 
-  Future<void> _pickReceipt(ImageSource source) async {
+  Future<void> _pickReceipt(ImageSource source, String subscriptionId) async {
     try {
-      final picked =
-          await ImagePicker().pickImage(
-              source: source, imageQuality: 92, maxWidth: 2600, maxHeight: 2600);
-      if (picked != null && mounted) setState(() => _receiptPreview = picked);
+      // Asked for at the stored size, so the phone's own encoder shrinks it
+      // (camera photos are 12 MP and more) and little is left to do in Dart.
+      final picked = await ImagePicker().pickImage(
+          source: source,
+          imageQuality: ImageOptimizer.pickQuality,
+          maxWidth: ImageOptimizer.pickMaxSide,
+          maxHeight: ImageOptimizer.pickMaxSide);
+      if (picked == null || !mounted) return;
+      // Made ready now, in the background, not when "send" is tapped. A file
+      // that cannot be read is told when it is sent.
+      final prepared = ImageOptimizer.prepareReceipt(picked.path)..ignore();
+      setState(() => _draft = _ReceiptDraft(picked, ReceiptAttempt.start(subscriptionId), prepared));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,45 +240,85 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     }
   }
 
+  void _removeReceipt() {
+    // While the image is still being made ready this simply drops it; once it
+    // is on its way it can no longer be taken back.
+    if (_phase != null && _phase != ReceiptPhase.preparing) return;
+    setState(() {
+      _draft = null;
+      _phase = null;
+      _progress = null;
+    });
+  }
+
   Future<void> _submitReceipt(String subscriptionId, {bool needsMethod = false}) async {
-    final picked = _receiptPreview;
-    if (picked == null || _isUploadingReceipt) return;
+    final draft = _draft;
+    if (draft == null || _phase != null) return;
     if (needsMethod && _paymentMethodId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('اختر وسيلة الدفع التي حوّلت بها أولاً.')));
       return;
     }
 
-    setState(() => _isUploadingReceipt = true);
+    // Shown in the same frame as the tap.
+    setState(() {
+      _phase = ReceiptPhase.preparing;
+      _progress = null;
+    });
     try {
+      PerfTrace.reset();
       // Only the optimised image is uploaded; the original stays on the phone.
-      final bytes = await ImageOptimizer.receipt(await picked.readAsBytes());
-      const ext = 'jpg';
+      final bytes = await PerfTrace.time('receipt.prepare (left after the tap)', () => draft.prepared);
+      // Removed while it was being made ready.
+      if (!mounted || _draft != draft) return;
 
-      await ref.read(subscriptionRepoProvider).uploadReceipt(
-            subscriptionId: subscriptionId,
-            fileBytes: bytes,
-            fileExtension: ext,
+      await PerfTrace.time(
+          'receipt.send',
+          () => ref.read(receiptSubmitterProvider).submit(
+            attempt: draft.attempt,
+            bytes: bytes,
             paymentMethodId: _paymentMethodId,
-          );
-      _refreshSubscriptions();
-      ref.invalidate(subscriptionReceiptsProvider(subscriptionId));
-      if (mounted) {
-        setState(() {
-          _receiptPreview = null;
-          _isUploadingReceipt = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('تم رفع صورة الإيصال بنجاح وهو الآن قيد مراجعة إدارة الشركة.'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
+            onPhase: (phase) {
+              if (mounted) setState(() => _phase = phase);
+            },
+            onProgress: (sent, total) {
+              final progress = total <= 0 ? null : sent / total;
+              // A repaint per percent is plenty.
+              if (mounted && (progress == null || _progress == null || progress - _progress! >= 0.01)) {
+                setState(() => _progress = progress);
+              }
+            },
+          ));
+      PerfTrace.dump('receipt upload, ${bytes.length ~/ 1024} kB');
+      if (!mounted) return;
+      setState(() {
+        _phase = ReceiptPhase.done;
+        _progress = 1;
+      });
+      // "Sent" stays a moment, then the card is the "under review" one.
+      _sentTimer?.cancel();
+      _sentTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (mounted && _draft == draft) {
+          setState(() {
+            _draft = null;
+            _phase = null;
+            _progress = null;
+          });
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم رفع صورة الإيصال بنجاح وهو الآن قيد مراجعة إدارة الشركة.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
     } catch (e) {
       if (mounted) {
-        setState(() => _isUploadingReceipt = false);
+        // The image stays chosen: sending again replaces the same file.
+        setState(() {
+          _phase = null;
+          _progress = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(errorMessage(e)), backgroundColor: AppColors.error),
@@ -467,7 +602,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 _expanded.add(sub.id);
                 _collapsedByUser.remove(sub.id);
               }
-              _receiptPreview = null;
+              if (!_sending) _draft = null;
             }),
             icon: Icon(open ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 18),
             label: Text(open ? 'إخفاء التفاصيل' : 'عرض التفاصيل'),
@@ -822,6 +957,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Widget _receiptUploadCard(
       SubscriptionModel sub, int attempts, ReceiptModel? latest) {
     final canUpload = attempts < 5 && !sub.isPendingReview;
+    // The chosen image belongs to one subscription's card.
+    final draft = _draft?.attempt.subscriptionId == sub.id ? _draft : null;
+    final phase = draft == null ? null : _phase;
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -840,11 +978,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           Text(
               attempts >= 5
                   ? 'اكتملت 5 محاولات'
-                  : 'محاولة ${attempts + 1} من 5',
+                  : sub.isPendingReview
+                      ? 'محاولة $attempts من 5'
+                      : 'محاولة ${attempts + 1} من 5',
               style: AppTextStyles.labelSmall
                   .copyWith(color: AppColors.textSecondary))
         ]),
-        if (latest != null && sub.isPendingReview) ...[
+        if (phase == ReceiptPhase.done) ...[
+          const SizedBox(height: 12),
+          _receiptProgress(ReceiptPhase.done),
+        ] else if (latest != null && sub.isPendingReview) ...[
           const SizedBox(height: 12),
           Container(
               width: double.infinity,
@@ -860,21 +1003,31 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                         'تم استلام الإيصال — المحاولة ${latest.attemptNumber}',
                         style: AppTextStyles.bodyMedium))
               ])),
-        ] else if (_receiptPreview != null) ...[
+        ] else if (draft != null) ...[
           const SizedBox(height: 12),
           ClipRRect(
               borderRadius: BorderRadius.circular(13),
-              child: Image.file(File(_receiptPreview!.path),
-                  height: 190, width: double.infinity, fit: BoxFit.cover)),
+              child: Image.file(File(draft.file.path),
+                  key: const Key('receipt-preview'),
+                  height: 190,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  // Decoded at the size it is shown, not at the photo's own.
+                  cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context))
+                      .round()
+                      .clamp(200, 1400),
+                  gaplessPlayback: true)),
           const SizedBox(height: 8),
-          Text(_receiptPreview!.name,
-              style: AppTextStyles.labelSmall,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+          if (phase != null)
+            _receiptProgress(phase)
+          else
+            Text(draft.file.name,
+                style: AppTextStyles.labelSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           TextButton.icon(
-              onPressed: _isUploadingReceipt
-                  ? null
-                  : () => setState(() => _receiptPreview = null),
+              key: const Key('receipt-remove'),
+              onPressed: phase == null || phase == ReceiptPhase.preparing ? _removeReceipt : null,
               icon: const Icon(LucideIcons.trash2, size: 17),
               label: const Text('إزالة الصورة')),
         ] else ...[
@@ -889,40 +1042,93 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             Row(children: [
               Expanded(
                   child: OutlinedButton.icon(
-                      onPressed: () => _pickReceipt(ImageSource.gallery),
+                      onPressed: _sending ? null : () => _pickReceipt(ImageSource.gallery, sub.id),
                       icon: const Icon(LucideIcons.image),
                       label: const Text('اختيار صورة'))),
               const SizedBox(width: 8),
               Expanded(
                   child: OutlinedButton.icon(
-                      onPressed: () => _pickReceipt(ImageSource.camera),
+                      onPressed: _sending ? null : () => _pickReceipt(ImageSource.camera, sub.id),
                       icon: const Icon(LucideIcons.camera),
                       label: const Text('التقاط صورة')))
             ]),
           ],
         ],
-        if (_receiptPreview != null) ...[
+        if (draft != null && phase != ReceiptPhase.done && !sub.isPendingReview) ...[
           const SizedBox(height: 7),
           SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                  onPressed:
-                      _isUploadingReceipt
-                          ? null
-                          : () => _submitReceipt(sub.id,
-                              needsMethod: sub.companyId != null &&
-                                  (ref.read(paymentMethodsProvider(sub.companyId!)).valueOrNull?.isNotEmpty ?? false)),
-                  icon: _isUploadingReceipt
+                  key: const Key('receipt-send'),
+                  onPressed: phase != null
+                      ? null
+                      : () => _submitReceipt(sub.id,
+                          needsMethod: sub.companyId != null &&
+                              (ref.read(paymentMethodsProvider(sub.companyId!)).valueOrNull?.isNotEmpty ?? false)),
+                  icon: phase != null
                       ? const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(LucideIcons.upload),
-                  label: Text(_isUploadingReceipt
+                  label: Text(phase != null
                       ? 'جارٍ الإرسال...'
                       : 'إرسال الإيصال للمراجعة'))),
         ],
       ]),
+    );
+  }
+
+  /// Where the receipt is on its way: what is happening now, and for the
+  /// upload how much of the image has really been sent.
+  Widget _receiptProgress(ReceiptPhase phase) {
+    final done = phase == ReceiptPhase.done;
+    final label = switch (phase) {
+      ReceiptPhase.preparing => 'تجهيز الصورة…',
+      ReceiptPhase.uploading => 'رفع الصورة…',
+      ReceiptPhase.saving => 'إرسال الإيصال للمراجعة…',
+      ReceiptPhase.done => 'تم الإرسال',
+    };
+    // Only the upload has a measurable part; the other steps just run.
+    final sent = phase == ReceiptPhase.uploading ? _progress : null;
+    final color = done ? const Color(0xFF07865A) : const Color(0xFF00658D);
+    return Semantics(
+      liveRegion: true,
+      label: sent == null ? label : '$label ${(sent * 100).round()}%',
+      child: ExcludeSemantics(
+        child: Container(
+          key: Key('receipt-phase-${phase.name}'),
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+              color: done ? const Color(0xFFE7F8F0) : const Color(0xFFF0F6FA),
+              borderRadius: BorderRadius.circular(14)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(done ? LucideIcons.circleCheck : LucideIcons.upload, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text(label,
+                      style: AppTextStyles.bodyMedium.copyWith(color: color, fontWeight: FontWeight.w600))),
+              if (sent != null)
+                Text('${(sent * 100).round()}%',
+                    textDirection: TextDirection.ltr,
+                    style: AppTextStyles.labelSmall.copyWith(color: color, fontWeight: FontWeight.bold)),
+            ]),
+            if (!done) ...[
+              const SizedBox(height: 9),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                    value: sent,
+                    minHeight: 5,
+                    color: color,
+                    backgroundColor: const Color(0xFFD9E8F0)),
+              ),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 
