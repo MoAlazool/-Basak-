@@ -1,4 +1,6 @@
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
@@ -20,6 +22,47 @@ class ImageOptimizer {
   /// not an image the app can read.
   static Future<Uint8List> receipt(Uint8List original) =>
       compute(_encodeReceipt, original);
+
+  /// The picker is asked for the stored size and quality directly, so the
+  /// phone's own (fast, native) encoder does the work.
+  static const pickMaxSide = 1800.0;
+  static const pickQuality = 85;
+
+  /// A picked file no larger than this, already an upright JPEG within
+  /// [receiptMaxSide], is uploaded as it is.
+  static const receiptReadyBytes = 1536 * 1024;
+
+  /// The file at [path], ready to upload. Reading the file and any work on
+  /// its pixels happen off the main isolate, so the screen never stutters.
+  ///
+  /// What the picker hands over is normally ready (see [isReadyReceipt]) and
+  /// is returned untouched. Only a file that is still too large, not a JPEG
+  /// (a PNG screenshot, a format the picker left alone) or stored sideways
+  /// goes through [receipt]'s decode, resize and encode.
+  static Future<Uint8List> prepareReceipt(String path) => compute(_prepareFile, path);
+
+  /// [prepareReceipt] for bytes already in memory.
+  static Future<Uint8List> prepareReceiptBytes(Uint8List original) => compute(_prepare, original);
+
+  static Uint8List _prepareFile(String path) => _prepare(File(path).readAsBytesSync());
+
+  static Uint8List _prepare(Uint8List original) =>
+      isReadyReceipt(original) ? original : _encodeReceipt(original);
+
+  /// Whether [bytes] can be stored as they are: a JPEG, small enough, within
+  /// the size limit and with no "rotate me" tag. Reads the header only.
+  static bool isReadyReceipt(Uint8List bytes) {
+    if (bytes.length > receiptReadyBytes || bytes.length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) return false;
+    try {
+      final info = img.JpegDecoder().startDecode(bytes);
+      if (info == null || info.width > receiptMaxSide || info.height > receiptMaxSide) return false;
+      final exif = img.decodeJpgExif(bytes);
+      final orientation = exif != null && exif.imageIfd.hasOrientation ? exif.imageIfd.orientation : 1;
+      return orientation == null || orientation == 1;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static Uint8List _encodeReceipt(Uint8List original) {
     img.Image? decoded;

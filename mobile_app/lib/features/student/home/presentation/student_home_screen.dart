@@ -12,7 +12,6 @@ import '../../../../core/media/signed_photo.dart';
 import '../../../../core/widgets/glass_scaffold.dart';
 import '../../../../core/widgets/greeting_header.dart';
 import '../../../notifications/data/notification_feed.dart';
-import '../../../notifications/data/notification_preferences.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/sync/sync_hub.dart';
 import '../../invites/invites.dart';
@@ -49,9 +48,13 @@ final currentSubscriptionProvider =
 /// dashboard; re-read on app resume.
 final voteSettingsProvider = FutureProvider<VoteSettings>((ref) {
   ref.watch(sessionUserIdProvider);
-  final companyId = ref.watch(
-      currentSubscriptionProvider.select((s) => s.valueOrNull?.companyId));
-  return ref.watch(dailyRideRepoProvider).getVoteSettings(companyId);
+  // The settings are the subscription's company's. They are read once, when
+  // the subscription is known (it comes from its saved copy at once), instead
+  // of the platform's first and the company's a moment later.
+  final subscription = ref.watch(currentSubscriptionProvider
+      .select((s) => (known: s.hasValue || s.hasError, companyId: s.valueOrNull?.companyId)));
+  if (!subscription.known) return Completer<VoteSettings>().future;
+  return ref.watch(dailyRideRepoProvider).getVoteSettings(subscription.companyId);
 });
 
 class StudentHomeScreen extends ConsumerStatefulWidget {
@@ -81,6 +84,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   String? _confirmedDepartureTime;
   DateTime? _loadedRideDate;
   Timer? _votingWindowTimer;
+  Timer? _settingsWait;
   Map<DateTime, bool> _weeklyRideStatuses = const {};
 
   static const _ink = Color(0xFF17384A);
@@ -90,7 +94,16 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTodayRideStatus();
+    // The ride day depends on the vote settings: when they are already known
+    // the votes are read now, otherwise once, as soon as they arrive (see
+    // build), instead of once with the default settings and again after.
+    if (ref.read(voteSettingsProvider).hasValue) {
+      _loadTodayRideStatus();
+    } else {
+      _settingsWait = Timer(const Duration(seconds: 4), () {
+        if (mounted && _loadedRideDate == null) _loadTodayRideStatus();
+      });
+    }
     _votingWindowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       final targetDate = _vote.rideDateFor(DateTime.now());
@@ -109,6 +122,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   @override
   void dispose() {
     _votingWindowTimer?.cancel();
+    _settingsWait?.cancel();
     super.dispose();
   }
 
@@ -123,8 +137,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       final saturday = DateTime(rideDate.year, rideDate.month, rideDate.day)
           .subtract(Duration(days: saturdayOffset));
       final repository = ref.read(dailyRideRepoProvider);
+      // One read for the week shown here and the days the reminders look at
+      // (the ride day and the six after it).
       final statusesFuture = repository.getRideStatusesForRange(
-          saturday, saturday.add(const Duration(days: 6)));
+          saturday, DateTime(rideDate.year, rideDate.month, rideDate.day + 6));
       final detailsFuture = repository.getRideDetailsForDate(rideDate);
       final statuses = await statusesFuture;
       final details = await detailsFuture;
@@ -155,17 +171,19 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final sub = subscription.value;
     // No reminders without a running subscription, when the company switched
     // them off, or when the student did (notification settings).
-    if (sub == null ||
-        !sub.isActive ||
-        settings.reminderMinutes <= 0 ||
-        !ref.read(voteRemindersEnabledProvider)) {
+    // (Whether they are shown is the phone's own notification permission.)
+    if (sub == null || !sub.isActive || settings.reminderMinutes <= 0) {
       await VoteReminders.cancelAll();
       return;
     }
     try {
       final first = settings.rideDateFor(DateTime.now());
-      final voted = await ref.read(dailyRideRepoProvider).getRideStatusesForRange(
-          first, DateTime(first.year, first.month, first.day + 6));
+      final loaded = _loadedRideDate;
+      // The votes just read for the home screen cover these days already.
+      final voted = loaded != null && DateUtils.isSameDay(loaded, first)
+          ? _weeklyRideStatuses
+          : await ref.read(dailyRideRepoProvider).getRideStatusesForRange(
+              first, DateTime(first.year, first.month, first.day + 6));
       await VoteReminders.plan(
         settings: settings,
         validFrom: DateTime.tryParse(sub.startDate ?? ''),
@@ -332,11 +350,11 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final subAsync = ref.watch(currentSubscriptionProvider);
     // Back from the background, or reconnected: read the ride vote again.
     ref.listen(rideStatusTickProvider, (_, __) => _loadTodayRideStatus());
-    // Switched on or off in the notification settings: plan (or cancel) now.
-    ref.listen(voteRemindersEnabledProvider, (_, __) => _planReminders());
     // New vote times may move the ride day; the reminders follow both.
     ref.listen(voteSettingsProvider, (previous, next) {
-      if (next.hasValue && previous?.valueOrNull != next.valueOrNull) {
+      if (next.hasValue && (_loadedRideDate == null || previous?.valueOrNull != next.valueOrNull)) {
+        _loadTodayRideStatus();
+      } else if (next.hasError && _loadedRideDate == null) {
         _loadTodayRideStatus();
       }
     });
@@ -356,6 +374,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ? const AsyncValue<Map<String, dynamic>?>.data(null)
         : ref.watch(studentProfileSummaryProvider(user.id));
     final name = (user?.userMetadata?['full_name'] as String?)?.trim();
+    final photo = studentPhoto(profileAsync.valueOrNull?['profile_image_url'] as String?);
     final now = DateTime.now();
 
     return GlassScaffold(
@@ -375,9 +394,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               sliver: SliverList.list(
                 children: [
                   GreetingHeader(
-                    name: (name == null || name.isEmpty) ? 'طالبنا' : name,
-                    photoUrl: profileAsync.valueOrNull?['profile_image_signed_url']
-                        as String?,
+                    // Greeted by the first two names; the full name is on
+                    // the card, the receipts and the profile.
+                    name: (name == null || name.isEmpty) ? 'طالبنا' : GreetingHeader.firstTwoNames(name),
+                    photoUrl: photo == null ? null : ref.watch(signedPhotoProvider(photo)).valueOrNull,
                     unread: ref.watch(unreadNotificationsProvider),
                     onNotifications: () => NotificationsScreen.open(context),
                   ),
@@ -843,7 +863,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final saturday = DateTime(today.year, today.month, today.day)
         .subtract(Duration(days: saturdayOffset));
     const labels = ['س', 'ح', 'ن', 'ث', 'ر', 'خ', 'ج'];
-    final count = _weeklyRideStatuses.values.where((value) => value).length;
+    // Only this week's days: the votes read also cover the days after it.
+    final count = List.generate(7, (index) => saturday.add(Duration(days: index)))
+        .where((date) => _weeklyRideStatuses[date] == true)
+        .length;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: _cardDecoration(),

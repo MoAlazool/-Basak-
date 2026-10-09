@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/constants/firebase_config.dart';
 import '../../../core/network/supabase_service.dart';
+import '../../../core/sync/own_changes.dart';
 import '../../../core/sync/session.dart';
 import '../data/notification_feed.dart';
 import '../data/notifications_repository.dart';
@@ -117,8 +118,12 @@ final pushControllerProvider = Provider<PushController>((ref) {
     currentUserId: () => _signedInUserId(ref),
     onForeground: (message) {
       ref.read(foregroundBannerProvider.notifier).show(message);
-      // Usually the live channel already said so; this covers it being down.
-      ref.invalidate(notificationFeedProvider);
+      // The live channel announces the same notification: whichever of the two
+      // arrives first refreshes the inbox, the other is recognised and dropped.
+      final id = message.notificationId;
+      if (id == null || OwnChanges.firstSight('notifications', id)) {
+        ref.invalidate(notificationFeedProvider);
+      }
     },
   );
   ref.onDispose(controller.dispose);

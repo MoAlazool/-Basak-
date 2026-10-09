@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
+import '../../../../core/media/signed_photo.dart';
 import '../../../../core/sync/session.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/network/network_errors.dart';
@@ -15,7 +16,7 @@ import '../data/student_qr_repository.dart';
 import '../../subscription/models/subscription_model.dart';
 
 final studentQrRepoProvider = Provider((ref) => StudentQrRepository());
-final studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
+final FutureProvider<StudentPassDetails?> studentQrProvider = FutureProvider<StudentPassDetails?>((ref) async {
   ref.watch(sessionUserIdProvider);
   return ref.watch(studentQrRepoProvider).getStudentPassDetails();
 });
@@ -72,6 +73,8 @@ class StudentQrScreen extends ConsumerWidget {
                   );
                 }
                 final active = pass.subscriptionStatus == 'active';
+                final photo = studentPhoto(pass.profileImagePath);
+                final photoUrl = photo == null ? null : ref.watch(signedPhotoProvider(photo)).valueOrNull;
                 // A fixed page, laid out as before: the card hugs its content
                 // with even, tight spacing; the wallet button and the note sit
                 // at the bottom, just above the navigation bar. The QR code is
@@ -144,9 +147,8 @@ class StudentQrScreen extends ConsumerWidget {
                                   CircleAvatar(
                                       radius: 25,
                                       backgroundColor: const Color(0xFFE4F2F9),
-                                      backgroundImage:
-                                          pass.profileImageUrl == null ? null : avatarImage(pass.profileImageUrl!),
-                                      child: pass.profileImageUrl == null
+                                      backgroundImage: photoUrl == null ? null : avatarImage(photoUrl),
+                                      child: photoUrl == null
                                           ? const Icon(LucideIcons.userRound, color: _teal)
                                           : null),
                                   const SizedBox(width: 11),

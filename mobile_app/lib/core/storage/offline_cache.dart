@@ -17,6 +17,7 @@ class OfflineCache {
   static const _studentPassKey = '${_prefix}student_pass';
   static const _studentLookupPrefix = '${_prefix}student_lookup.';
   static const _dataPrefix = '${_prefix}data.';
+  static const _notePrefix = '${_prefix}note.';
 
   /// When the screens are showing saved data because the server is
   /// unreachable: the time that data was saved. Null while online.
@@ -63,6 +64,12 @@ class OfflineCache {
   static final Map<String, ({Object? value, DateTime at})> _fresh = {};
   static const _freshFor = Duration(seconds: 10);
 
+  /// The last value each key was answered with in this run of the app.
+  static final Map<String, Object?> _last = {};
+
+  /// Keys whose waiting value was written by this phone ([applyLocal]).
+  static final Set<String> _local = {};
+
   /// Cache first, for everything the app shows.
   ///
   /// The first time [key] is read after the app starts, the last saved result
@@ -81,6 +88,7 @@ class OfflineCache {
     final storageKey = '$_dataPrefix$userId.$key';
 
     final fresh = _fresh.remove(storageKey);
+    _local.remove(storageKey);
     if (fresh != null && DateTime.now().difference(fresh.at) < _freshFor) {
       return fresh.value;
     }
@@ -89,7 +97,7 @@ class OfflineCache {
       final saved = _decode(await _safeRead(storageKey));
       if (saved != null) {
         unawaited(_revalidate(key, storageKey, fetch, saved));
-        return saved['v'];
+        return _last[storageKey] = saved['v'];
       }
     }
 
@@ -98,13 +106,13 @@ class OfflineCache {
       offlineSince.value = null;
       // Saved in the background: the encrypted write must not delay the screen.
       unawaited(_save(storageKey, value));
-      return value;
+      return _last[storageKey] = value;
     } catch (error) {
       if (!isNetworkFailure(error)) rethrow;
       final saved = _decode(await _safeRead(storageKey));
       if (saved == null) rethrow;
       markOffline(DateTime.tryParse(saved['at'] as String? ?? ''));
-      return saved['v'];
+      return _last[storageKey] = saved['v'];
     }
   }
 
@@ -115,6 +123,9 @@ class OfflineCache {
       final value = await fetch().timeout(requestTimeout);
       offlineSince.value = null;
       await _save(storageKey, value);
+      // Changed on this phone while the server was answering: that is newer.
+      if (_local.contains(storageKey)) return;
+      _last[storageKey] = value;
       if (jsonEncode(value) != jsonEncode(saved['v'])) {
         _fresh[storageKey] = (value: value, at: DateTime.now());
         _refreshedKeys.add(key);
@@ -130,6 +141,7 @@ class OfflineCache {
       try {
         await _storage.delete(key: storageKey);
       } catch (_) {}
+      _last.remove(storageKey);
       _refreshedKeys.add(key);
       refreshed.value++;
     }
@@ -152,13 +164,83 @@ class OfflineCache {
     if (userId != null) await _save('$_dataPrefix$userId.$key', value);
   }
 
+  /// Applies a change this phone just made on the server to what [key] holds,
+  /// in memory and in the saved copy, so the screens (now, and after a restart)
+  /// show it without reading it again. [change] gets a copy of the current
+  /// value and returns the new one.
+  ///
+  /// The caller then invalidates the provider that reads [key]: its next read
+  /// is answered with the new value and makes no request. Returns false when
+  /// this phone holds nothing for [key] (nothing to change; read it normally).
+  static Future<bool> applyLocal(String key, Object? Function(Object? current) change) async {
+    final userId = _currentUserId();
+    if (userId == null) return false;
+    final storageKey = '$_dataPrefix$userId.$key';
+    Object? current;
+    if (_last.containsKey(storageKey)) {
+      current = _last[storageKey];
+    } else {
+      final saved = _decode(await _safeRead(storageKey));
+      if (saved == null) return false;
+      current = saved['v'];
+    }
+    // Through JSON both ways: the change works on a copy, and what is kept
+    // has the same shapes as a value read from the server or from the device.
+    final next = jsonDecode(jsonEncode(change(jsonDecode(jsonEncode(current)))));
+    _last[storageKey] = next;
+    _fresh[storageKey] = (value: next, at: DateTime.now());
+    _local.add(storageKey);
+    await _save(storageKey, next);
+    return true;
+  }
+
+  /// News from the server about data changed elsewhere: whatever this phone
+  /// wrote itself and nobody has read yet must not answer for it.
+  static void forgetLocal() {
+    for (final storageKey in _local) {
+      _fresh.remove(storageKey);
+    }
+    _local.clear();
+  }
+
+  /// The saved copy of [key] as it is on the device (tests, and reads that
+  /// must never touch the network).
+  static Future<Object?> peek(String key) async {
+    final userId = _currentUserId();
+    if (userId == null) return null;
+    return _decode(await _safeRead('$_dataPrefix$userId.$key'))?['v'];
+  }
+
+  /// A small value kept for the signed-in account outside the screens' data
+  /// (e.g. uploads still to be tidied up). Removed with everything else on
+  /// sign-out.
+  static Future<void> writeNote(String name, Object? value) async {
+    final userId = _currentUserId();
+    if (userId == null) return;
+    try {
+      await _storage.write(key: '$_notePrefix$userId.$name', value: jsonEncode({'v': value}));
+    } catch (_) {}
+  }
+
+  static Future<Object?> readNote(String name) async {
+    final userId = _currentUserId();
+    if (userId == null) return null;
+    return _decode(await _safeRead('$_notePrefix$userId.$name'))?['v'];
+  }
+
   /// A new run of the app (tests), or another account: nothing counts as read yet.
   @visibleForTesting
   static void resetSession() {
+    _forgetMemory();
+    _refreshedKeys.clear();
+  }
+
+  static void _forgetMemory() {
+    offlineSince.value = null;
     _readOnce.clear();
     _fresh.clear();
-    _refreshedKeys.clear();
-    offlineSince.value = null;
+    _last.clear();
+    _local.clear();
   }
 
   /// Stands in for the signed-in user where Supabase is not started (tests).
@@ -180,7 +262,7 @@ class OfflineCache {
   static Future<void> saveStudentPass(Map<String, dynamic> pass) async {
     await _storage.write(
         key: _studentPassKey,
-        value: jsonEncode({...pass, '_user_id': _currentUserId()}));
+        value: jsonEncode({...pass, '_user_id': _currentUserId(), '_saved_at': DateTime.now().toIso8601String()}));
   }
 
   /// The saved pass, only if it belongs to the signed-in student.
@@ -195,18 +277,23 @@ class OfflineCache {
 
   /// Removes everything saved for offline use (on sign-out or account
   /// deletion) so the next person on this device never sees it.
-  static Future<void> clearAll() async {
-    offlineSince.value = null;
-    _readOnce.clear();
-    _fresh.clear();
+  ///
+  /// [also] names further keys to remove in the same pass (the snapshots).
+  static Future<void> clearAll({bool Function(String key)? also}) async {
+    _forgetMemory();
     try {
-      final all = await _storage.readAll();
-      for (final key in all.keys.where((k) => k.startsWith(_prefix)).toList()) {
-        await _storage.delete(key: key);
-      }
+      await deleteWhere((key) => key.startsWith(_prefix) || (also?.call(key) ?? false));
     } catch (_) {
       await clearStudentPass();
     }
+  }
+
+  /// Deletes every stored entry whose key matches, all at once (one listing,
+  /// the deletions side by side) instead of one after another.
+  static Future<void> deleteWhere(bool Function(String key) matches) async {
+    final all = await _storage.readAll();
+    final keys = all.keys.where(matches).toList();
+    await Future.wait([for (final key in keys) _storage.delete(key: key)]);
   }
 
   /// Lookups are kept per supervisor: on a shared phone, another supervisor
@@ -230,10 +317,7 @@ class OfflineCache {
   /// saw offline stays on the device for the next account.
   static Future<void> clearStudentLookups() async {
     try {
-      final all = await _storage.readAll();
-      for (final key in all.keys.where((k) => k.startsWith(_studentLookupPrefix)).toList()) {
-        await _storage.delete(key: key);
-      }
+      await deleteWhere((key) => key.startsWith(_studentLookupPrefix));
     } catch (_) {
       // A locked keystore must never block signing out.
     }

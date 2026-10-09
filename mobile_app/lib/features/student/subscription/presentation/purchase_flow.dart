@@ -3,7 +3,10 @@ import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/network/network_errors.dart';
+import '../../../../core/sync/own_changes.dart';
 import '../../../../core/sync/session.dart';
+import '../../qr/presentation/student_qr_screen.dart';
+import 'subscription_screen.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/basak_ui.dart';
@@ -25,7 +28,12 @@ final saleCatalogProvider = FutureProvider<SaleCatalog>((ref) {
 final subscriptionCreatorProvider =
     Provider<Future<SubscriptionModel> Function(SubscriptionRequest)>((ref) {
   final repo = ref.watch(subscriptionRepoProvider);
-  return (request) => repo.createSubscription(
+  return (request) async {
+    // The server announces the new subscription back to this phone; it is
+    // already shown from the answer below, so that echo reads nothing again.
+    final echo = OwnChanges.begin('subscriptions', op: 'INSERT');
+    try {
+      final created = await repo.createSubscription(
         lineId: request.lineId,
         stationId: request.stationId,
         departureTime: request.departureTime,
@@ -37,6 +45,19 @@ final subscriptionCreatorProvider =
         periodCode: request.periodCode,
         academicYear: request.academicYear,
       );
+      echo.done(id: created.id, keep: const Duration(minutes: 1));
+      // The lists were updated from the answer (answered from memory); what
+      // is on sale and the card do change with a new subscription.
+      ref.invalidate(currentSubscriptionProvider);
+      ref.invalidate(allSubscriptionsProvider);
+      ref.invalidate(saleCatalogProvider);
+      ref.invalidate(studentQrProvider);
+      return created;
+    } catch (_) {
+      echo.failed();
+      rethrow;
+    }
+  };
 });
 
 const _ink = Color(0xFF17384A);

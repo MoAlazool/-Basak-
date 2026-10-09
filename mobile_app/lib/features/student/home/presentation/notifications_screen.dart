@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:basak_mobile/core/theme/app_icons.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../notifications/data/notification_preferences.dart';
 import '../../../notifications/presentation/notifications_page.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import 'student_home_screen.dart';
@@ -63,7 +62,7 @@ class NotificationsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      const NotificationsPage(header: _ReminderDays());
+      const NotificationsPage(header: _ReminderDays(), preferences: false);
 }
 
 class _ReminderDays extends ConsumerWidget {
@@ -92,15 +91,13 @@ class _ReminderDays extends ConsumerWidget {
       validUntil: DateTime.tryParse(sub?.endDate ?? ''),
       voted: ref.watch(_votedDaysProvider).valueOrNull ?? const {},
     );
-    // The student's own switch (notification settings); the days are the company's.
-    final wanted = ref.watch(voteRemindersEnabledProvider);
+    // The days are the company's; whether a reminder is shown is the phone's
+    // own notification permission. There is no switch for it in the app.
     final note = !subscribed
         ? 'التذكيرات تعمل بعد تفعيل اشتراكك.'
         : vote.reminderMinutes <= 0
             ? 'التذكيرات متوقفة من شركتك حالياً.'
-            : !wanted
-                ? 'أوقفت التذكيرات من إعدادات الإشعارات.'
-                : 'نذكّرك بتأكيد حضورك قبل قفل التصويت في الأيام المفعّلة.';
+            : 'نذكّرك بتأكيد حضورك قبل قفل التصويت في الأيام المفعّلة.';
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
@@ -130,7 +127,7 @@ class _ReminderDays extends ConsumerWidget {
           ]),
         ),
       ),
-      if (subscribed && wanted) ...[
+      if (subscribed) ...[
         const SizedBox(height: 12),
         SizedBox(
           height: 70,

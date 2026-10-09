@@ -1,10 +1,16 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
+/// Stands in for the network photo where there is no image cache (tests).
+@visibleForTesting
+ImageProvider? Function(String signedUrl)? debugAvatarImage;
+
 /// Image provider for a signed storage URL. Signed URLs change on every load,
 /// so the disk cache is keyed on the object path: the last downloaded photo
 /// keeps showing when the device is offline.
 ImageProvider avatarImage(String signedUrl) {
+  final replaced = debugAvatarImage?.call(signedUrl);
+  if (replaced != null) return replaced;
   final uri = Uri.tryParse(signedUrl);
   return _SignedPhoto(
     signedUrl,

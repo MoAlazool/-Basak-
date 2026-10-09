@@ -18,6 +18,10 @@ import '../../features/supervisor/data/supervisor_repository.dart';
 import '../../features/supervisor/trips/presentation/supervisor_trips_screen.dart';
 import '../network/supabase_service.dart';
 import '../storage/offline_cache.dart';
+import '../../features/student/subscription/models/subscription_model.dart';
+import 'own_changes.dart';
+
+export 'own_changes.dart';
 
 /// Bumped whenever the student's ride vote should be read again (app resume,
 /// reconnect). The home screen listens to it.
@@ -75,45 +79,61 @@ class SyncScope extends ConsumerStatefulWidget {
     };
   }
 
-  /// The table a live event is about. Its `op` (INSERT, DELETE, or READ for
-  /// notifications read on another phone) changes nothing here: whatever
-  /// happened to the table, its screens read it again.
+  /// What a live event says: the table, what happened to it and to which row.
   @visibleForTesting
-  static String tableOf(Map<dynamic, dynamic> message) {
-    // The table name is in the event body; older clients wrap it in `payload`.
+  static SyncEvent eventOf(Map<dynamic, dynamic> message) {
+    // The event's fields are in its body; older clients wrap it in `payload`.
     final body = message['payload'] is Map ? message['payload'] as Map : message;
-    return body['table'] as String? ?? '';
+    return SyncEvent(body['table'] as String? ?? '',
+        op: body['op'] as String? ?? '', id: body['id']?.toString());
   }
 
+  /// The table a live event is about.
+  @visibleForTesting
+  static String tableOf(Map<dynamic, dynamic> message) => eventOf(message).table;
+
   /// Marks stale exactly what shows [tables], and nothing else: a notification
-  /// arriving or being read re-reads the inbox only.
+  /// arriving or being read re-reads the inbox only, and a receipt re-reads the
+  /// subscriptions and their receipts, not the card or what is on sale.
+  ///
+  /// [subscriptionChanged] is whether a `subscriptions` change is known (or
+  /// has to be assumed) to alter what the card, the sale catalog and the
+  /// issued receipt show: its status, line, station or dates. When the caller
+  /// can tell that it did not, those three are left alone.
   @visibleForTesting
   static void invalidateFor(
-      void Function(ProviderOrFamily provider) invalidate, Set<String> tables, UserRole role, String? userId) {
+      void Function(ProviderOrFamily provider) invalidate, Set<String> tables, UserRole role, String? userId,
+      {bool subscriptionChanged = true}) {
     if (tables.contains('notifications')) invalidate(notificationFeedProvider);
     if (tables.contains('notification_preferences')) invalidate(notificationPreferencesProvider);
     if (tables.contains('notification_templates')) invalidate(quickTemplatesProvider);
     const ownScreens = {'notifications', 'notification_preferences', 'notification_templates'};
     if (tables.every(ownScreens.contains)) return;
     if (role == UserRole.student) {
-      const subscriptionTables = {'subscriptions', 'receipts', 'company_students', 'lines', 'stations', 'line_trips', 'supervisor_lines'};
-      if (tables.any(subscriptionTables.contains)) {
+      final subscription = tables.contains('subscriptions');
+      // What the subscription cards are built from (names, times, the supervisor).
+      const lineTables = {'company_students', 'lines', 'stations', 'line_trips', 'supervisor_lines'};
+      final line = tables.any(lineTables.contains);
+      if (subscription || line || tables.contains('receipts')) {
         invalidate(currentSubscriptionProvider);
         invalidate(allSubscriptionsProvider);
-        invalidate(subscriptionReceiptsProvider);
+      }
+      if (subscription || tables.contains('receipts')) invalidate(subscriptionReceiptsProvider);
+      // The card shows the student, the line, the station and the subscription's state.
+      if (line || tables.contains('students') || (subscription && subscriptionChanged)) {
         invalidate(studentQrProvider);
       }
       // What is on sale depends on the lines, their prices and what the student holds.
-      if (tables.any(const {'lines', 'stations', 'line_trips', 'line_period_prices', 'subscriptions'}.contains)) {
+      if (tables.any(const {'lines', 'stations', 'line_trips', 'line_period_prices'}.contains) ||
+          (subscription && subscriptionChanged)) {
         invalidate(saleCatalogProvider);
       }
-      if (tables.contains('subscriptions')) invalidate(subscriptionReceiptDocProvider);
+      if (subscription && subscriptionChanged) invalidate(subscriptionReceiptDocProvider);
       if (tables.contains('company_invites') || tables.contains('company_students')) {
         invalidate(myInvitesProvider);
       }
-      if (tables.contains('students')) {
-        if (userId != null) invalidate(studentProfileSummaryProvider(userId));
-        invalidate(studentQrProvider);
+      if (tables.contains('students') && userId != null) {
+        invalidate(studentProfileSummaryProvider(userId));
       }
     } else if (role == UserRole.supervisor) {
       invalidate(supervisorDashboardProvider);
@@ -122,6 +142,125 @@ class SyncScope extends ConsumerStatefulWidget {
       if (tables.contains('supervisors')) invalidate(supervisorPhotoUrlProvider);
       if (tables.contains('supervisor_scan_events')) invalidate(supervisorMonthlySummaryProvider);
     }
+  }
+
+  /// Whether a change to the subscriptions named by [events] alters what the
+  /// card, the sale catalog or an issued receipt show. The event carries ids
+  /// only, so this compares the subscriptions as they were with how they were
+  /// just read again: a subscription that appeared or went, or whose status,
+  /// line, station, type or dates differ. Unknown ([before] never loaded) is
+  /// taken as yes.
+  @visibleForTesting
+  static bool subscriptionChangeMatters(
+      List<SubscriptionModel>? before, List<SubscriptionModel> after, Iterable<SyncEvent> events) {
+    if (before == null) return true;
+    SubscriptionModel? find(List<SubscriptionModel> list, String? id) {
+      for (final s in list) {
+        if (s.id == id) return s;
+      }
+      return null;
+    }
+
+    for (final event in events) {
+      if (event.op != 'UPDATE' || event.id == null) return true;
+      final was = find(before, event.id), now = find(after, event.id);
+      if (was == null || now == null) {
+        if (was != now) return true;
+        continue;
+      }
+      if (was.status != now.status ||
+          was.lineId != now.lineId ||
+          was.stationId != now.stationId ||
+          was.type != now.type ||
+          was.startDate != now.startDate ||
+          was.endDate != now.endDate) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Acts on live [events]: drops the ones that only repeat what this phone
+  /// did itself, then marks stale what the rest are about. For a subscription
+  /// the card, the catalog and the issued receipt are read again only when
+  /// the re-read subscriptions show that it matters.
+  @visibleForTesting
+  static Future<void> onEvents(
+    Iterable<SyncEvent> events, {
+    required void Function(ProviderOrFamily provider) invalidate,
+    required T Function<T>(ProviderListenable<T> provider) read,
+    required UserRole role,
+    required String? userId,
+  }) =>
+      _handle(withoutEchoes(events), invalidate: invalidate, read: read, role: role, userId: userId);
+
+  /// [events] without this phone's own echoes, and without news it already
+  /// acted on (a notification whose push arrived first).
+  @visibleForTesting
+  static List<SyncEvent> withoutEchoes(Iterable<SyncEvent> events) => [
+        for (final event in events)
+          if (!OwnChanges.isEcho(event) &&
+              (event.table != 'notifications' ||
+                  event.op != 'INSERT' ||
+                  event.id == null ||
+                  OwnChanges.firstSight('notifications', event.id!)))
+            event,
+      ];
+
+  static Future<void> _handle(
+    List<SyncEvent> events, {
+    required void Function(ProviderOrFamily provider) invalidate,
+    required T Function<T>(ProviderListenable<T> provider) read,
+    required UserRole role,
+    required String? userId,
+  }) async {
+    if (events.isEmpty) return;
+    // News from elsewhere: nothing this phone wrote itself may answer for it.
+    OfflineCache.forgetLocal();
+    final tables = {for (final event in events) event.table};
+    final changed = [
+      for (final event in events)
+        if (event.table == 'subscriptions') event
+    ];
+    if (role != UserRole.student || changed.isEmpty) {
+      invalidateFor(invalidate, tables, role, userId);
+      return;
+    }
+    final before = read(allSubscriptionsProvider).valueOrNull;
+    invalidateFor(invalidate, tables, role, userId, subscriptionChanged: false);
+    final List<SubscriptionModel> after;
+    try {
+      after = await read(allSubscriptionsProvider.future);
+    } catch (_) {
+      return; // Unreachable: resume and reconnect read everything again.
+    }
+    if (!subscriptionChangeMatters(before, after, changed)) return;
+    invalidate(studentQrProvider);
+    invalidate(saleCatalogProvider);
+    for (final event in changed) {
+      invalidate(event.id == null ? subscriptionReceiptDocProvider : subscriptionReceiptDocProvider(event.id!));
+    }
+  }
+
+  /// The provider that shows the saved read [key], when it is the only one
+  /// (null: see [tablesFor]). A saved copy that turned out stale is then shown
+  /// by re-reading just that provider, which is answered from memory.
+  @visibleForTesting
+  static ProviderOrFamily? providerFor(String key, String? userId) {
+    String rest(String prefix) => key.substring(prefix.length);
+    if (key == 'subscriptions') return allSubscriptionsProvider;
+    if (key == 'subscriptions.current') return currentSubscriptionProvider;
+    if (key == 'student_pass') return studentQrProvider;
+    if (key == 'profile.summary') return userId == null ? null : studentProfileSummaryProvider(userId);
+    if (key == 'sale_catalog') return saleCatalogProvider;
+    if (key == 'supervisor.photo') return supervisorPhotoUrlProvider;
+    if (key.startsWith('vote_settings.')) return voteSettingsProvider;
+    if (key.startsWith('receipts.')) return subscriptionReceiptsProvider(rest('receipts.'));
+    if (key.startsWith('payment_methods.')) return paymentMethodsProvider(rest('payment_methods.'));
+    if (key.startsWith('subscription_receipt.v2.')) {
+      return subscriptionReceiptDocProvider(rest('subscription_receipt.v2.'));
+    }
+    return null;
   }
 
   @override
@@ -133,6 +272,8 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
   final Set<String> _lostTopics = {};
   Timer? _debounce;
   final Set<String> _pendingTables = {};
+  final List<SyncEvent> _pendingEvents = [];
+  bool _rideVotesRefreshed = false;
   DateTime _lastFullRefresh = DateTime.now();
   Timer? _offlineRetry;
 
@@ -142,7 +283,10 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _retune());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _retune();
+      _settlePendingReceipts();
+    });
     OfflineCache.refreshed.addListener(_onSavedCopyRefreshed);
     OfflineCache.offlineSince.addListener(_onOfflineChanged);
   }
@@ -173,15 +317,19 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     if (!mounted) return;
     _debounce?.cancel();
     // Only what shows the data that changed is read again.
+    final userId = ref.read(authStateProvider).user?.id;
     for (final key in OfflineCache.takeRefreshedKeys()) {
-      _pendingTables.addAll(SyncScope.tablesFor(key));
+      final provider = SyncScope.providerFor(key, userId);
+      if (provider != null) {
+        ref.invalidate(provider);
+      } else if (key.startsWith('ride.')) {
+        // The home screen reads its ride votes itself.
+        _rideVotesRefreshed = true;
+      } else {
+        _pendingTables.addAll(SyncScope.tablesFor(key));
+      }
     }
-    _debounce = Timer(const Duration(milliseconds: 150), () {
-      if (!mounted) return;
-      final tables = Set<String>.from(_pendingTables);
-      _pendingTables.clear();
-      _invalidateFor(tables);
-    });
+    _debounce = Timer(const Duration(milliseconds: 150), _flush);
   }
 
   /// While saved data is on screen, try again quietly until the server answers;
@@ -191,9 +339,38 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     if (offline && _offlineRetry == null) {
       _offlineRetry = Timer.periodic(const Duration(seconds: 20), (_) => _refreshEverything());
     } else if (!offline) {
+      if (_offlineRetry != null) _settlePendingReceipts();
       _offlineRetry?.cancel();
       _offlineRetry = null;
     }
+  }
+
+  /// Receipt images sent earlier whose outcome this phone never learned (see
+  /// SubscriptionRepository.reconcilePendingReceipts).
+  void _settlePendingReceipts() {
+    if (!mounted || ref.read(authStateProvider).role != UserRole.student) return;
+    unawaited(ref.read(receiptSubmitterProvider).settlePending());
+  }
+
+  /// What the debounce collected: saved copies that turned out stale, and
+  /// live events.
+  void _flush() {
+    if (!mounted) return;
+    final tables = Set<String>.from(_pendingTables);
+    _pendingTables.clear();
+    final events = List<SyncEvent>.from(_pendingEvents);
+    _pendingEvents.clear();
+    if (_rideVotesRefreshed) {
+      _rideVotesRefreshed = false;
+      ref.read(rideStatusTickProvider.notifier).state++;
+    }
+    final auth = ref.read(authStateProvider);
+    // Already in memory: these cost no request.
+    if (tables.isNotEmpty) {
+      SyncScope.invalidateFor(ref.invalidate, tables, auth.role, auth.user?.id, subscriptionChanged: false);
+    }
+    unawaited(SyncScope._handle(events,
+        invalidate: ref.invalidate, read: ref.read, role: auth.role, userId: auth.user?.id));
   }
 
   /// The topics this account should be listening to right now.
@@ -227,7 +404,7 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
       channel.onBroadcast(
         event: 'change',
         callback: (message) {
-          _onChange(SyncScope.tableOf(message));
+          _onChange(SyncScope.eventOf(message));
         },
       );
       channel.subscribe((status, _) {
@@ -244,16 +421,13 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     }
   }
 
-  void _onChange(String table) {
-    _pendingTables.add(table);
+  void _onChange(SyncEvent event) {
+    // This phone's own change, announced back to it: already on screen.
+    if (SyncScope.withoutEchoes([event]).isEmpty) return;
+    _pendingEvents.add(event);
     // One refresh for a burst (approving a receipt touches three tables).
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      final tables = Set<String>.from(_pendingTables);
-      _pendingTables.clear();
-      _invalidateFor(tables);
-    });
+    _debounce = Timer(const Duration(milliseconds: 350), _flush);
   }
 
   void _invalidateFor(Set<String> tables) => SyncScope.invalidateFor(
@@ -267,10 +441,11 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     _lastFullRefresh = now;
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
+      // 'lines' includes what is on sale: company settings (sale switches,
+      // vote times) send no event to students.
       _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students', 'notifications'});
-      // Company settings (sale switches, vote times) send no event to students.
-      ref.invalidate(saleCatalogProvider);
       ref.invalidate(voteSettingsProvider);
+      _settlePendingReceipts();
       ref.read(rideStatusTickProvider.notifier).state++;
     } else if (role == UserRole.supervisor) {
       _invalidateFor(const {'supervisor_scan_events', 'notifications', 'supervisors'});
@@ -281,7 +456,10 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     // The topics depend on who is signed in and on what they are subscribed to.
-    ref.listen(authStateProvider.select((s) => s.user?.id), (_, __) => _retune());
+    ref.listen(authStateProvider.select((s) => s.user?.id), (_, __) {
+      _retune();
+      _settlePendingReceipts();
+    });
     ref.listen(currentSubscriptionProvider.select((s) => s.valueOrNull?.lineId), (_, __) => _retune());
     ref.listen(supervisorDashboardProvider.select((s) => s.valueOrNull?.profile.companyId), (_, __) => _retune());
     return widget.child;

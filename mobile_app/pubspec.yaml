@@ -15,6 +15,8 @@ dependencies:
 
   # Backend & Network
   supabase_flutter: ^2.8.0
+  # The receipt upload is one streamed request (for its progress bar).
+  http: ^1.2.0
 
   # Push notifications (FCM; APNs through FCM on iOS). Configured with
   # --dart-define, see lib/core/constants/firebase_config.dart.

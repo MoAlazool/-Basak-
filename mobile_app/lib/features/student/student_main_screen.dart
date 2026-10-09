@@ -49,7 +49,8 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
     });
     // Once the home screen has settled, and only the first time on this phone.
     _pushOffer = Timer(const Duration(seconds: 3), () {
-      if (mounted) offerPushNotificationsOnce(context, ref);
+      // Only the phone's own permission prompt: students choose nothing in the app.
+      if (mounted) requestSystemPushPermissionOnce(ref);
     });
   }
 

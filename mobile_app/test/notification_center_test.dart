@@ -422,7 +422,7 @@ void main() {
       expect(repo.savedPreferences.pushEnabled, isTrue);
     });
 
-    test('preferences are read safely, and the vote reminders follow their switch', () async {
+    test('preferences are read safely', () async {
       final preferences = NotificationPreferences.fromJson({
         'push_enabled': false,
         'categories': {'subscription': true, 'transport': false, 'reminder': false, 'future_one': true},
@@ -431,14 +431,6 @@ void main() {
       expect(preferences.allows(NotificationCategory.transport), isFalse);
       expect(preferences.allows(NotificationCategory.announcement), isTrue, reason: 'missing means on');
       expect(NotificationPreferences.fromJson(null).pushEnabled, isTrue);
-
-      final (:container, :repo) = signedIn(const []);
-      container.listen(voteRemindersEnabledProvider, (_, __) {});
-      expect(container.read(voteRemindersEnabledProvider), isTrue, reason: 'on until known otherwise');
-      repo.savedPreferences = preferences;
-      container.invalidate(notificationPreferencesProvider);
-      await container.read(notificationPreferencesProvider.future);
-      expect(container.read(voteRemindersEnabledProvider), isFalse);
     });
   });
 
