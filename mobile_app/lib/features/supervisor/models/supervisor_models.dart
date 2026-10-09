@@ -292,6 +292,13 @@ class SupervisorLine {
   final int departureTrips;
   final int returnTrips;
 
+  /// Every active trip of the line, both directions, by start time. Empty
+  /// from a server that does not list them.
+  final List<LineTrip> trips;
+
+  /// The university the line goes to; null when the company set none.
+  final String? destination;
+
   SupervisorLine({
     required this.id,
     required this.name,
@@ -306,7 +313,11 @@ class SupervisorLine {
     required this.stations,
     this.departureTrips = 0,
     this.returnTrips = 0,
+    this.trips = const [],
+    this.destination,
   });
+
+  List<LineTrip> tripsOf(String direction) => trips.where((t) => t.direction == direction).toList();
 
   factory SupervisorLine.fromJson(Map<String, dynamic> json) => SupervisorLine(
         id: json['id'] as String,
@@ -322,6 +333,35 @@ class SupervisorLine {
         stations: _list(json['stations']).map(SupervisorStation.fromJson).toList(),
         departureTrips: _list(json['trips']).where((t) => t['direction'] == 'departure').length,
         returnTrips: _list(json['trips']).where((t) => t['direction'] == 'return').length,
+        trips: _list(json['trips']).map(LineTrip.fromJson).where((t) => t.startTime.isNotEmpty).toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime)),
+        destination: _text(json['destination']),
+      );
+}
+
+/// One trip of a line as get_supervisor_dashboard().lines[].trips lists it.
+class LineTrip {
+  final String? id;
+
+  /// 'departure' | 'return'
+  final String direction;
+
+  /// When the bus leaves the origin (departure) or the university (return).
+  final String startTime;
+  final String? arrivalTime;
+  final String label;
+
+  LineTrip({this.id, required this.direction, required this.startTime, this.arrivalTime, this.label = ''});
+
+  bool get isReturn => direction == 'return';
+
+  factory LineTrip.fromJson(Map<String, dynamic> json) => LineTrip(
+        id: json['id'] as String?,
+        direction: json['direction'] as String? ?? 'departure',
+        // line_trips_summary sends the start of either direction as departure_time.
+        startTime: _text(json['start_time']) ?? _text(json['departure_time']) ?? '',
+        arrivalTime: _text(json['arrival_time']),
+        label: (json['label'] as String? ?? '').trim(),
       );
 }
 

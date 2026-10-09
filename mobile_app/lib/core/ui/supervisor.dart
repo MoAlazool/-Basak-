@@ -263,6 +263,12 @@ class BarRow extends StatelessWidget {
   final BarRowState state;
   final VoidCallback? onTap;
 
+  /// One quiet line under the bar: the bus's seats ("45 من 50").
+  final String? note;
+
+  /// [note] is something to act on ("يحتاج باصين").
+  final bool noteWarns;
+
   const BarRow({
     super.key,
     required this.time,
@@ -270,6 +276,8 @@ class BarRow extends StatelessWidget {
     required this.share,
     this.state = BarRowState.upcoming,
     this.onTap,
+    this.note,
+    this.noteWarns = false,
   });
 
   @override
@@ -319,6 +327,22 @@ class BarRow extends StatelessWidget {
               height: 4,
               color: state == BarRowState.past ? colors.grabber : colors.teal,
             ),
+            if (note != null)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(top: BasakSpace.s4),
+                  child: Text(
+                    note!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.caption.copyWith(
+                      color: noteWarns ? colors.warning : colors.ink3,
+                      fontWeight: noteWarns ? FontWeight.w500 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -370,7 +394,11 @@ class StopRider {
   final String? boardedAt;
   final VoidCallback? onTap;
 
-  const StopRider({required this.name, this.boardedAt, this.onTap});
+  /// A day that has not come: nobody has boarded or missed anything yet, so
+  /// the row carries the name alone.
+  final bool plain;
+
+  const StopRider({required this.name, this.boardedAt, this.onTap, this.plain = false});
 }
 
 /// One stop of a trip on its rail: the stop time, how many boarded of how many
@@ -389,6 +417,10 @@ class StopRow extends StatelessWidget {
   final VoidCallback? onToggle;
   final List<StopRider> riders;
 
+  /// Said in the pill instead of "boarded / expected": how many will ride
+  /// from here on a day that has not come ("8"). Neutral.
+  final String? countLabel;
+
   const StopRow({
     super.key,
     required this.name,
@@ -401,13 +433,16 @@ class StopRow extends StatelessWidget {
     this.expanded = false,
     this.onToggle,
     this.riders = const [],
+    this.countLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
-    final tone = boarded >= expected && expected > 0
+    final tone = countLabel != null
+        ? BasakTone.neutral
+        : boarded >= expected && expected > 0
         ? BasakTone.success
         : boarded > 0
             ? BasakTone.warning
@@ -468,7 +503,7 @@ class StopRow extends StatelessWidget {
               padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s10, vertical: 3),
               decoration: BoxDecoration(color: tone.tint(colors), borderRadius: BasakRadius.all(BasakRadius.full)),
               child: Text(
-                '$boarded / $expected',
+                countLabel ?? '$boarded / $expected',
                 textDirection: TextDirection.ltr,
                 style: text.label.copyWith(color: tone.foreground(colors)),
               ),
@@ -487,7 +522,7 @@ class StopRow extends StatelessWidget {
       children: [
         Semantics(
           expanded: expanded,
-          label: '$name، $time، صعد $boarded من $expected',
+          label: countLabel != null ? '$name، $time، $countLabel' : '$name، $time، صعد $boarded من $expected',
           child: BasakPressable(onTap: onToggle, child: head),
         ),
         if (expanded && riders.isNotEmpty)
@@ -533,11 +568,14 @@ class StopRow extends StatelessWidget {
               rider.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: text.bodySmall.copyWith(fontWeight: boarded ? FontWeight.w400 : FontWeight.w600),
+              style: text.bodySmall
+                  .copyWith(fontWeight: boarded || rider.plain ? FontWeight.w400 : FontWeight.w600),
             ),
           ),
           const SizedBox(width: BasakSpace.s10),
-          if (boarded) ...[
+          if (rider.plain)
+            const SizedBox.shrink()
+          else if (boarded) ...[
             Icon(LucideIcons.check, size: 14, color: colors.success),
             const SizedBox(width: BasakSpace.s6),
             Text(rider.boardedAt!, style: text.label.copyWith(color: colors.success)),

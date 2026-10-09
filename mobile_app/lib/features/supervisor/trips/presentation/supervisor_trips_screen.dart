@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
-import '../../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
+
 import '../../../../core/sync/session.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/basak_ui.dart';
-import '../../../../core/widgets/glass_scaffold.dart';
-import '../../../student/lines/presentation/trip_timetable.dart' show TripDirectionTabs;
+import '../../../../core/theme/app_icons.dart';
+import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/basak_ui.dart' show BasakUi;
+import '../../../../core/widgets/skeleton.dart';
 import '../../data/supervisor_repository.dart';
+import '../../home/home_counts.dart';
+import '../../home/presentation/supervisor_home_screen.dart' show supervisorClockProvider, supervisorTripDayProvider;
 import '../../models/supervisor_models.dart';
-import '../../qr_scanner/presentation/supervisor_qr_scanner_screen.dart';
+import '../../selection/supervisor_selection.dart';
+import 'rider_sheet.dart';
+import 'trip_sheet.dart';
 
 typedef ManifestKey = ({String lineId, String direction, String? tripId});
 
@@ -21,9 +24,10 @@ final tripManifestProvider = FutureProvider.family<TripManifest, ManifestKey>((r
       .getTripManifest(lineId: key.lineId, direction: key.direction, tripId: key.tripId);
 });
 
-/// Going / Return trips of the supervisor's line: one flow for both directions.
-/// Route in travel order, students per station, who is checked in, and a
-/// scanner pinned to the selected trip.
+/// Tab 2 — one trip: who boarded and who has not, stop by stop. The line and
+/// the trip are the ones chosen in [supervisorSelectionProvider]; with no trip
+/// chosen it is the next one to leave. A trip opened from Home's card of
+/// tomorrow shows who confirmed instead, from the dashboard.
 class SupervisorTripsScreen extends ConsumerStatefulWidget {
   const SupervisorTripsScreen({super.key});
 
@@ -32,420 +36,456 @@ class SupervisorTripsScreen extends ConsumerStatefulWidget {
 }
 
 class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
-  String? _lineId;
-  bool _going = DateTime.now().hour < 12;
-  final Map<bool, String?> _tripByDirection = {true: null, false: null};
+  /// The direction looked at while no trip is chosen (a direction without trips).
+  String? _direction;
   final Set<String> _openStations = {};
   bool _unconfirmedOpen = false;
 
-  ManifestKey? _key(List<SupervisorLine> lines) {
-    if (lines.isEmpty) return null;
-    final lineId = lines.any((l) => l.id == _lineId) ? _lineId! : lines.first.id;
-    return (lineId: lineId, direction: _going ? 'departure' : 'return', tripId: _tripByDirection[_going]);
+  DateTime get _now => ref.read(supervisorClockProvider)();
+
+  String _directionOf(SupervisorSelection selection) =>
+      selection.direction?.wire ?? _direction ?? (_now.hour < 12 ? 'departure' : 'return');
+
+  Future<void> _refresh(ManifestKey? key) async {
+    ref.invalidate(supervisorDashboardProvider);
+    if (key != null) ref.invalidate(tripManifestProvider(key));
+    try {
+      await ref.read(supervisorDashboardProvider.future);
+      if (key != null) await ref.read(tripManifestProvider(key).future);
+    } catch (_) {
+      // The page says so itself.
+    }
   }
 
-  Future<void> _refresh(ManifestKey key) async {
-    ref.invalidate(tripManifestProvider(key));
-    await ref.read(tripManifestProvider(key).future);
+  void _lookAt(String direction) {
+    ref.read(supervisorSelectionProvider.notifier).clearTrip();
+    setState(() {
+      _direction = direction;
+      _openStations.clear();
+    });
   }
 
-  Future<void> _scan(TripManifest m) async {
-    final trip = m.trip;
-    if (trip == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(
-        appBar: AppBar(
-          title: Text('${m.isReturn ? 'العودة' : 'الذهاب'} · ${BasakUi.time12(trip.startTime)}'),
-          backgroundColor: BasakUi.canvas,
-          foregroundColor: BasakUi.ink,
-          elevation: 0,
-        ),
-        body: SupervisorQrScannerScreen(
-          direction: m.direction,
-          tripId: trip.id,
-          tripLabel: BasakUi.time12(trip.startTime),
-        ),
-      ),
-    ));
-    // Nothing to read here: each check-in refreshed the list when it was made.
+  Future<void> _changeTrip({
+    required DayCounts counts,
+    required TripCount? current,
+    required String direction,
+    required String lineName,
+    required bool today,
+  }) async {
+    final chosen = await TripSheet.show(context,
+        counts: counts, current: current, direction: direction, lineName: lineName, now: today ? _now : null);
+    if (chosen == null || !mounted) return;
+    ref.read(supervisorSelectionProvider.notifier).selectTrip(
+        direction: TripDirection.fromWire(chosen.direction), time: chosen.time, tripId: chosen.tripId);
+    setState(() {
+      _direction = null;
+      _openStations.clear();
+    });
   }
+
+  String _lineName(String name) => name.startsWith('خط ') ? name : 'خط $name';
+
+  Widget _header(String date) => Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(child: Semantics(header: true, child: Text('الرحلات', style: context.text.display))),
+          Text(date, style: context.text.label.copyWith(color: context.colors.ink3, fontWeight: FontWeight.w400)),
+        ],
+      );
+
+  Widget _failed({required String title, required VoidCallback onRetry}) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(height: MediaQuery.sizeOf(context).height * .08),
+          ToneState(
+            icon: LucideIcons.wifiOff,
+            tone: BasakTone.warning,
+            title: title,
+            message: 'تحقّق من الاتصال بالإنترنت ثم أعد المحاولة.',
+          ),
+          const SizedBox(height: BasakSpace.s16),
+          BasakButton(
+            label: 'إعادة المحاولة',
+            icon: LucideIcons.refreshCw,
+            size: BasakButtonSize.medium,
+            expand: false,
+            onPressed: onRetry,
+          ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
     final dashboard = ref.watch(supervisorDashboardProvider);
-    return GlassScaffold(
-      body: dashboard.when(
-        loading: () => const BasakPage(children: [StationRowsSkeleton(rows: 6)]),
-        error: (_, __) => BasakPage(children: [
-          const SizedBox(height: 40),
-          BasakMessageCard(
-            icon: LucideIcons.wifiOff,
-            title: 'تعذر تحميل الرحلات',
-            message: 'تحقق من الاتصال بالإنترنت ثم أعد المحاولة.',
-            actionLabel: 'إعادة المحاولة',
-            onAction: () => ref.invalidate(supervisorDashboardProvider),
-          ),
-        ]),
-        data: (data) {
-          final key = _key(data.lines);
-          if (key == null) {
-            return const BasakPage(children: [
-              BasakPageHeader(title: 'الرحلات', subtitle: 'الذهاب والعودة'),
-              SizedBox(height: 18),
-              BasakMessageCard(
-                icon: LucideIcons.bus,
-                title: 'لا يوجد خط مسند إليك',
-                message: 'ستظهر رحلات الذهاب والعودة بمجرد إسناد خط لحسابك.',
-              ),
-            ]);
-          }
-          final manifest = ref.watch(tripManifestProvider(key));
-          return BasakPage(
-            onRefresh: () => _refresh(key),
-            children: [
-              BasakPageHeader(title: 'الرحلات', subtitle: BasakUi.dateLabel(data.today)),
-              const SizedBox(height: 14),
-              if (data.lines.length > 1) ...[
-                _lineChips(data.lines, key.lineId),
-                const SizedBox(height: 10),
-              ],
-              TripDirectionTabs(
-                departure: _going,
-                departureCount: data.lines.firstWhere((l) => l.id == key.lineId).departureTrips,
-                returnCount: data.lines.firstWhere((l) => l.id == key.lineId).returnTrips,
-                onChanged: (going) => setState(() {
-                  _going = going;
-                  _openStations.clear();
-                }),
-              ),
-              const SizedBox(height: 14),
-              manifest.when(
-                loading: () => const StationRowsSkeleton(rows: 4),
-                error: (e, _) => BasakMessageCard(
-                  icon: LucideIcons.triangleAlert,
-                  title: 'تعذر تحميل الرحلة',
-                  message: '$e',
-                  actionLabel: 'إعادة المحاولة',
-                  onAction: () => ref.invalidate(tripManifestProvider(key)),
-                ),
-                data: (m) => _content(m, key),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+    final data = dashboard.valueOrNull;
+    final bottom = MediaQuery.paddingOf(context).bottom + BasakSpace.s24;
+    final now = ref.watch(supervisorClockProvider)();
 
-  Widget _lineChips(List<SupervisorLine> lines, String selected) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          for (final line in lines)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
-              child: ChoiceChip(
-                label: Text(line.name),
-                selected: line.id == selected,
-                onSelected: (_) => setState(() {
-                  _lineId = line.id;
-                  _tripByDirection.updateAll((_, __) => null);
-                  _openStations.clear();
-                }),
-              ),
-            ),
-        ]),
-      );
-
-  Widget _content(TripManifest m, ManifestKey key) {
-    if (m.trips.isEmpty || m.trip == null) {
-      return BasakMessageCard(
-        icon: LucideIcons.calendarX2,
-        title: m.isReturn ? 'لا توجد رحلات عودة' : 'لا توجد رحلات ذهاب',
-        message: 'أضف رحلات لهذا الخط من لوحة التحكم (صفحة الخطوط).',
+    if (data == null) {
+      return BasakPage(
+        bottomInset: bottom,
+        onRefresh: dashboard.hasError ? () => _refresh(null) : null,
+        children: [
+          _header(SupervisorWords.date(now)),
+          if (dashboard.hasError)
+            _failed(title: 'تعذّر تحميل الرحلات', onRetry: () => ref.invalidate(supervisorDashboardProvider))
+          else
+            const StationRowsSkeleton(rows: 6),
+        ],
       );
     }
-    final trip = m.trip!;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Trip / time selector
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            for (final option in m.trips)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 8),
-                child: ChoiceChip(
-                  avatar: Icon(LucideIcons.clock3,
-                      size: 16, color: option.id == trip.id ? BasakUi.teal : BasakUi.muted),
-                  label: Text('${BasakUi.time12(option.startTime)} · ${option.students}'),
-                  selected: option.id == trip.id,
-                  selectedColor: BasakUi.softTeal,
-                  onSelected: (_) => setState(() {
-                    _tripByDirection[_going] = option.id;
-                    _openStations.clear();
-                  }),
-                ),
-              ),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        _hero(m, trip),
-        const SizedBox(height: 12),
-        BasakStatGrid(tiles: [
-          BasakStatTile(icon: LucideIcons.users, value: '${m.totalStudents}', label: 'طالب على الرحلة'),
-          BasakStatTile(
-              icon: LucideIcons.userCheck,
-              value: '${m.checkedIn}',
-              label: 'تم تسجيلهم',
-              color: const Color(0xFF07865A)),
-          BasakStatTile(
-              icon: LucideIcons.userX,
-              value: '${m.totalStudents - m.checkedIn}',
-              label: 'لم يُسجَّلوا بعد',
-              color: const Color(0xFFB97812)),
-          BasakStatTile(
-              icon: LucideIcons.calendarCheck2,
-              value: '${m.confirmed}',
-              label: m.isReturn ? 'أكدوا العودة اليوم' : 'أكدوا الذهاب اليوم',
-              color: const Color(0xFF6366F1)),
-        ]),
-        BasakSectionTitle('المحطات (${m.isReturn ? 'من الجامعة' : 'إلى الجامعة'})',
-            trailing: BasakPill('${m.stations.where((s) => s.stopTime != null).length} محطة',
-                icon: LucideIcons.mapPin)),
-        for (final station in m.stations.where((s) => s.stopTime != null || s.students.isNotEmpty))
-          _station(station, timesUnset: m.stopTimesUnset),
-        if (m.unconfirmed.isNotEmpty) _unconfirmed(m.unconfirmed),
-        const SizedBox(height: 8),
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: BasakUi.teal,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    if (data.lines.isEmpty) {
+      return BasakPage(
+        bottomInset: bottom,
+        onRefresh: () => _refresh(null),
+        children: [
+          _header(SupervisorWords.date(data.today)),
+          SizedBox(height: MediaQuery.sizeOf(context).height * .08),
+          EmptyState(
+            page: true,
+            icon: LucideIcons.bus,
+            title: 'لا يوجد خط مسند إليك',
+            message: 'ستظهر الرحلات والركاب هنا بمجرد أن تسند الشركة خطاً إلى حسابك.',
+            actionLabel: 'تحديث',
+            actionIcon: LucideIcons.refreshCw,
+            onAction: () => _refresh(null),
           ),
-          onPressed: () => _scan(m),
-          icon: const Icon(LucideIcons.scanLine),
-          label: Text('مسح QR لرحلة ${m.isReturn ? 'العودة' : 'الذهاب'} ${BasakUi.time12(trip.startTime)}'),
+        ],
+      );
+    }
+
+    final selection = ref.watch(supervisorSelectionProvider);
+    final line = data.lines.firstWhere((l) => l.id == selection.lineId, orElse: () => data.lines.first);
+    final direction = _directionOf(selection);
+    final day = ref.watch(supervisorTripDayProvider);
+    final tomorrow = day != null && !DateUtils.isSameDay(day, data.today);
+    final counts = DayCounts.of(data, line, tomorrow ? day : data.today);
+    final capacity = ref.watch(lineCapacitiesProvider).valueOrNull?[line.id];
+
+    if (tomorrow) {
+      return BasakPage(
+        bottomInset: bottom,
+        onRefresh: () => _refresh(null),
+        children: [
+          _header(SupervisorWords.dayTitle(day, now)),
+          ..._comingDay(data, line, counts, direction, selection, day, capacity, now),
+        ],
+      );
+    }
+
+    final ManifestKey key = (lineId: line.id, direction: direction, tripId: selection.tripId);
+    final manifest = ref.watch(tripManifestProvider(key));
+    return BasakPage(
+      bottomInset: bottom,
+      onRefresh: () => _refresh(key),
+      children: [
+        _header(SupervisorWords.date(data.today)),
+        ...manifest.when(
+          skipLoadingOnReload: true,
+          skipLoadingOnRefresh: true,
+          loading: () => const [StationRowsSkeleton(rows: 5)],
+          // Never the raw exception.
+          error: (_, __) => [
+            _failed(title: 'تعذّر تحميل الرحلة', onRetry: () => ref.invalidate(tripManifestProvider(key))),
+          ],
+          data: (m) => _today(m, line, counts, capacity),
         ),
       ],
     );
   }
 
-  Widget _hero(TripManifest m, ManifestTripOption trip) => Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: BasakUi.heroGradient,
-          borderRadius: BorderRadius.circular(26),
-          boxShadow: const [BoxShadow(color: Color(0x3020698C), blurRadius: 20, offset: Offset(0, 10))],
+  /// "لا توجد رحلات عودة": the two directions to look at, and one sentence.
+  List<Widget> _noTrips(SupervisorLine line, String direction, DayCounts counts) => [
+        BasakSegmented<String>(
+          options: const ['departure', 'return'],
+          value: direction,
+          label: (d) => '${SupervisorWords.directionTitle(d)} · ${counts.of(d).length}',
+          onChanged: _lookAt,
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            BasakPill(m.isReturn ? 'العودة' : 'الذهاب',
-                background: Colors.white.withOpacity(.16),
-                foreground: Colors.white,
-                icon: m.isReturn ? LucideIcons.sunset : LucideIcons.sunrise),
-            const Spacer(),
-            Text(m.lineName, style: AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
-          ]),
-          const SizedBox(height: 12),
-          Text(BasakUi.time12(trip.startTime),
-              style: AppTextStyles.displayMedium.copyWith(color: Colors.white, fontSize: 32, height: 1.55)),
-          if (trip.label.isNotEmpty || trip.university != null)
-            Text([trip.label, if (trip.university != null) trip.university!].where((x) => x.isNotEmpty).join(' · '),
-                style: AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
-          const SizedBox(height: 12),
-          // Route in travel order
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
-            runSpacing: 6,
+        SizedBox(height: MediaQuery.sizeOf(context).height * .08),
+        EmptyState(
+          key: const Key('no-trips'),
+          page: true,
+          icon: LucideIcons.calendarX2,
+          title: 'لا توجد رحلات ${SupervisorWords.direction(direction)}',
+          message: '${TripSheet.noTrips(direction, _lineName(line.name))} تظهر هنا فور إضافتها.',
+        ),
+      ];
+
+  Widget _stopsHead(int stops) => Padding(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s4),
+        child: Row(
+          children: [
+            Expanded(child: Text('المحطات', style: context.text.label.copyWith(color: context.colors.ink2))),
+            Text(ArabicCount.stops(stops),
+                style: context.text.label.copyWith(color: context.colors.ink3, fontWeight: FontWeight.w400)),
+          ],
+        ),
+      );
+
+  List<Widget> _today(TripManifest m, SupervisorLine line, DayCounts counts, int? capacity) {
+    final trip = m.trip;
+    if (m.trips.isEmpty || trip == null) return _noTrips(line, m.direction, counts);
+
+    final lineName = _lineName(m.lineName.isEmpty ? line.name : m.lineName);
+    final current = counts.of(m.direction).where((t) => t.tripId == trip.id).firstOrNull ??
+        counts.of(m.direction).where((t) => minutesOf(t.time) == minutesOf(trip.startTime)).firstOrNull;
+    final total = m.totalStudents, boarded = m.checkedIn;
+    final seats = CapacityNote.forTrip(total, capacity);
+    final stations = m.stations.where((s) => s.stopTime != null || s.students.isNotEmpty).toList();
+    // The stop the bus is at: the first one where someone has yet to board,
+    // once boarding has begun.
+    final begun = boarded > 0;
+    final at = stations.indexWhere((s) => s.checkedIn < s.students.length);
+
+    String boardedAt(DateTime time) => BasakUi.time12('${time.hour}:${time.minute.toString().padLeft(2, '0')}');
+    String stopTime(ManifestStation s) => s.stopTime == null
+        ? 'الرحلة لا تقف هنا'
+        : m.stopTimesUnset
+            ? 'تمر الرحلة هنا'
+            : BasakUi.time12(s.stopTime);
+
+    // Who boarded, in the order they did; then who is still awaited.
+    List<ManifestStudent> boardedFirst(List<ManifestStudent> students) => [
+          ...students.where((s) => s.isCheckedIn).toList()..sort((a, b) => a.checkedInAt!.compareTo(b.checkedInAt!)),
+          ...students.where((s) => !s.isCheckedIn),
+        ];
+
+    void openRider(ManifestStudent s, {ManifestStation? station}) => RiderSheet.show(
+          context,
+          name: s.fullName,
+          phone: s.phone,
+          state: s.isCheckedIn
+              ? 'صعد ${boardedAt(s.checkedInAt!)}'
+              : station == null
+                  ? 'لم يؤكّد اليوم'
+                  : 'لم يصعد',
+          stateTone: s.isCheckedIn
+              ? BasakTone.success
+              : station == null
+                  ? BasakTone.neutral
+                  : BasakTone.warning,
+          stop: station == null
+              ? s.station
+              : station.stopTime == null || m.stopTimesUnset
+                  ? station.name
+                  : '${station.name} · ${BasakUi.time12(station.stopTime)}',
+          confirmation: s.confirmed
+              ? '${SupervisorWords.direction(m.direction)} ${BasakUi.time12(trip.startTime)}'
+              // Boarded here although they chose another time today.
+              : s.chosenTime != null
+                  ? '${SupervisorWords.direction(m.direction)} ${BasakUi.time12(s.chosenTime)}'
+                  : 'لم يؤكّد',
+          university: s.university,
+        );
+
+    return [
+      TripCard(
+        key: const Key('trip-card'),
+        time: BasakUi.time12(trip.startTime),
+        direction: SupervisorWords.direction(m.direction),
+        detail: [
+          lineName,
+          if ((trip.university ?? '').isNotEmpty) trip.university!,
+          if (trip.arrivalTime != null)
+            m.isReturn
+                ? 'الوصول ${BasakUi.time12(trip.arrivalTime)}'
+                : 'الوصول إلى الجامعة ${BasakUi.time12(trip.arrivalTime)}',
+        ].join(' · '),
+        note: seats?.text,
+        noteWarns: seats?.warns ?? false,
+        onChange: () => _changeTrip(
+            counts: counts, current: current, direction: m.direction, lineName: lineName, today: true),
+        child: total == 0
+            ? const ProgressLine(sentence: 'لم يؤكّد أحد هذه الرحلة بعد', value: 0)
+            : ProgressLine(
+                sentence: 'صعد $boarded من $total',
+                trailing: boarded >= total ? 'صعد الجميع' : 'بقي ${total - boarded}',
+                value: boarded / total,
+              ),
+      ),
+      if (stations.isNotEmpty)
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _stopsHead(stations.where((s) => s.stopTime != null).length),
+            const SizedBox(height: BasakSpace.s8),
+            BasakCard(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final (i, station) in stations.indexed)
+                    StopRow(
+                      key: Key('stop-${station.id}'),
+                      name: station.name,
+                      time: stopTime(station),
+                      boarded: station.checkedIn,
+                      expected: station.students.length,
+                      state: !begun
+                          ? StopState.upcoming
+                          : at < 0 || i < at
+                              ? StopState.done
+                              : i == at
+                                  ? StopState.current
+                                  : StopState.upcoming,
+                      isFirst: i == 0,
+                      isLast: i == stations.length - 1,
+                      expanded: _openStations.contains(station.id) && station.students.isNotEmpty,
+                      onToggle: station.students.isEmpty
+                          ? null
+                          : () => setState(() => _openStations.contains(station.id)
+                              ? _openStations.remove(station.id)
+                              : _openStations.add(station.id)),
+                      riders: [
+                        for (final s in boardedFirst(station.students))
+                          StopRider(
+                            name: s.fullName,
+                            boardedAt: s.isCheckedIn ? boardedAt(s.checkedInAt!) : null,
+                            onTap: () => openRider(s, station: station),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      if (m.unconfirmed.isNotEmpty)
+        DisclosureCard(
+          key: const Key('unconfirmed'),
+          title: 'لم يؤكّدوا اليوم · ${m.unconfirmed.length}',
+          subtitle: 'مشتركون على الخط لم يحدّدوا موعدهم',
+          expanded: _unconfirmedOpen,
+          onToggle: () => setState(() => _unconfirmedOpen = !_unconfirmedOpen),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (var i = 0; i < m.routeNames.length; i++) ...[
-                if (i > 0) const Icon(LucideIcons.arrowLeft, size: 14, color: Colors.white70),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(i == 0 || i == m.routeNames.length - 1 ? .22 : .12),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Text(m.routeNames[i],
-                      style: AppTextStyles.labelSmall.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-                ),
+              for (final (i, s) in m.unconfirmed.indexed) ...[
+                if (i > 0) Divider(height: 1, thickness: 1, color: context.colors.hairline),
+                PersonRow(name: s.fullName, caption: s.station, onTap: () => openRider(s)),
               ],
             ],
           ),
-          if (trip.arrivalTime != null) ...[
-            const SizedBox(height: 10),
-            Text('الوصول ${BasakUi.time12(trip.arrivalTime)}',
-                style: AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
-          ],
-        ]),
-      );
-
-  Widget _station(ManifestStation station, {bool timesUnset = false}) {
-    final open = _openStations.contains(station.id);
-    final done = station.students.isNotEmpty && station.checkedIn == station.students.length;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BasakUi.card(),
-      child: Column(children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => setState(() => open ? _openStations.remove(station.id) : _openStations.add(station.id)),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                    color: done ? const Color(0xFFE7F8F0) : BasakUi.softTeal, shape: BoxShape.circle),
-                child: Icon(done ? LucideIcons.circleCheck : LucideIcons.mapPin,
-                    size: 18, color: done ? const Color(0xFF07865A) : BasakUi.teal),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(station.name,
-                      style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                  Text(
-                      station.stopTime == null
-                          ? 'الرحلة لا تقف هنا'
-                          : timesUnset
-                              ? 'تمر الرحلة هنا'
-                              : BasakUi.time12(station.stopTime),
-                      style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
-                ]),
-              ),
-              BasakPill('${station.checkedIn}/${station.students.length}',
-                  background: done ? const Color(0xFFE7F8F0) : const Color(0xFFF1F5F9),
-                  foreground: done ? const Color(0xFF07865A) : BasakUi.ink,
-                  icon: LucideIcons.users),
-              const SizedBox(width: 4),
-              Icon(open ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 18, color: BasakUi.muted),
-            ]),
-          ),
         ),
-        if (open)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-            child: station.students.isEmpty
-                ? Text('لا يوجد طلاب على هذه المحطة في هذه الرحلة.',
-                    style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted))
-                : Column(children: [for (final s in station.students) _student(s)]),
-          ),
-      ]),
-    );
+    ];
   }
 
-  Widget _student(ManifestStudent s) => Container(
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: s.isCheckedIn ? const Color(0xFFF0FBF5) : const Color(0xFFF7F9FB),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(children: [
-          Icon(s.isCheckedIn ? LucideIcons.circleCheck : LucideIcons.circle,
-              size: 18, color: s.isCheckedIn ? const Color(0xFF07865A) : BasakUi.muted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(s.fullName,
-                  style: AppTextStyles.bodyMedium.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-              Text(s.phone, textDirection: TextDirection.ltr,
-                  style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
-            ]),
-          ),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(
-              s.isCheckedIn
-                  ? 'سُجّل ${BasakUi.time12('${s.checkedInAt!.hour}:${s.checkedInAt!.minute.toString().padLeft(2, '0')}')}'
-                  : 'لم يُسجَّل',
-              style: AppTextStyles.labelSmall.copyWith(
-                  color: s.isCheckedIn ? const Color(0xFF07865A) : const Color(0xFFB97812),
-                  fontWeight: FontWeight.w700),
-            ),
-            Text(
-                s.confirmed
-                    ? 'أكد في التطبيق'
-                    // Checked in here although they chose another time today.
-                    : s.chosenTime != null
-                        ? 'اختار ${BasakUi.time12(s.chosenTime)}'
-                        : 'لم يؤكد',
-                style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted, fontSize: 10)),
-          ]),
-        ]),
-      );
+  /// A trip of the next ride day: nobody has boarded, so it says who
+  /// confirmed, stop by stop, from the dashboard.
+  List<Widget> _comingDay(SupervisorDashboard data, SupervisorLine line, DayCounts counts, String direction,
+      SupervisorSelection selection, DateTime day, int? capacity, DateTime now) {
+    final lineName = _lineName(line.name);
+    final trips = counts.of(direction);
+    final backToToday = Center(
+      child: BasakButton(
+        key: const Key('back-to-today'),
+        label: 'عرض رحلات اليوم',
+        variant: BasakButtonVariant.quiet,
+        size: BasakButtonSize.small,
+        expand: false,
+        onPressed: () => ref.read(supervisorTripDayProvider.notifier).state = null,
+      ),
+    );
+    if (trips.isEmpty) return [..._noTrips(line, direction, counts), backToToday];
 
-  /// Subscribers who have not answered today's ride vote: may still turn up.
-  Widget _unconfirmed(List<ManifestStudent> students) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BasakUi.card(),
-        child: Column(children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () => setState(() => _unconfirmedOpen = !_unconfirmedOpen),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(color: Color(0xFFFFF4E5), shape: BoxShape.circle),
-                  child: const Icon(LucideIcons.userX, size: 18, color: Color(0xFFB97812)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('لم يؤكدوا الركوب بعد (${students.length})',
-                        style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                    Text('مشتركون على الخط لم يحددوا موعدهم اليوم',
-                        style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
-                  ]),
-                ),
-                Icon(_unconfirmedOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
-                    size: 18, color: BasakUi.muted),
-              ]),
+    final trip = trips
+            .where((t) => selection.tripId != null
+                ? t.tripId == selection.tripId
+                : selection.tripTime != null && minutesOf(t.time) == minutesOf(selection.tripTime!))
+            .firstOrNull ??
+        trips.first;
+    final firm = SupervisorWords.firmness(data.profile.vote, day, now);
+    final seats = CapacityNote.forTrip(trip.riders, capacity);
+    final breakdown = trip.breakdown;
+    final stations = breakdown?.stations ?? const <TripTimeStation>[];
+    final dayName = SupervisorWords.dayName(day, now);
+
+    return [
+      TripCard(
+        key: const Key('trip-card'),
+        time: BasakUi.time12(trip.time),
+        direction: SupervisorWords.direction(trip.direction),
+        detail: [lineName, if ((breakdown?.university ?? '').isNotEmpty) breakdown!.university!].join(' · '),
+        note: seats?.text,
+        noteWarns: seats?.warns ?? false,
+        onChange: () => _changeTrip(
+            counts: counts, current: trip, direction: direction, lineName: lineName, today: false),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              trip.riders == 0 ? 'لم يؤكّد أحد بعد' : 'أكّد ${ArabicCount.students(trip.riders)}',
+              style: context.text.body.copyWith(fontWeight: FontWeight.w600),
             ),
-          ),
-          if (_unconfirmedOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Column(children: [
-                for (final s in students)
-                  Container(
-                    margin: const EdgeInsets.only(top: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                    decoration:
-                        BoxDecoration(color: const Color(0xFFF7F9FB), borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      const Icon(LucideIcons.user, size: 16, color: BasakUi.muted),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(s.fullName,
-                              style: AppTextStyles.bodyMedium
-                                  .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-                          Text(s.phone,
-                              textDirection: TextDirection.ltr,
-                              style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
-                          if (s.station != null)
-                            Row(children: [
-                              const Icon(LucideIcons.mapPin, size: 12, color: BasakUi.teal),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(s.station!,
-                                    style: AppTextStyles.labelSmall
-                                        .copyWith(color: BasakUi.teal, fontWeight: FontWeight.w600)),
+            Text(firm.text,
+                style: context.text.label.copyWith(color: context.colors.ink3, fontWeight: FontWeight.w400)),
+          ],
+        ),
+      ),
+      if (trip.riders > 0 && stations.isEmpty)
+        const EmptyState(icon: LucideIcons.users, title: 'التفاصيل غير متاحة')
+      else if (stations.isNotEmpty)
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _stopsHead(stations.where((s) => s.stopTime != null).length),
+            const SizedBox(height: BasakSpace.s8),
+            BasakCard(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final (i, station) in stations.indexed)
+                    () {
+                      final riders = breakdown!.ridersAt(station.id);
+                      return StopRow(
+                        key: Key('stop-${station.id}'),
+                        name: station.name,
+                        time: station.stopTime == null ? 'الرحلة لا تقف هنا' : BasakUi.time12(station.stopTime),
+                        boarded: 0,
+                        expected: station.students,
+                        countLabel: '${station.students}',
+                        state: StopState.upcoming,
+                        isFirst: i == 0,
+                        isLast: i == stations.length - 1,
+                        expanded: _openStations.contains(station.id) && riders.isNotEmpty,
+                        onToggle: riders.isEmpty
+                            ? null
+                            : () => setState(() => _openStations.contains(station.id)
+                                ? _openStations.remove(station.id)
+                                : _openStations.add(station.id)),
+                        riders: [
+                          for (final r in riders)
+                            StopRider(
+                              name: r.fullName,
+                              plain: true,
+                              onTap: () => RiderSheet.show(
+                                context,
+                                name: r.fullName,
+                                phone: r.phone,
+                                stop: station.stopTime == null
+                                    ? station.name
+                                    : '${station.name} · ${BasakUi.time12(station.stopTime)}',
+                                confirmation:
+                                    '${SupervisorWords.direction(trip.direction)} ${BasakUi.time12(trip.time)}',
+                                confirmationLabel: dayName == 'غداً' ? 'تأكيد الغد' : 'التأكيد',
+                                university: r.university,
                               ),
-                            ]),
-                        ]),
-                      ),
-                    ]),
-                  ),
-              ]),
+                            ),
+                        ],
+                      );
+                    }(),
+                ],
+              ),
             ),
-        ]),
-      );
+          ],
+        ),
+      backToToday,
+    ];
+  }
 }

@@ -8,9 +8,8 @@ import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
 import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
 import 'package:basak_mobile/features/notifications/data/notifications_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:basak_mobile/features/supervisor/data/supervisor_repository.dart';
-import 'package:basak_mobile/features/supervisor/rider_counts/data/rider_counts_repository.dart';
-import 'package:basak_mobile/features/supervisor/rider_counts/presentation/rider_counts_screen.dart';
 
 import 'notification_fakes.dart';
 import 'perf_fakes.dart';
@@ -21,13 +20,22 @@ const lineIds = ['line-a', 'line-b', 'line-c'];
 
 /// The server as a supervisor's phone sees it: every database function it
 /// calls, counted by name.
-class FakeSupervisorServer implements SupervisorGateway, RiderCountsGateway {
+class FakeSupervisorServer implements SupervisorGateway {
   final RequestLog log;
   FakeSupervisorServer(this.log);
 
-  /// A database that does not have `get_lines_rider_counts` yet.
-  bool hasBatchCounts = true;
+  /// A database that does not have `get_my_line_capacities` yet.
+  bool hasCapacities = true;
+
+  /// Seats of one bus per line; a line the company gave no number is null.
+  Map<String, int?> capacities = {'line-a': 50, 'line-b': null, 'line-c': 28};
   int checkedIn = 0;
+
+  /// `trip_times` of the dashboard: the riders per trip, today and tomorrow.
+  List<Map<String, dynamic>> tripTimes = [];
+
+  /// `trips` of every line of the dashboard. Null: a server that lists none.
+  List<Map<String, dynamic>>? lineTrips = [];
 
   @override
   String? userId = supervisorId;
@@ -42,10 +50,18 @@ class FakeSupervisorServer implements SupervisorGateway, RiderCountsGateway {
           'profile': {'id': supervisorId, 'full_name': 'محمود', 'company_id': companyId, 'is_active': true},
           'totals': {'checked_in_today': checkedIn},
           'lines': [
-            for (final id in lineIds) {'id': id, 'name': 'خط $id', 'registered_students': 12}
+            for (final id in lineIds)
+              {'id': id, 'name': 'خط $id', 'registered_students': 12, if (lineTrips != null) 'trips': lineTrips}
           ],
-          'trip_times': <dynamic>[],
+          'trip_times': tripTimes,
         };
+      case 'get_my_line_capacities':
+        if (!hasCapacities) {
+          throw const PostgrestException(message: 'Could not find the function', code: 'PGRST202');
+        }
+        return [
+          for (final id in lineIds) {'line_id': id, 'bus_capacity': capacities[id]}
+        ];
       case 'get_supervisor_trip_manifest':
         return {
           'line': {'id': params!['p_line_id'], 'name': 'خط'},
@@ -71,34 +87,6 @@ class FakeSupervisorServer implements SupervisorGateway, RiderCountsGateway {
     return {'profile_image_url': '$supervisorId/photo.jpg'};
   }
 
-  @override
-  Future<dynamic> assignedLineIds() async {
-    log.hit('get_supervisor_assigned_line_ids');
-    return [
-      for (final id in lineIds) {'line_id': id}
-    ];
-  }
-
-  List<Map<String, dynamic>> _rows(String lineId) => [
-        {
-          'line_id': lineId, 'line_name': 'خط $lineId', 'station_id': 'st-$lineId', 'station_name': 'محطة',
-          'order_index': 1, 'departure_time': '07:00:00', 'return_time': '15:00:00',
-          'riding_count': 3, 'returning_count': 2,
-        }
-      ];
-
-  @override
-  Future<dynamic> countsForLines(List<String> lineIds, String date) async {
-    log.hit('get_lines_rider_counts');
-    if (!hasBatchCounts) throw const LinesRiderCountsUnavailable();
-    return {for (final id in lineIds) id: _rows(id)};
-  }
-
-  @override
-  Future<dynamic> countsForLine(String lineId, String date) async {
-    log.hit('get_line_rider_counts_with_returns');
-    return _rows(lineId);
-  }
 }
 
 class FakeSupervisorAuth extends AuthNotifier {
@@ -129,7 +117,6 @@ class SupervisorWorld {
   List<Override> get overrides => [
         authStateProvider.overrideWith((ref) => FakeSupervisorAuth()),
         supervisorRepoProvider.overrideWithValue(SupervisorRepository(gateway: server)),
-        riderCountsRepoProvider.overrideWithValue(RiderCountsRepository(gateway: server)),
         notificationsRepoProvider.overrideWithValue(inbox),
       ];
 

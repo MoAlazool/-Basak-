@@ -428,104 +428,206 @@ class ProfileSkeleton extends StatelessWidget {
       );
 }
 
-/// Supervisor home: the summary strip, then one card per line.
+/// Supervisor home, in its own shape: the greeting, the line row, the ink
+/// card of the two totals, then the two columns of trips.
 class SupervisorHomeSkeleton extends StatelessWidget {
   const SupervisorHomeSkeleton({super.key});
 
   @override
-  Widget build(BuildContext context) => Skeleton(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: const [
-            Bone.circle(46),
-            SizedBox(width: 12),
-            Expanded(child: Bone(height: 16)),
+  Widget build(BuildContext context) {
+    Widget total() => const Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Bone(width: 56, height: 10, radius: 6),
+            SizedBox(height: BasakSpace.s10),
+            Bone(width: 96, height: 40, radius: BasakRadius.tile),
+            SizedBox(height: BasakSpace.s10),
+            Bone(width: 72, height: 10, radius: 6),
           ]),
-          const SizedBox(height: 16),
-          Row(children: [
-            for (var i = 0; i < 3; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(
-                child: SkeletonCard(
-                  padding: const EdgeInsets.all(12),
-                  radius: 18,
-                  child: Column(children: const [
-                    Bone(width: 44, height: 22),
-                    SizedBox(height: 8),
-                    Bone(width: 60, height: 10),
+        );
+    Widget column() => Expanded(
+          child: SkeletonCard(
+            padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.s16, BasakSpace.s14, BasakSpace.s16, BasakSpace.s8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Bone(width: 64, height: 14, radius: 7),
+              const SizedBox(height: BasakSpace.s8),
+              for (var i = 0; i < 4; i++)
+                const Padding(
+                  padding: EdgeInsetsDirectional.symmetric(vertical: 9),
+                  child: Column(children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Bone(width: 52, height: 12, radius: 6),
+                      Bone(width: 24, height: 12, radius: 6),
+                    ]),
+                    SizedBox(height: BasakSpace.s6),
+                    Bone(height: 4, radius: 2),
                   ]),
                 ),
+            ]),
+          ),
+        );
+    return Semantics(
+      label: 'جارٍ تحميل أعداد الركاب',
+      child: Skeleton(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Padding(
+            padding: EdgeInsetsDirectional.only(bottom: BasakSpace.s4),
+            child: Row(children: [
+              Bone.circle(44),
+              SizedBox(width: BasakSpace.s12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Bone(width: 72, height: 10, radius: 6),
+                  SizedBox(height: BasakSpace.s8),
+                  Bone(width: 132, height: 16),
+                ]),
               ),
-            ],
+              Bone.circle(44, color: BasakPalette.surface),
+            ]),
+          ),
+          const SizedBox(height: BasakSpace.s16),
+          const SkeletonCard(
+            radius: BasakRadius.control,
+            padding: EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s14, vertical: BasakSpace.s10),
+            child: Row(children: [
+              Bone(width: 36, height: 36, radius: BasakRadius.tile),
+              SizedBox(width: BasakSpace.s12),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Bone(width: 96, height: 12, radius: 6),
+                SizedBox(height: BasakSpace.s6),
+                Bone(width: 140, height: 10, radius: 6),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: BasakSpace.s16),
+          SkeletonCard(
+            radius: BasakRadius.sheet,
+            padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Bone(width: 150, height: 26, radius: 13),
+              const SizedBox(height: BasakSpace.s18),
+              Row(children: [total(), const SizedBox(width: BasakSpace.s18), total()]),
+              const SizedBox(height: BasakSpace.s24),
+              const Bone(height: 6, radius: 3),
+            ]),
+          ),
+          const SizedBox(height: BasakSpace.s16),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            column(),
+            const SizedBox(width: BasakSpace.s8),
+            column(),
           ]),
-          const SizedBox(height: 16),
-          const SkeletonList(rows: 3, avatars: false),
         ]),
-      );
+      ),
+    );
+  }
 }
 
-/// A trip's manifest or a line's rider counts: a header, then rows per station.
+/// A trip in Trips: the trip card, then its stops on one card.
 class StationRowsSkeleton extends StatelessWidget {
   final int rows;
   const StationRowsSkeleton({super.key, this.rows = 5});
 
   @override
   Widget build(BuildContext context) => Skeleton(
-        child: Column(children: [
-          for (var i = 0; i < rows; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: SkeletonCard(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                radius: 18,
-                child: Row(children: [
-                  const Bone.circle(14),
-                  const SizedBox(width: 10),
-                  Flexible(child: Bone(width: 110.0 + (i % 3) * 20, height: 13)),
-                  const Spacer(),
-                  const Bone(width: 44, height: 22, radius: 12),
-                ]),
-              ),
-            ),
-        ]),
-      );
-}
-
-/// The supervisor's month: the big ring card, then a bar per week.
-class MonthlySkeleton extends StatelessWidget {
-  const MonthlySkeleton({super.key});
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: Column(children: [
-          SkeletonCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SkeletonCard(
             radius: 24,
-            child: Row(children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-                  Bone(width: 120, height: 14),
-                  SizedBox(height: 12),
-                  Bone(width: 80, height: 26),
-                  SizedBox(height: 12),
-                  Bone(width: 150, height: 10),
-                ]),
-              ),
-              const Bone.circle(92),
+            padding: EdgeInsetsDirectional.all(BasakSpace.s18),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Bone(width: 120, height: 30, radius: BasakRadius.tile),
+                Bone(width: 76, height: 40, radius: BasakRadius.tile),
+              ]),
+              SizedBox(height: BasakSpace.s14),
+              Bone(width: 200, height: 11, radius: 6),
+              SizedBox(height: BasakSpace.s28),
+              Bone(width: 130, height: 13, radius: 6),
+              SizedBox(height: BasakSpace.s10),
+              Bone(height: 8, radius: 4),
             ]),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: BasakSpace.s16),
           SkeletonCard(
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s4),
             child: Column(children: [
-              for (var i = 0; i < 4; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+              for (var i = 0; i < rows; i++)
+                SizedBox(
+                  height: 56,
                   child: Row(children: [
-                    const Bone(width: 70, height: 10),
-                    const SizedBox(width: 12),
-                    Expanded(child: Bone(height: 8, radius: 4, width: double.infinity)),
+                    const Bone.circle(14),
+                    const SizedBox(width: BasakSpace.s12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Bone(width: 96.0 + (i % 3) * 20, height: 12, radius: 6),
+                          const SizedBox(height: BasakSpace.s6),
+                          const Bone(width: 52, height: 9, radius: 5),
+                        ],
+                      ),
+                    ),
+                    const Bone(width: 52, height: 26, radius: 13),
                   ]),
                 ),
             ]),
           ),
         ]),
       );
+}
+
+/// The supervisor's month: the ink hero's place, the four counters, then a
+/// card of labelled bars.
+class MonthlySkeleton extends StatelessWidget {
+  const MonthlySkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tile() => const Expanded(
+          child: SkeletonCard(
+            radius: BasakRadius.control,
+            padding: EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s14, vertical: BasakSpace.s14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Bone(width: 56, height: 18),
+              SizedBox(height: BasakSpace.s10),
+              Bone(width: 88, height: 10),
+            ]),
+          ),
+        );
+    return Skeleton(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SkeletonCard(
+          radius: BasakRadius.sheet,
+          padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Bone(width: 110, height: 12),
+            SizedBox(height: BasakSpace.s14),
+            Bone(width: 140, height: 32),
+            SizedBox(height: BasakSpace.s20),
+            Bone(height: 52, radius: BasakRadius.small, width: double.infinity),
+          ]),
+        ),
+        const SizedBox(height: BasakSpace.s16),
+        Row(children: [tile(), const SizedBox(width: BasakSpace.s8), tile()]),
+        const SizedBox(height: BasakSpace.s8),
+        Row(children: [tile(), const SizedBox(width: BasakSpace.s8), tile()]),
+        const SizedBox(height: BasakSpace.s16),
+        SkeletonCard(
+          radius: BasakRadius.card,
+          padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s18, vertical: BasakSpace.s16),
+          child: Column(children: [
+            for (var i = 0; i < 4; i++)
+              Padding(
+                padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s10),
+                child: Row(children: const [
+                  Bone(width: 70, height: 10),
+                  SizedBox(width: BasakSpace.s12),
+                  Expanded(child: Bone(height: 6, radius: 3, width: double.infinity)),
+                ]),
+              ),
+          ]),
+        ),
+      ]),
+    );
+  }
 }

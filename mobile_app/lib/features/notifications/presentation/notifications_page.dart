@@ -376,9 +376,11 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     return AlertRow(
       key: Key('alert-${n.id}'),
       icon: style.icon,
-      tone: style.tone,
+      // What the supervisor sent sits in the same list, quieter, and says
+      // who it went to in place of its text (the text is one tap away).
+      tone: n.mine ? BasakTone.neutral : style.tone,
       title: n.titleFor(language),
-      body: n.bodyFor(language),
+      body: n.mine ? ['أرسلته أنت', if (n.audience.trim().isNotEmpty) n.audience.trim()].join(' · ') : n.bodyFor(language),
       time: notificationTime(n.createdAt),
       unread: !n.read,
       onTap: () => _open(n),

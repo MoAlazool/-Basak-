@@ -99,7 +99,6 @@ class FloatingGlassNavBar extends StatelessWidget {
         NavItem(icon: LucideIcons.home, activeIcon: LucideIcons.home, label: 'الرئيسية'),
         NavItem(icon: LucideIcons.route, activeIcon: LucideIcons.route, label: 'الرحلات'),
         NavItem(icon: LucideIcons.scanLine, activeIcon: LucideIcons.scanLine, label: 'مسح', filled: true),
-        NavItem(icon: LucideIcons.chartColumn, activeIcon: LucideIcons.chartColumn, label: 'الملخص'),
         NavItem(icon: LucideIcons.user, activeIcon: LucideIcons.user, label: 'حسابي'),
       ];
 
