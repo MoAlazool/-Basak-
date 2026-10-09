@@ -430,7 +430,7 @@ class LineCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: text.headline.copyWith(color: colors.ink3)),
-                    Text('$stops · $unavailableReason', maxLines: 2, overflow: TextOverflow.ellipsis, style: meta),
+                    Text(stops.isEmpty ? unavailableReason! : '$stops · $unavailableReason', maxLines: 2, overflow: TextOverflow.ellipsis, style: meta),
                   ],
                 ),
               ),

@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/network_errors.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_icons.dart';
-import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/basak_ui.dart';
+import '../../../core/ui/ui.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../data/notification_preferences.dart';
 import '../data/notifications_repository.dart';
@@ -17,7 +15,7 @@ import 'push_permission_sheet.dart';
 
 /// Which pushes a supervisor wants, and whether this phone can show them at
 /// all. The in-app inbox is not affected by anything here. (Students have no
-/// switches: their Notification Center opens without the settings button.)
+/// switches: their inbox opens without the settings button.)
 class NotificationPreferencesScreen extends ConsumerStatefulWidget {
   const NotificationPreferencesScreen({super.key});
 
@@ -40,11 +38,7 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
       await change(ref.read(notificationPreferencesProvider.notifier));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(errorMessage(error)),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-      ));
+      BasakToast.show(context, errorMessage(error), kind: BasakToastKind.failure);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -52,84 +46,105 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+    final text = context.text;
     final async = ref.watch(notificationPreferencesProvider);
     final preferences = async.valueOrNull;
 
     return Scaffold(
-      backgroundColor: BasakUi.canvas,
-      appBar: AppBar(
-        title: const Text('إعدادات الإشعارات'),
-        backgroundColor: Colors.white,
-        foregroundColor: BasakUi.ink,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-      ),
-      body: RefreshIndicator(
-        color: BasakUi.teal,
-        onRefresh: () async {
-          ref.invalidate(pushPermissionProvider);
-          ref.invalidate(notificationPreferencesProvider);
-          try {
-            await ref.read(notificationPreferencesProvider.future);
-          } catch (_) {}
-        },
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
-          children: [
-            const _SystemState(),
-            if (preferences == null && async.isLoading)
-              const Padding(
-                  padding: EdgeInsets.only(top: 18), child: SkeletonList(rows: 4, avatars: false))
-            else if (preferences == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 18),
-                child: BasakMessageCard(
-                  icon: LucideIcons.wifiOff,
-                  title: 'تعذر تحميل الإعدادات',
-                  message: errorMessage(async.error ?? ''),
-                  actionLabel: 'إعادة المحاولة',
-                  onAction: () => ref.invalidate(notificationPreferencesProvider),
-                ),
-              )
-            else ...[
-              const BasakSectionTitle('الإشعارات الفورية'),
-              _card([
-                _switch(
-                  icon: LucideIcons.bellRing,
-                  title: 'الإشعارات الفورية',
-                  subtitle: 'تصلك على الهاتف حتى والتطبيق مغلق',
-                  value: preferences.pushEnabled,
-                  onChanged: (value) => _change((n) => n.setPushEnabled(value)),
-                ),
-                for (final category in const [
-                  NotificationCategory.transport,
-                  NotificationCategory.subscription,
-                  NotificationCategory.announcement,
-                ])
-                  _switch(
-                    icon: notificationStyle('', category).icon,
-                    title: notificationCategoryLabel(category),
-                    subtitle: _about(category),
-                    value: preferences.pushEnabled && preferences.allows(category),
-                    // Nothing to choose from while everything is off.
-                    onChanged: preferences.pushEnabled
-                        ? (value) => _change((n) => n.setCategory(category, value))
-                        : null,
+      backgroundColor: colors.ground,
+      body: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: SafeArea(
+          bottom: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: BasakSpace.maxContentWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Padding(
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        BasakSpace.gutter, BasakSpace.s12, BasakSpace.gutter, BasakSpace.s12),
+                    child: PageTitleBar(title: 'إعدادات الإشعارات'),
                   ),
-              ]),
-            ],
-            const SizedBox(height: 18),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(LucideIcons.inbox, size: 18, color: BasakUi.muted),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                    'مركز الإشعارات داخل التطبيق يحتفظ بكل إشعاراتك دائماً. هذه الإعدادات تحدد فقط ما يصلك كإشعار على الهاتف.',
-                    style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted, height: 1.6)),
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: colors.teal,
+                      backgroundColor: colors.surface,
+                      onRefresh: () async {
+                        ref.invalidate(pushPermissionProvider);
+                        ref.invalidate(notificationPreferencesProvider);
+                        try {
+                          await ref.read(notificationPreferencesProvider.future);
+                        } catch (_) {}
+                      },
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                        padding: EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, BasakSpace.s4, BasakSpace.gutter,
+                            BasakSpace.s40 + MediaQuery.paddingOf(context).bottom),
+                        children: [
+                          const _SystemState(),
+                          const SizedBox(height: BasakSpace.s20),
+                          if (preferences == null && async.isLoading)
+                            const SkeletonList(rows: 4, avatars: false)
+                          else if (preferences == null)
+                            EmptyState(
+                              icon: LucideIcons.wifiOff,
+                              title: 'تعذر تحميل الإعدادات',
+                              message: errorMessage(async.error ?? ''),
+                              actionLabel: 'إعادة المحاولة',
+                              onAction: () => ref.invalidate(notificationPreferencesProvider),
+                            )
+                          else
+                            GroupSection(
+                              title: 'الإشعارات الفورية',
+                              child: _card([
+                                _switch(
+                                  icon: LucideIcons.bellRing,
+                                  title: 'الإشعارات الفورية',
+                                  subtitle: 'تصلك على الهاتف حتى والتطبيق مغلق',
+                                  value: preferences.pushEnabled,
+                                  onChanged: (value) => _change((n) => n.setPushEnabled(value)),
+                                ),
+                                for (final category in const [
+                                  NotificationCategory.transport,
+                                  NotificationCategory.subscription,
+                                  NotificationCategory.announcement,
+                                ])
+                                  _switch(
+                                    icon: notificationStyle('', category).icon,
+                                    title: notificationCategoryLabel(category),
+                                    subtitle: _about(category),
+                                    value: preferences.pushEnabled && preferences.allows(category),
+                                    // Nothing to choose from while everything is off.
+                                    onChanged: preferences.pushEnabled
+                                        ? (value) => _change((n) => n.setCategory(category, value))
+                                        : null,
+                                  ),
+                              ]),
+                            ),
+                          const SizedBox(height: BasakSpace.s18),
+                          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(top: BasakSpace.s2),
+                              child: Icon(LucideIcons.inbox, size: 16, color: colors.ink3),
+                            ),
+                            const SizedBox(width: BasakSpace.s8),
+                            Expanded(
+                              child: Text(
+                                  'مركز الإشعارات داخل التطبيق يحتفظ بكل إشعاراتك دائماً. هذه الإعدادات تحدد فقط ما يصلك كإشعار على الهاتف.',
+                                  style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
+                            ),
+                          ]),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ]),
-          ],
+            ),
+          ),
         ),
       ),
     );
@@ -142,13 +157,22 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
         NotificationCategory.reminder => '',
       };
 
-  Widget _card(List<Widget> rows) => Container(
-        decoration: BasakUi.card(),
-        clipBehavior: Clip.antiAlias,
+  Widget _card(List<Widget> rows) => BasakCard(
+        padding: EdgeInsetsDirectional.zero,
+        // Switch rows draw their ink on a Material of their own.
         child: Material(
           type: MaterialType.transparency,
           child: Column(children: [
-            for (final (i, row) in rows.indexed) ...[if (i > 0) const Divider(height: 1), row],
+            for (final (i, row) in rows.indexed) ...[
+              if (i > 0)
+                Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: BasakSpace.s18,
+                    endIndent: BasakSpace.s18,
+                    color: context.colors.hairline),
+              row,
+            ],
           ]),
         ),
       );
@@ -159,15 +183,22 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
     required String subtitle,
     required bool value,
     required ValueChanged<bool>? onChanged,
-  }) =>
-      SwitchListTile(
-        secondary: Icon(icon, color: BasakUi.teal, size: 22),
-        title: Text(title, style: AppTextStyles.bodyLarge.copyWith(color: BasakUi.ink)),
-        subtitle: Text(subtitle, style: AppTextStyles.labelSmall.copyWith(color: BasakUi.muted)),
-        value: value,
-        activeColor: BasakUi.teal,
-        onChanged: _saving ? null : onChanged,
-      );
+  }) {
+    final colors = context.colors;
+    final text = context.text;
+    return SwitchListTile(
+      contentPadding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s18, vertical: BasakSpace.s2),
+      secondary: Icon(icon, color: colors.ink2, size: 20),
+      title: Text(title, style: text.body.copyWith(fontWeight: FontWeight.w500)),
+      subtitle: Text(subtitle, style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
+      value: value,
+      activeTrackColor: colors.teal,
+      inactiveTrackColor: colors.track,
+      inactiveThumbColor: colors.surface,
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      onChanged: _saving ? null : onChanged,
+    );
+  }
 }
 
 /// Whether this phone can show pushes right now, and the way to fix it when
@@ -181,6 +212,7 @@ class _SystemState extends ConsumerWidget {
     if (ready.isLoading) return const SizedBox.shrink();
     if (ready.valueOrNull != true) {
       return _box(
+        context,
         icon: LucideIcons.info,
         title: 'الإشعارات الفورية غير متاحة بعد',
         message: 'ستتاح في تحديث قادم. حتى ذلك الحين تجد كل إشعاراتك داخل التطبيق في مركز الإشعارات.',
@@ -190,25 +222,21 @@ class _SystemState extends ConsumerWidget {
     return switch (permission) {
       null => const SizedBox.shrink(),
       PushPermission.granted => _box(
+          context,
           icon: LucideIcons.circleCheck,
-          color: const Color(0xFF07865A),
-          background: const Color(0xFFE7F8F0),
+          tone: BasakTone.success,
           title: 'الإشعارات مفعّلة على هذا الهاتف',
           message: 'تصلك الإشعارات التي تختارها بالأسفل.',
         ),
-      PushPermission.blocked => _box(
+      PushPermission.blocked => const ActionNotice(
           icon: LucideIcons.bellOff,
-          color: const Color(0xFFB97812),
-          background: const Color(0xFFFDF3DC),
           title: 'الإشعارات متوقفة من إعدادات الهاتف',
           message: 'اسمح لباصك بإرسال الإشعارات من إعدادات الهاتف لتصلك.',
           actionLabel: 'فتح إعدادات الهاتف',
           onAction: NotificationPlatform.openSystemSettings,
         ),
-      PushPermission.notAsked || PushPermission.denied => _box(
+      PushPermission.notAsked || PushPermission.denied => ActionNotice(
           icon: LucideIcons.bellOff,
-          color: const Color(0xFFB97812),
-          background: const Color(0xFFFDF3DC),
           title: 'الإشعارات غير مفعّلة على هذا الهاتف',
           message: 'فعّلها لتصلك التنبيهات حتى والتطبيق مغلق.',
           actionLabel: 'تفعيل الإشعارات',
@@ -217,42 +245,32 @@ class _SystemState extends ConsumerWidget {
     };
   }
 
-  Widget _box({
+  /// A state with nothing to do about it: said on its tone's tint.
+  Widget _box(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String message,
-    Color color = BasakUi.teal,
-    Color background = BasakUi.softTeal,
-    String? actionLabel,
-    VoidCallback? onAction,
-  }) =>
-      Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(18)),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title,
-                  style: AppTextStyles.bodyLarge
-                      .copyWith(color: BasakUi.ink, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 3),
-              Text(message,
-                  style: AppTextStyles.labelSmall.copyWith(color: BasakUi.ink, height: 1.6)),
-              if (actionLabel != null)
-                TextButton(
-                  onPressed: onAction,
-                  style: TextButton.styleFrom(
-                    foregroundColor: color,
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(0, 36),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(actionLabel),
-                ),
-            ]),
-          ),
-        ]),
-      );
+    BasakTone tone = BasakTone.info,
+  }) {
+    final colors = context.colors;
+    final text = context.text;
+    return BasakCard(
+      color: tone.tint(colors),
+      padding: const EdgeInsetsDirectional.all(BasakSpace.s16),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.only(top: BasakSpace.s2),
+          child: Icon(icon, color: tone.foreground(colors), size: 20),
+        ),
+        const SizedBox(width: BasakSpace.s12),
+        Expanded(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: text.body.copyWith(fontWeight: FontWeight.w600)),
+            Text(message, style: text.label.copyWith(color: colors.ink2, fontWeight: FontWeight.w400)),
+          ]),
+        ),
+      ]),
+    );
+  }
 }

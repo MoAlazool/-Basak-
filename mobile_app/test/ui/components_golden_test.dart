@@ -635,6 +635,303 @@ final _scenes = <_Scene>[
       ]),
     ),
   ),
+  _Scene(
+    'subscribe_parts',
+    (context) => _column([
+      const BuilderStepHead(step: 1, title: 'شركة النقل'),
+      CompanyRow(name: 'النورس للنقل', caption: '4 خطوط إلى جامعتك', onTap: () {}),
+      const BuilderStepHead(step: 3, title: 'الفترة'),
+      ChoiceGrid(children: [
+        PeriodTile(label: 'الفصل الأول', amount: '4,500', selected: true, onTap: () {}),
+        PeriodTile(label: 'الفصل الثاني', amount: '4,500', selected: false, onTap: () {}, tag: 'الفترة القادمة', tagTone: BasakTone.info),
+        PeriodTile(label: 'الفصلان معاً', amount: '8,000', selected: false, onTap: () {}, tag: 'وفّر 1,000'),
+      ]),
+      ChoiceGrid(children: [PeriodTile(label: 'الفصل الأول', amount: '4,500', selected: true, onTap: () {})]),
+      QuietPriceRow(label: 'أو يوم واحد، نقداً في الباص', value: '60 ج.م', onTap: () {}),
+      PeriodRow(
+          title: 'الفصلان معاً', caption: 'حتى 28 مايو 2027', amount: '8,000', tag: 'وفّر 1,000', selected: false, onTap: () {}),
+      PeriodRow(
+          title: 'يوم واحد',
+          caption: 'اليوم فقط · الدفع نقداً في الباص',
+          amount: '40',
+          tag: 'نقداً',
+          tagTone: BasakTone.warning,
+          selected: true,
+          onTap: () {}),
+      BasakCard(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          StationRow(name: 'موقف الزرقا', firstPass: 'من 6:15 ص', selected: false, isFirst: true, onTap: () {}),
+          StationRow(
+              name: 'كوبري السرو',
+              passesCaption: 'يمرّ الباص صباحاً',
+              allPasses: '6:38 · 7:23 · 8:08 · 8:53 · 9:38 ص',
+              selected: true,
+              onTap: () {}),
+          StationRow(name: 'فارسكور', firstPass: 'من 7:05 ص', selected: false, isLast: true, onTap: () {}),
+          const ReviewRow(label: 'الفترة', value: 'الفصل الأول'),
+          const ReviewRow(label: 'صالح حتى', value: '14 يناير 2027'),
+          const ReviewAmount(money: '4,500 ج.م'),
+        ]),
+      ),
+      EmptyState(
+        page: true,
+        icon: LucideIcons.bus,
+        title: 'لا توجد خطوط لجامعتك بعد',
+        message: 'لا توجد حالياً شركات أو خطوط متاحة لجامعة المنصورة الجديدة. تظهر هنا فور إضافتها.',
+        actionLabel: 'تحديث',
+        actionIcon: LucideIcons.refreshCw,
+        onAction: () {},
+      ),
+    ]),
+  ),
+  _Scene(
+    'inbox_parts',
+    (context) => _column([
+      PageTitleBar(title: 'التنبيهات', actions: [TextAction(label: 'قراءة الكل', onTap: () {})]),
+      ActionNotice(
+        icon: LucideIcons.bellOff,
+        title: 'الإشعارات متوقفة',
+        message: 'فعّلها من إعدادات الهاتف لتصلك التنبيهات.',
+        actionLabel: 'فتح إعدادات الهاتف',
+        onAction: () {},
+      ),
+      SearchBox(hint: 'ابحث في الإشعارات', onChanged: (_) {}),
+      GroupSection(
+        title: 'اليوم',
+        child: AlertRows(rows: [
+          AlertRow(
+              icon: LucideIcons.bus,
+              tone: BasakTone.success,
+              title: 'الباص تحرّك من موقف الزرقا',
+              body: 'رحلة 7:00 ص · خط الزرقا',
+              time: '6:58 ص',
+              unread: true,
+              onTap: () {}),
+          AlertRow(
+              icon: LucideIcons.megaphone,
+              tone: BasakTone.info,
+              title: 'رسالة من مشرف الباص عن مكان الركوب غداً',
+              body: 'غداً الركوب من أمام البنك بدل الموقف بسبب أعمال في الطريق.',
+              time: '6:20 ص',
+              unread: true,
+              onTap: () {}),
+          AlertRow(
+              icon: LucideIcons.clock3, title: 'لم تؤكد رحلة الغد بعد', body: 'التأكيد متاح حتى 6:00 ص.', time: '9:00 م', onTap: () {}),
+          AlertRow(icon: LucideIcons.check, tone: BasakTone.success, title: 'تم تفعيل اشتراكك', body: '', time: '4:12 م', onTap: () {}),
+        ]),
+      ),
+      Row(children: const [
+        ToneTile(LucideIcons.megaphone, tone: BasakTone.info, size: 44),
+        SizedBox(width: BasakSpace.s12),
+        ToneTile(LucideIcons.ban, tone: BasakTone.danger),
+        SizedBox(width: BasakSpace.s12),
+        ToneTile(LucideIcons.hourglass, tone: BasakTone.warning),
+      ]),
+    ]),
+  ),
+  _Scene(
+    'account_parts',
+    (context) => _column([
+      IdentityCard(name: 'سارة أحمد محمود', phone: '010 2345 6789', onChangePhoto: () {}),
+      IdentityCard(name: 'محمد عادل فؤاد عبد الرحمن العزول', phone: '010 5551 2301', onChangePhoto: () {}),
+      const IdentityCard(name: 'محمود السيد', phone: '010 1122 3344'),
+      GroupSection(
+        title: 'بياناتي',
+        actionLabel: 'تعديل',
+        onAction: () {},
+        child: const SettingRows(rows: [
+          SettingRow(label: 'الجامعة', value: 'المنصورة الجديدة', locked: true),
+          SettingRow(label: 'الكلية', value: 'الهندسة'),
+          SettingRow(label: 'التخصص', value: 'لم يُضف بعد', muted: true),
+          SettingRow(label: 'البريد الإلكتروني', value: 'mohamed.adel.fouad@students.example.edu.eg', ltrValue: true),
+        ]),
+      ),
+      GroupSection(
+        title: 'التطبيق',
+        child: SettingRows(rows: [
+          SettingRow(label: 'المساعدة والدعم', onTap: () {}),
+          SettingRow(label: 'الدخول بـ Face ID', trailing: Switch(value: true, onChanged: (_) {})),
+          SettingRow(label: 'إشعارات الهاتف', value: 'مفعّلة', external: true, onTap: () {}),
+        ]),
+      ),
+      QuietFooter(actionLabel: 'حذف الحساب', onAction: () {}, version: '1.0.6'),
+    ]),
+  ),
+  _Scene(
+    'account_sheet_parts',
+    (context) => _column([
+      const SheetField(label: 'التخصص', hint: 'اختياري'),
+      const SheetField(label: 'البريد الإلكتروني', hint: 'name@example.com', ltr: true, error: 'اكتب بريداً إلكترونياً صحيحاً.'),
+      SheetValueField(label: 'الكلية', value: 'الهندسة', placeholder: 'لم يُضف بعد', icon: LucideIcons.chevronDown, onTap: () {}),
+      SheetValueField(
+          label: 'تاريخ الميلاد', value: '14 مارس 2005', placeholder: 'اختر التاريخ', icon: LucideIcons.calendar, onTap: () {}, onClear: () {}),
+      SheetValueField(
+          label: 'تاريخ الميلاد', value: null, placeholder: 'اختر التاريخ', icon: LucideIcons.calendar, onTap: () {}, onClear: () {}),
+      GroupSection(
+        title: 'عن رحلتك واشتراكك',
+        child: LinkRows(rows: [
+          LinkRow(person: 'محمود السيد', title: 'محمود السيد', subtitle: 'مشرف الباص · خط الزرقا', onTap: () {}),
+          LinkRow(icon: LucideIcons.messageCircle, title: '[قناة الدعم 1]', subtitle: '[وصف قصير أو أوقات العمل]', onTap: () {}),
+        ]),
+      ),
+      BasakDialogFrame(
+        icon: LucideIcons.trash2,
+        title: 'حذف الحساب نهائياً؟',
+        message: 'يُحذف حسابك وبياناتك، وتتوقف بطاقتك عن العمل. لا يمكن التراجع عن الحذف.',
+        confirmLabel: 'تأكيد الحذف',
+        onAnswer: (_) {},
+      ),
+    ]),
+    background: BasakPalette.surface,
+  ),
+  _Scene(
+    'skeleton_lists',
+    (context) => _column([
+      const SkeletonList(rows: 3),
+      const SkeletonList(rows: 2, avatars: false),
+      const SkeletonCard(
+          radius: BasakRadius.sheet, padding: EdgeInsetsDirectional.all(BasakSpace.s20), child: ProfileSkeleton()),
+      // A new photo on its way: the spinner never settles, like the bones.
+      IdentityCard(name: 'سارة أحمد محمود', phone: '010 2345 6789', onChangePhoto: () {}, busy: true),
+    ]),
+    animates: true,
+  ),
+  _Scene(
+    'entry_parts',
+    (context) => _column([
+      const StepRail(steps: ['بياناتك', 'دراستك', 'صورتك', 'كلمة المرور'], current: 0),
+      const StepRail(steps: ['بياناتك', 'دراستك', 'صورتك', 'كلمة المرور'], current: 2),
+      const InfoNote('لا يمكن تغيير الجامعة بعد التسجيل.'),
+      const StrengthMeter(level: 1, label: 'ضعيفة'),
+      const StrengthMeter(level: 2, label: 'متوسطة'),
+      const StrengthMeter(level: 3, label: 'قوية'),
+      CheckRow(value: true, onChanged: (_) {}, child: const Text('أوافق على الشروط وسياسة الخصوصية.')),
+      CheckRow(value: false, onChanged: (_) {}, child: const Text('أوافق على الشروط وسياسة الخصوصية.')),
+      const FieldNote('وافق على الشروط وسياسة الخصوصية للمتابعة.'),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: CheckRow(quiet: true, value: true, onChanged: (_) {}, child: const Text('تذكّر رقمي')),
+      ),
+      CodeField(controller: TextEditingController(text: '4827')),
+      CodeField(controller: TextEditingController(text: '12'), hasError: true),
+      EntryLink(label: 'لديّ رمز بالفعل', onTap: () {}),
+      EntryLink(label: 'تخطي', tone: EntryLinkTone.quiet, onTap: () {}),
+      EntryLink(label: 'تسجيل الخروج', tone: EntryLinkTone.danger, onTap: () {}),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const Text('طالب جديد؟'),
+        const SizedBox(width: BasakSpace.s6),
+        EntryLink(label: 'إنشاء حساب', inline: true, strong: true, onTap: () {}),
+        const SizedBox(width: BasakSpace.s12),
+        PasswordEye(hidden: true, onTap: () {}),
+        PasswordEye(hidden: false, onTap: () {}),
+      ]),
+      const Center(child: PhotoDrop()),
+    ]),
+  ),
+  _Scene(
+    'entry_sheet_parts',
+    (context) => _column([
+      BasakSearchField(controller: TextEditingController(), hint: 'ابحث باسم الجامعة أو المدينة'),
+      BasakSearchField(controller: TextEditingController(text: 'المنصورة'), hint: 'ابحث باسم الكلية'),
+      SheetRadioRow(title: 'جامعة المنصورة الجديدة', subtitle: 'المنصورة الجديدة', selected: true, onTap: () {}),
+      SheetRadioRow(
+          title: 'جامعة الدلتا للعلوم والتكنولوجيا', subtitle: 'جمصة', selected: false, onTap: () {}),
+      SheetRadioRow(title: 'الهندسة', selected: true, onTap: () {}),
+      SheetRadioRow(title: 'الحاسبات والمعلومات', selected: false, onTap: () {}),
+      SheetActionRow(icon: LucideIcons.camera, label: 'التقاط صورة بالكاميرا', onTap: () {}),
+      SheetActionRow(icon: LucideIcons.image, label: 'اختيار من الصور', onTap: () {}),
+    ]),
+    background: BasakPalette.surface,
+  ),
+  _Scene(
+    'splash_rail',
+    (context) => _column(const [
+      Center(child: SplashRail(progress: 0)),
+      Center(child: SplashRail(progress: .5)),
+      Center(child: SplashRail(progress: .8)),
+      Center(child: SplashRail(progress: 1)),
+    ]),
+    background: BasakPalette.ink,
+  ),
+  _Scene(
+    'pay_parts',
+    (context) => _column([
+      MoneyText('4,500 ج.م', style: context.text.amount, unitSize: 16),
+      PayeeCard(name: 'شركة النورس للنقل', method: 'تحويل بنكي · البنك الأهلي المصري', fields: [
+        CopyField(label: 'رقم الحساب', value: '0123 4567 8901 234', onCopy: () {}),
+        CopyField(label: 'IBAN', value: 'EG00 0003 0000 0000 0000 0000 000', onCopy: () {}),
+      ]),
+      const Disclosure(
+        icon: LucideIcons.info,
+        title: 'قبل التحويل',
+        child: NumberedList(items: ['حوّل المبلغ كاملاً في عملية واحدة.', 'اكتب اسمك الثلاثي في ملاحظات التحويل.']),
+      ),
+      UploadZone(requirement: 'صورة واضحة فيها رقم العملية والتاريخ', actions: [
+        BasakButton(
+            label: 'الكاميرا', icon: LucideIcons.camera, onPressed: () {},
+            variant: BasakButtonVariant.surface, size: BasakButtonSize.small),
+        BasakButton(
+            label: 'من الصور', icon: LucideIcons.image, onPressed: () {},
+            variant: BasakButtonVariant.surface, size: BasakButtonSize.small),
+      ]),
+      const BasakCard(
+        child: SendProgress(title: 'جارٍ رفع الصورة', sent: .62, steps: ['التجهيز', 'الرفع', 'الإرسال'], current: 1),
+      ),
+      const RejectionCard(
+          attempt: 'المحاولة 2 من 5', reason: 'المبلغ في الإيصال 4,000 ج.م والمطلوب 4,500 ج.م. حوّل الفرق.'),
+      const NoticeCard(message: 'لم تضف الشركة بيانات التحويل بعد. تواصل مع إدارة الشركة للحصول عليها.'),
+      Row(children: [
+        const ToneGlyph(LucideIcons.ban),
+        const SizedBox(width: BasakSpace.s12),
+        SquareIconButton(icon: LucideIcons.image, label: 'حفظ كصورة', onPressed: () {}),
+        const SizedBox(width: BasakSpace.s12),
+        SquareIconButton(icon: LucideIcons.share2, label: 'مشاركة', onPressed: () {}),
+      ]),
+      const ResultBody(title: 'استلمنا إيصالك', message: 'تراجعه شركة النورس للنقل، وسيصلك إشعار عند تفعيل اشتراكك.'),
+    ]),
+  ),
+  _Scene(
+    'subscription_parts',
+    (context) => _column([
+      const PeriodCard(
+        status: BasakStatus.active,
+        meta: '2026 / 2027',
+        metaLtr: true,
+        title: 'الفصل الأول',
+        note: 'باقي 95 يوماً',
+        bar: ValidityBar(elapsed: .18, from: '20 سبتمبر', to: '14 يناير 2027'),
+      ),
+      PeriodCard(
+        status: BasakStatus.pendingPayment,
+        meta: '2026 / 2027',
+        metaLtr: true,
+        title: 'الفصل الأول',
+        footer: AmountAction(caption: 'المبلغ المطلوب', money: '4,500 ج.م', actionLabel: 'ادفع الآن', onAction: () {}),
+      ),
+      const PeriodCard(
+          status: BasakStatus.pendingReview, meta: '2026 / 2027', metaLtr: true, title: 'الفصلان معاً',
+          note: 'أُرسل اليوم 3:40 م'),
+      OfferCard(
+          title: 'الفصل الثاني متاح الآن', subtitle: 'نفس الخط والمحطة · 4,500 ج.م', actionLabel: 'اشترك', onAction: () {}),
+      const OfferSummary(caption: 'الفصل الثاني · نفس الخط والمحطة', value: 'الزرقا · كوبري السرو', money: '4,500 ج.م'),
+      InfoRows(
+        rows: [
+          InfoRow(label: 'الفصل الثاني 2025/2026', caption: 'انتهى 28 مايو 2026 · الزرقا', onTap: () {}),
+          InfoRow(label: 'تعذّر تحميل الإيصال', onRetry: () {}),
+        ],
+        footer: BasakButton(
+            label: 'عرض كل الاشتراكات السابقة · 5', onPressed: () {},
+            variant: BasakButtonVariant.quiet, size: BasakButtonSize.small),
+      ),
+      const DisclosureGroup(sections: [
+        DisclosureSection(title: 'الاشتراك', rows: [
+          ('الفترة', 'الفصل الأول 2026/2027', false),
+          ('الصلاحية', '20 سبتمبر – 14 يناير 2027', false),
+        ]),
+        DisclosureSection(title: 'الطالب', rows: [('الهاتف', '010 2345 6789', true)]),
+      ]),
+    ]),
+  ),
 ];
 
 void main() {

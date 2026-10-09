@@ -105,7 +105,8 @@ class SkeletonRow extends StatelessWidget {
       );
 }
 
-/// A list of rows with an avatar or icon, a title and a line under it.
+/// A list of rows with an icon tile, a title and a line under it, in one
+/// card with a hairline between them: the inbox, the push switches.
 class SkeletonList extends StatelessWidget {
   final int rows;
   final bool avatars;
@@ -113,26 +114,31 @@ class SkeletonList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Skeleton(
-        child: Column(children: [
-          for (var i = 0; i < rows; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: SkeletonCard(
-                padding: const EdgeInsets.all(14),
-                radius: 18,
+        child: SkeletonCard(
+          padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16),
+          radius: BasakRadius.card,
+          child: Column(children: [
+            for (var i = 0; i < rows; i++) ...[
+              if (i > 0) const Divider(height: 1, thickness: 1, color: BasakPalette.hairline),
+              Padding(
+                padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s14),
                 child: Row(children: [
-                  if (avatars) ...[const Bone.circle(40), const SizedBox(width: 12)],
+                  if (avatars) ...[
+                    const Bone(width: 40, height: 40, radius: BasakRadius.tile),
+                    const SizedBox(width: BasakSpace.s12),
+                  ],
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Bone(width: 130.0 + (i.isEven ? 30 : 0), height: 13),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: BasakSpace.s10),
                       Bone(width: 190.0 - (i.isEven ? 0 : 40), height: 10),
                     ]),
                   ),
                 ]),
               ),
-            ),
-        ]),
+            ],
+          ]),
+        ),
       );
 }
 
@@ -231,92 +237,103 @@ class HomeSkeleton extends StatelessWidget {
   }
 }
 
-/// "اشتراكاتي": a title, a section label and subscription cards.
+/// "اشتراكي": the title, the subscription's card and the rows under it.
 class SubscriptionsSkeleton extends StatelessWidget {
+  /// Rows of the card under the pass.
   final int cards;
   const SubscriptionsSkeleton({super.key, this.cards = 2});
 
   @override
   Widget build(BuildContext context) => Skeleton(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+          padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, BasakSpace.s16, BasakSpace.gutter, 0),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Bone(width: 130, height: 22),
-            const SizedBox(height: 18),
-            const Bone(width: 110, height: 13),
-            const SizedBox(height: 10),
-            for (var i = 0; i < cards; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: SkeletonCard(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-                    Row(children: [
-                      Flexible(child: Bone(width: 110, height: 17)),
-                      Spacer(),
-                      Bone(width: 96, height: 24, radius: 14),
+            const Bone(width: 120, height: 26),
+            const SizedBox(height: BasakSpace.s24),
+            const SkeletonCard(
+              radius: BasakRadius.sheet,
+              padding: EdgeInsetsDirectional.all(BasakSpace.s20),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Bone(width: 104, height: 30, radius: BasakRadius.full),
+                  Spacer(),
+                  Bone(width: 84, height: 12),
+                ]),
+                SizedBox(height: BasakSpace.s24),
+                Row(children: [
+                  Flexible(child: Bone(width: 130, height: 22)),
+                  Spacer(),
+                  Bone(width: 90, height: 12),
+                ]),
+                SizedBox(height: BasakSpace.s24),
+                Bone(height: 6, radius: 3),
+                SizedBox(height: BasakSpace.s12),
+                Row(children: [Bone(width: 70, height: 10), Spacer(), Bone(width: 90, height: 10)]),
+              ]),
+            ),
+            const SizedBox(height: BasakSpace.betweenCards),
+            SkeletonCard(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s18),
+              child: Column(children: [
+                for (var i = 0; i < cards + 1; i++) ...[
+                  if (i > 0) const Divider(height: 1, thickness: 1, color: BasakPalette.hairline),
+                  SizedBox(
+                    height: 56,
+                    child: Row(children: [
+                      const Bone(width: 86, height: 12),
+                      const Spacer(),
+                      Flexible(child: Bone(width: i.isEven ? 140 : 100, height: 13)),
                     ]),
-                    SizedBox(height: 12),
-                    SkeletonRow(value: 90),
-                    SkeletonRow(value: 140),
-                    SkeletonRow(value: 80),
-                    SkeletonRow(value: 110),
-                    SizedBox(height: 6),
-                    Align(alignment: AlignmentDirectional.centerEnd, child: Bone(width: 100, height: 12)),
-                  ]),
-                ),
-              ),
+                  ),
+                ],
+              ]),
+            ),
           ]),
         ),
       );
 }
 
-/// The steps of a new subscription: the progress card, a heading and choices.
+/// The subscribe builder: its title, the open step with two choices, and the
+/// two steps still to come.
 class PurchaseFlowSkeleton extends StatelessWidget {
   const PurchaseFlowSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) => Skeleton(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SkeletonCard(
-            child: Column(children: [
-              Row(children: const [
-                Flexible(child: Bone(width: 90, height: 10)),
-                Spacer(),
-                Flexible(child: Bone(width: 80, height: 10)),
-              ]),
-              const SizedBox(height: 14),
-              Row(children: [
-                for (var i = 0; i < 5; i++) ...[
-                  const Bone.circle(30),
-                  if (i < 4) const Expanded(child: Bone(height: 2, radius: 1)),
-                ],
-              ]),
-            ]),
-          ),
-          const SizedBox(height: 20),
-          const Bone(width: 170, height: 22),
-          const SizedBox(height: 8),
-          const Bone(width: 210, height: 11),
-          const SizedBox(height: 22),
-          const Bone(width: 150, height: 14),
-          const SizedBox(height: 12),
+          const SizedBox(height: BasakSpace.s4),
+          const Bone(width: 170, height: 26),
+          const SizedBox(height: BasakSpace.s12),
+          const Bone(width: 210, height: 12),
+          const SizedBox(height: BasakSpace.s28),
+          Row(children: const [
+            Bone.circle(24),
+            SizedBox(width: BasakSpace.s12),
+            Flexible(child: Bone(width: 110, height: 14)),
+          ]),
+          const SizedBox(height: BasakSpace.s14),
           for (var i = 0; i < 2; i++)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsetsDirectional.only(bottom: BasakSpace.s10),
               child: SkeletonCard(
-                radius: 18,
                 child: Row(children: [
-                  const Bone.circle(44),
-                  const SizedBox(width: 12),
+                  const Bone(width: 48, height: 48, radius: BasakRadius.small),
+                  const SizedBox(width: BasakSpace.s14),
                   Flexible(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
                       Bone(width: 120, height: 14),
-                      SizedBox(height: 8),
+                      SizedBox(height: BasakSpace.s8),
                       Bone(width: 150, height: 10),
                     ]),
                   ),
                 ]),
               ),
+            ),
+          const SizedBox(height: BasakSpace.s6),
+          for (var i = 0; i < 2; i++)
+            const Padding(
+              padding: EdgeInsetsDirectional.only(bottom: BasakSpace.s10),
+              child: Bone(height: 56, radius: BasakRadius.control),
             ),
         ]),
       );
@@ -379,25 +396,34 @@ class StudentCardSkeleton extends StatelessWidget {
   }
 }
 
-/// The account page's profile card.
+/// The account page's identity: the photo beside the name and the phone,
+/// then the rows of details under it.
 class ProfileSkeleton extends StatelessWidget {
   const ProfileSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) => Skeleton(
-        child: Column(children: const [
-          Bone.circle(88),
-          SizedBox(height: 14),
-          Bone(width: 150, height: 16),
-          SizedBox(height: 8),
-          Bone(width: 110, height: 11),
-          SizedBox(height: 20),
-          SkeletonRow(label: 60, value: 170),
-          SkeletonRow(label: 50, value: 120),
-          SkeletonRow(label: 90, value: 150),
-          SkeletonRow(label: 80, value: 100),
-          SizedBox(height: 10),
-          Bone(height: 44, radius: 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: const [
+            Bone.circle(64),
+            SizedBox(width: BasakSpace.s16),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Bone(width: 150, height: 16),
+                SizedBox(height: BasakSpace.s10),
+                Bone(width: 110, height: 11),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: BasakSpace.s24),
+          for (final (label, value) in const [(60.0, 150.0), (50.0, 110.0), (64.0, 90.0), (96.0, 130.0)])
+            Padding(
+              padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s12),
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Bone(width: label, height: 11),
+                Bone(width: value, height: 13),
+              ]),
+            ),
         ]),
       );
 }

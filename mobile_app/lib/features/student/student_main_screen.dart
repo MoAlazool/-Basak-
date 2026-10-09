@@ -125,7 +125,11 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
         onNavigateToQr: () => _selectTab(2),
       ),
       // In front or not: behind another tab it does not read what is on sale.
-      SubscriptionScreen(visible: _currentIndex == 1),
+      SubscriptionScreen(
+        visible: _currentIndex == 1,
+        onNavigateHome: () => _selectTab(0),
+        onNavigateToCard: () => _selectTab(2),
+      ),
       const StudentQrScreen(),
       const ProfileScreen(),
     ];

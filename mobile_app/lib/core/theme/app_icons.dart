@@ -15,6 +15,7 @@ abstract final class LucideIcons {
   static const IconData badgeCheck = IconData(57921, fontFamily: 'Lucide');
   static const IconData badgeHelp = IconData(58491, fontFamily: 'Lucide');
   static const IconData ban = IconData(57425, fontFamily: 'Lucide');
+  static const IconData banknote = IconData(57426, fontFamily: 'Lucide');
   static const IconData bell = IconData(57433, fontFamily: 'Lucide');
   static const IconData bellOff = IconData(57434, fontFamily: 'Lucide');
   static const IconData bellRing = IconData(57892, fontFamily: 'Lucide');
@@ -73,6 +74,7 @@ abstract final class LucideIcons {
   static const IconData messageCircle = IconData(57622, fontFamily: 'Lucide');
   static const IconData pencil = IconData(57849, fontFamily: 'Lucide');
   static const IconData phone = IconData(57651, fontFamily: 'Lucide');
+  static const IconData plus = IconData(57661, fontFamily: 'Lucide');
   static const IconData qrCode = IconData(57823, fontFamily: 'Lucide');
   static const IconData receipt = IconData(58323, fontFamily: 'Lucide');
   static const IconData receiptText = IconData(58796, fontFamily: 'Lucide');

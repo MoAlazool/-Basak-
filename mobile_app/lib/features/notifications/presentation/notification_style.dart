@@ -1,38 +1,36 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_icons.dart';
+import '../../../core/ui/ui.dart';
 import '../data/notifications_repository.dart';
 
-/// The icon and colours a notification is drawn with, from its type; a type
-/// this version does not know takes the look of its category.
-typedef NotificationStyle = ({IconData icon, Color color, Color background});
-
-const _teal = (Color(0xFF00658D), Color(0xFFE5F3FA));
-const _green = (Color(0xFF07865A), Color(0xFFE7F8F0));
-const _amber = (Color(0xFFB97812), Color(0xFFFDF3DC));
-const _red = (Color(0xFFD23B40), Color(0xFFFDE8E8));
+/// The icon and tone a notification is drawn with, from its type; a type this
+/// version does not know takes the look of its category. [color] and
+/// [background] are the tone's own two colours.
+typedef NotificationStyle = ({IconData icon, BasakTone tone, Color color, Color background});
 
 NotificationStyle notificationStyle(String type, NotificationCategory category) {
-  final (icon, (color, background)) = switch (type) {
-    'subscription.payment_received' => (LucideIcons.fileCheck2, _teal),
-    'subscription.approved' => (LucideIcons.circleCheck, _green),
-    'subscription.rejected' => (LucideIcons.circleX, _red),
-    'subscription.expiring' => (LucideIcons.hourglass, _amber),
-    'subscription.expired' => (LucideIcons.calendarX2, _red),
-    'transport.delay' => (LucideIcons.clockAlert, _amber),
-    'transport.arrived' => (LucideIcons.mapPin, _green),
-    'transport.departed' => (LucideIcons.busFront, _green),
-    'transport.cancelled' => (LucideIcons.ban, _red),
-    'transport.return_departing' => (LucideIcons.school, _green),
-    'announcement.supervisor' => (LucideIcons.megaphone, _green),
+  final (IconData icon, BasakTone tone) = switch (type) {
+    'subscription.payment_received' => (LucideIcons.receiptText, BasakTone.neutral),
+    'subscription.approved' => (LucideIcons.check, BasakTone.success),
+    'subscription.rejected' => (LucideIcons.circleX, BasakTone.danger),
+    'subscription.expiring' => (LucideIcons.hourglass, BasakTone.warning),
+    'subscription.expired' => (LucideIcons.calendarX2, BasakTone.danger),
+    'transport.delay' => (LucideIcons.clockAlert, BasakTone.warning),
+    'transport.arrived' => (LucideIcons.mapPin, BasakTone.success),
+    'transport.departed' => (LucideIcons.bus, BasakTone.success),
+    'transport.cancelled' => (LucideIcons.ban, BasakTone.danger),
+    'transport.return_departing' => (LucideIcons.school, BasakTone.success),
+    'announcement.supervisor' => (LucideIcons.megaphone, BasakTone.info),
     _ => switch (category) {
-        NotificationCategory.subscription => (LucideIcons.receiptText, _teal),
-        NotificationCategory.transport => (LucideIcons.busFront, _green),
-        NotificationCategory.reminder => (LucideIcons.calendarClock, _teal),
-        NotificationCategory.announcement => (LucideIcons.bell, _teal),
+        NotificationCategory.subscription => (LucideIcons.receiptText, BasakTone.neutral),
+        NotificationCategory.transport => (LucideIcons.bus, BasakTone.success),
+        NotificationCategory.reminder => (LucideIcons.clock3, BasakTone.neutral),
+        NotificationCategory.announcement => (LucideIcons.bell, BasakTone.info),
       },
   };
-  return (icon: icon, color: color, background: background);
+  const colors = BasakColors.light;
+  return (icon: icon, tone: tone, color: tone.foreground(colors), background: tone.tint(colors));
 }
 
 /// The name of a category, as the preferences and the system channels show it.

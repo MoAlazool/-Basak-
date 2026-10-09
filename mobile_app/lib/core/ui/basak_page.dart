@@ -160,7 +160,12 @@ class BasakBackHeader extends StatelessWidget {
   /// Defaults to popping the route.
   final VoidCallback? onBack;
 
-  const BasakBackHeader({super.key, this.title, this.subtitle, this.trailing, this.onBack});
+  /// The title sits beside the back button, 20 / 30, instead of under it: a
+  /// page whose content is its own headline ("الإيصال", "الدفع").
+  final bool inlineTitle;
+
+  const BasakBackHeader(
+      {super.key, this.title, this.subtitle, this.trailing, this.onBack, this.inlineTitle = false});
 
   @override
   Widget build(BuildContext context) {
@@ -179,11 +184,20 @@ class BasakBackHeader extends StatelessWidget {
               label: MaterialLocalizations.of(context).backButtonTooltip,
               onPressed: onBack ?? () => Navigator.of(context).maybePop(),
             ),
-            const Spacer(),
+            if (inlineTitle && title != null) ...[
+              const SizedBox(width: BasakSpace.s12),
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.sheetTitle),
+                ),
+              ),
+            ] else
+              const Spacer(),
             if (trailing != null) trailing!,
           ],
         ),
-        if (title != null) ...[
+        if (title != null && !inlineTitle) ...[
           const SizedBox(height: BasakSpace.s12),
           Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.display),
         ],

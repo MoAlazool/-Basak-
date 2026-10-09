@@ -108,6 +108,15 @@ class NotificationRouter {
 
   bool get hasWaiting => _waiting != null;
 
+  /// Whether a tap on [intent]'s row of the Notification Center goes nowhere
+  /// else: the alert has no screen of its own (or none this shell has), so the
+  /// row's own text is all there is to open.
+  bool staysInCenter(NotificationIntent intent) {
+    final shell = _shell;
+    return intent.destination == NotificationDestination.center ||
+        (shell != null && !shell.destinations.contains(intent.destination));
+  }
+
   /// Returns false when the tap was ignored: a repeat, or nobody is signed in.
   bool open(NotificationIntent intent, NotificationTapSource source) {
     final userId = currentUserId();

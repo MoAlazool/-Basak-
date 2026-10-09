@@ -161,6 +161,8 @@ class _GroupedFieldState extends State<GroupedField> {
                       contentPadding: EdgeInsets.zero,
                       counterText: '',
                       hintText: widget.hint,
+                      // The hint keeps to the start edge too, whatever it is written in.
+                      hintTextDirection: widget.ltr ? TextDirection.ltr : null,
                       hintStyle: _valueStyle(context).copyWith(color: colors.disabled),
                     ),
                   ),
@@ -194,6 +196,9 @@ class GroupedValue extends StatelessWidget {
   final VoidCallback? onTap;
   final bool locked;
 
+  /// The row opens a sheet under it: a chevron pointing down, not onward.
+  final bool opensSheet;
+
   const GroupedValue({
     super.key,
     required this.label,
@@ -202,6 +207,7 @@ class GroupedValue extends StatelessWidget {
     this.error,
     this.onTap,
     this.locked = false,
+    this.opensSheet = false,
   });
 
   @override
@@ -240,8 +246,12 @@ class GroupedValue extends StatelessWidget {
               ),
               const SizedBox(width: BasakSpace.s10),
               Icon(
-                locked ? LucideIcons.lock : (rtl ? LucideIcons.chevronLeft : LucideIcons.chevronRight),
-                size: locked ? 18 : 20,
+                locked
+                    ? LucideIcons.lock
+                    : opensSheet
+                        ? LucideIcons.chevronDown
+                        : (rtl ? LucideIcons.chevronLeft : LucideIcons.chevronRight),
+                size: locked || opensSheet ? 18 : 20,
                 color: colors.ink3,
               ),
             ],

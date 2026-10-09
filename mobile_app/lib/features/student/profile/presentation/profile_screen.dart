@@ -1,207 +1,140 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/glass_container.dart';
-import '../../../../core/widgets/glass_scaffold.dart';
-import '../../../auth/providers/auth_provider.dart';
-import '../../home/presentation/student_home_screen.dart';
-import 'profile_editor.dart';
-import '../../../../core/widgets/skeleton.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../../core/network/network_errors.dart';
+import '../../../../core/theme/app_icons.dart';
+import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/skeleton.dart';
+import '../../../auth/providers/auth_provider.dart';
+import '../../../notifications/push/notification_platform.dart';
+import '../../../notifications/push/push_messaging.dart';
+import '../../../notifications/push/push_providers.dart';
+import '../../home/presentation/student_home_screen.dart';
+import 'help_sheet.dart';
+import 'profile_editor.dart';
+
+/// The installed build's version ("1.0.6"); null where it cannot be read.
+final appVersionProvider = FutureProvider<String?>((ref) async {
+  try {
+    final version = (await PackageInfo.fromPlatform()).version;
+    return version.isEmpty ? null : version;
+  } catch (_) {
+    return null;
+  }
+});
+
+/// «حسابي»: who is signed in, their details behind one «تعديل», what the app
+/// itself offers (help, the phone's notification setting), signing out, and
+/// deleting the account as a quiet link beside the version. The company, the
+/// line and the supervisor are on Home and the subscription tab, not here.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
-  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(LucideIcons.alertTriangle, color: AppColors.error),
-            const SizedBox(width: 8),
-            Text('حذف الحساب نهائياً', style: AppTextStyles.titleMedium),
-          ],
-        ),
-        content: Text(
-          'حذف الحساب نهائي ولا يمكن التراجع عنه.\n\nسيؤدي الحذف إلى إلغاء الاشتراك الحالي وفقدان بياناته وسجلات الرحلات المرتبطة به.\n\nهل تريد حذف الحساب والاشتراك الآن؟',
-          style: AppTextStyles.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              try {
-                await ref.read(authStateProvider.notifier).deleteStudentAccount();
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text('فشل الحذف: $e'),
-                        backgroundColor: AppColors.error),
-                  );
-                }
-              }
-            },
-            child: const Text('تأكيد الحذف'),
-          ),
-        ],
-      ),
+  Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
+    final confirmed = await BasakDialog.confirm(
+      context,
+      icon: LucideIcons.trash2,
+      title: 'حذف الحساب نهائياً؟',
+      message: 'يُحذف حسابك وبياناتك، وتتوقف بطاقتك عن العمل. لا يمكن التراجع عن الحذف.',
+      confirmLabel: 'تأكيد الحذف',
     );
+    if (!confirmed) return;
+    try {
+      await ref.read(authStateProvider.notifier).deleteStudentAccount();
+    } catch (e) {
+      if (context.mounted) {
+        BasakToast.show(context, 'فشل الحذف: ${errorMessage(e)}', kind: BasakToastKind.failure);
+      }
+    }
+  }
+
+  /// «التطبيق»: help, then the phone's own notification setting. One more row
+  /// belongs between the two: signing in with Face ID or a fingerprint (a
+  /// `SettingRow` with a switch as its `trailing`), added with biometrics.
+  List<SettingRow> _appRows(BuildContext context, WidgetRef ref) {
+    final journey = ref.watch(helpJourneyProvider);
+    final support = ref.watch(helpSupportProvider);
+    final pushReady = ref.watch(pushReadyProvider).valueOrNull == true;
+    final permission = pushReady ? ref.watch(pushPermissionProvider).valueOrNull : null;
+    return [
+      // Nobody to turn to yet (no subscription, no channels): no row.
+      if (journey.isNotEmpty || support.isNotEmpty)
+        SettingRow(
+          key: const Key('profile-help'),
+          label: HelpSheet.title,
+          onTap: () => HelpSheet.show(context, journey: journey, support: support),
+        ),
+      if (permission != null)
+        SettingRow(
+          key: const Key('profile-phone-notifications'),
+          label: 'إشعارات الهاتف',
+          value: permission == PushPermission.granted ? 'مفعّلة' : 'متوقفة',
+          external: true,
+          onTap: NotificationPlatform.openSystemSettings,
+        ),
+    ];
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authStateProvider);
     final user = authState.user;
-    final detailsAsync = authState.isStudent && user != null
-        ? ref.watch(studentProfileSummaryProvider(user.id))
+    final student = authState.isStudent ? user : null;
+    final detailsAsync = student != null
+        ? ref.watch(studentProfileSummaryProvider(student.id))
         : const AsyncValue<Map<String, dynamic>?>.data(null);
-    final subscriptionAsync =
-        authState.isStudent ? ref.watch(currentSubscriptionProvider) : null;
     final profile = detailsAsync.valueOrNull;
     final fullName = profile?['full_name'] as String? ??
         user?.userMetadata?['full_name'] as String? ??
         (authState.isSupervisor ? 'حساب المشرف' : 'حساب الطالب');
-    final phone = profile?['phone'] as String? ??
-        user?.userMetadata?['phone'] as String? ??
-        user?.email ??
-        '';
+    final phone =
+        profile?['phone'] as String? ?? user?.userMetadata?['phone'] as String? ?? user?.email ?? '';
+    final appRows = student != null ? _appRows(context, ref) : const <SettingRow>[];
 
-    return GlassScaffold(
-      canvas: const Color(0xFFEAF5FA),
-      body: ColoredBox(
-        color: const Color(0xFFEAF5FA),
-        child: RefreshIndicator(
-          color: AppColors.teal,
-          onRefresh: () async {
-            if (user != null) {
-              ref.invalidate(studentProfileSummaryProvider(user.id));
-            }
-            if (authState.isStudent) {
-              ref.invalidate(currentSubscriptionProvider);
-            }
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
+    return BasakPage(
+      bottomInset: BasakPage.tabBarClearance,
+      onRefresh: () async {
+        if (user != null) ref.invalidate(studentProfileSummaryProvider(user.id));
+        if (authState.isStudent) ref.invalidate(currentSubscriptionProvider);
+        ref.invalidate(pushPermissionProvider);
+      },
+      children: [
+        Semantics(header: true, child: Text('حسابي', style: context.text.display)),
+        if (student != null && detailsAsync.isLoading && !detailsAsync.hasValue)
+          // First load on this phone only; afterwards the saved profile shows at once.
+          const BasakCard(
+            radius: BasakRadius.sheet,
+            padding: EdgeInsetsDirectional.all(BasakSpace.s20),
+            child: ProfileSkeleton(),
+          )
+        else if (student != null)
+          ProfileSection(userId: student.id, profile: profile, fallbackName: fullName, fallbackPhone: phone)
+        else
+          IdentityCard(name: fullName, phone: phone),
+        if (appRows.isNotEmpty) GroupSection(title: 'التطبيق', child: SettingRows(rows: appRows)),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            BasakButton(
+              key: const Key('profile-sign-out'),
+              label: 'تسجيل الخروج',
+              icon: LucideIcons.logOut,
+              variant: BasakButtonVariant.surface,
+              size: BasakButtonSize.medium,
+              onPressed: () => ref.read(authStateProvider.notifier).signOut(),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('حسابي',
-                  style: AppTextStyles.displayMedium
-                      .copyWith(color: const Color(0xFF17384A))),
-              const SizedBox(height: 20),
-
-              // Profile Info Card
-              GlassContainer(
-                padding: const EdgeInsets.all(20),
-                borderRadius: 24,
-                child: authState.isStudent && user != null && detailsAsync.isLoading && !detailsAsync.hasValue
-                    // First load on this phone only; afterwards the saved profile shows at once.
-                    ? const ProfileSkeleton()
-                    : authState.isStudent && user != null
-                    ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        ProfileSection(
-                            userId: user.id, profile: profile, fallbackName: fullName, fallbackPhone: phone),
-                        if (subscriptionAsync?.valueOrNull != null) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(13),
-                            decoration: BoxDecoration(
-                                color: const Color(0xFFF1F7FA), borderRadius: BorderRadius.circular(15)),
-                            child: Row(children: [
-                              const Icon(LucideIcons.busFront, size: 18, color: Color(0xFF00658D)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                    '${subscriptionAsync!.valueOrNull!.lineLabel} · محطة ${subscriptionAsync.valueOrNull!.stationName ?? '—'}',
-                                    style: AppTextStyles.bodyMedium
-                                        .copyWith(color: const Color(0xFF17384A), fontWeight: FontWeight.w600)),
-                              ),
-                            ]),
-                          ),
-                        ],
-                      ])
-                    : Column(children: [
-                        const CircleAvatar(
-                          radius: 36,
-                          backgroundColor: Color(0xFFE2F2F9),
-                          child: Icon(LucideIcons.user, size: 36, color: Color(0xFF00658D)),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(fullName, style: AppTextStyles.titleLarge),
-                        const SizedBox(height: 4),
-                        Text(phone, style: AppTextStyles.bodyMedium),
-                      ]),
+            if (authState.isStudent)
+              QuietFooter(
+                actionKey: const Key('profile-delete'),
+                actionLabel: 'حذف الحساب',
+                onAction: () => _deleteAccount(context, ref),
+                version: ref.watch(appVersionProvider).valueOrNull,
               ),
-              const SizedBox(height: 24),
-
-              // Actions Section
-              Text('الإعدادات والأمان',
-                  style: AppTextStyles.titleMedium
-                      .copyWith(color: const Color(0xFF17384A))),
-              const SizedBox(height: 12),
-
-              GlassContainer(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                borderRadius: 20,
-                // ListTile ink needs a Material above the glass background.
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(LucideIcons.logOut,
-                            color: AppColors.textSecondary),
-                        title: Text('تسجيل الخروج',
-                            style: AppTextStyles.bodyLarge),
-                        onTap: () =>
-                            ref.read(authStateProvider.notifier).signOut(),
-                      ),
-                      if (authState.isStudent) const Divider(height: 1),
-                      if (authState.isStudent)
-                        ListTile(
-                          leading: const Icon(LucideIcons.trash2,
-                              color: AppColors.error),
-                          title: Text(
-                            'حذف الحساب وإعادة التسجيل',
-                            style: AppTextStyles.bodyLarge.copyWith(
-                                color: AppColors.error,
-                                fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            'لحذف كافة البيانات والاشتراكات والبدء من جديد',
-                            style: AppTextStyles.labelSmall.copyWith(
-                                color: AppColors.error.withOpacity(0.8)),
-                          ),
-                          onTap: () => _showDeleteAccountDialog(context, ref),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 100), // clearance for floating nav bar
-            ],
-          ),
+          ],
         ),
-      ),
-    ),
-  );
-}
+      ],
+    );
+  }
 }

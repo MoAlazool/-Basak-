@@ -181,26 +181,17 @@ void main() {
         [ReminderDayState.voted, ReminderDayState.companyOff]);
   });
 
-  testWidgets('the day strip shows the month and cannot be switched off', (tester) async {
-    await tester.pumpWidget(_app(const NotificationsScreen()));
+  testWidgets('the inbox has no reminder-days card: the week strip on Home shows those days', (tester) async {
+    await tester.pumpWidget(_app(const NotificationsScreen(), notes: [_note('a', 'إجازة رسمية')]));
     await tester.pumpAndSettle();
-    final first = reminderDays(
-            vote: _reminding,
-            now: DateTime.now(),
-            validFrom: DateTime(2020),
-            validUntil: DateTime(2099),
-            voted: const {})
-        .first
-        .day;
-    expect(find.textContaining(NotificationsPage.months[first.month - 1]), findsWidgets);
-    final reminded = tester.widgetList(find.text('تذكير مفعّل')).length;
-    expect(reminded, greaterThan(0));
-    await tester.tap(find.text('تذكير مفعّل').first);
-    await tester.pumpAndSettle();
-    expect(tester.widgetList(find.text('تذكير مفعّل')).length, reminded);
+    expect(find.text('التنبيهات'), findsOneWidget);
+    expect(find.text('إجازة رسمية'), findsOneWidget);
+    expect(find.text('تذكير تأكيد الرحلة'), findsNothing);
+    expect(find.text('تذكير مفعّل'), findsNothing);
+    expect(find.textContaining(NotificationsPage.months[DateTime.now().month - 1]), findsNothing);
   });
 
-  testWidgets('search narrows the list; "read all" marks everything read', (tester) async {
+  testWidgets('a student has no search; a message opens whole in a sheet that says who sent it', (tester) async {
     final repo = FakeNotificationsRepo();
     await tester.pumpWidget(_app(
       const NotificationsScreen(),
@@ -208,10 +199,43 @@ void main() {
       repo: repo,
     ));
     await tester.pumpAndSettle();
-    expect(find.text('غير المقروءة (2)'), findsOneWidget);
-    expect(find.text('المشرف أحمد · خط المنصورة'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('غير المقروءة · 2'), findsOneWidget);
+    // The row is the title and the text; who sent it is in the sheet.
+    expect(find.textContaining('خط المنصورة'), findsNothing);
+
+    await tester.tap(find.text('تأخير الباص'));
+    await tester.pumpAndSettle();
+    expect(repo.marked, [
+      ['b']
+    ]);
+    expect(find.text('أحمد · مشرف الباص'), findsOneWidget);
+    expect(find.textContaining('خط المنصورة'), findsOneWidget);
+    expect(find.text('نص تأخير الباص'), findsNWidgets(2));
+    expect(find.text('اتصل بالمشرف'), findsNothing, reason: 'this subscription names no supervisor to call');
+    await tester.tap(find.text('إغلاق'));
+    await tester.pumpAndSettle();
+    expect(find.text('أحمد · مشرف الباص'), findsNothing);
+    expect(find.text('غير المقروءة · 1'), findsOneWidget);
+  });
+
+  testWidgets('with search (supervisors): it narrows the list; "read all" marks everything read', (tester) async {
+    final repo = FakeNotificationsRepo();
+    await tester.pumpWidget(_app(
+      const NotificationsPage(),
+      notes: [_note('a', 'إجازة رسمية'), _note('b', 'تأخير الباص', role: 'supervisor'), _note('c', 'قديم', read: true)],
+      repo: repo,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('غير المقروءة · 2'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'تأخير');
+    await tester.pumpAndSettle();
+    expect(find.text('تأخير الباص'), findsOneWidget);
+    expect(find.text('إجازة رسمية'), findsNothing);
+
+    // The sender and the audience are searched too, though the row does not print them.
+    await tester.enterText(find.byType(TextField), 'المشرف أحمد');
     await tester.pumpAndSettle();
     expect(find.text('تأخير الباص'), findsOneWidget);
     expect(find.text('إجازة رسمية'), findsNothing);
@@ -236,7 +260,7 @@ void main() {
     expect(repo.marked, [
       ['a']
     ]);
-    expect(find.text('غير المقروءة (1)'), findsOneWidget);
+    expect(find.text('غير المقروءة · 1'), findsOneWidget);
   });
 
   testWidgets('the home bell shows the unread count and opens the notifications', (tester) async {
@@ -249,8 +273,9 @@ void main() {
     expect(find.text('2'), findsOneWidget);
     await tester.tap(find.byIcon(LucideIcons.bell));
     await tester.pumpAndSettle();
-    expect(find.text('الإشعارات'), findsOneWidget);
-    expect(find.text('التذكيرات تعمل بعد تفعيل اشتراكك.'), findsOneWidget);
+    expect(find.text('التنبيهات'), findsOneWidget);
+    expect(find.text('إجازة'), findsOneWidget);
+    expect(find.text('التذكيرات تعمل بعد تفعيل اشتراكك.'), findsNothing, reason: 'the reminder card is not built');
   });
 
   Widget sheetHost(FakeNotificationsRepo repo, Widget Function() sheet, void Function(SendResult?) popped) =>

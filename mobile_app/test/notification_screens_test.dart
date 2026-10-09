@@ -149,7 +149,8 @@ void main() {
     testWidgets('the Notification Center makes no offer when the build has no push', (tester) async {
       await tester.pumpWidget(app(const NotificationsPage(), repo: FakeNotificationsRepo()));
       await tester.pumpAndSettle();
-      expect(find.textContaining('فعّل الإشعارات لتصلك التنبيهات'), findsNothing);
+      expect(find.byKey(const Key('push-off-card')), findsNothing);
+      expect(find.text('تفعيل الإشعارات'), findsNothing);
     });
 
     testWidgets('the Notification Center offers to switch pushes on; a final "no" leads to the settings',
@@ -157,15 +158,17 @@ void main() {
       final push = FakePushMessaging(granted: PushPermission.notAsked)..promptAnswer = PushPermission.blocked;
       await tester.pumpWidget(app(const NotificationsPage(), repo: FakeNotificationsRepo(), push: push));
       await tester.pumpAndSettle();
-      expect(find.textContaining('فعّل الإشعارات لتصلك التنبيهات'), findsOneWidget);
+      expect(find.text('الإشعارات غير مفعّلة على هذا الهاتف'), findsOneWidget);
 
       // Refused for good in the system prompt: the settings are offered next.
-      await tester.tap(find.textContaining('فعّل الإشعارات لتصلك التنبيهات'));
+      await tester.tap(find.text('تفعيل الإشعارات'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('تفعيل الإشعارات').last); // the sheet's own button
       await tester.pumpAndSettle();
       expect(push.prompts, 1);
-      expect(find.text('فتح إعدادات الهاتف'), findsOneWidget);
+      // Said twice now: by the sheet that follows the refusal, and by the card under it.
+      expect(find.text('الإشعارات متوقفة من إعدادات الهاتف'), findsOneWidget);
+      expect(find.text('فتح إعدادات الهاتف'), findsNWidgets(2));
     });
   });
 

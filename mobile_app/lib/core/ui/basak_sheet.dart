@@ -18,6 +18,26 @@ abstract final class BasakSheet {
     bool isDismissible = true,
     bool largeTitle = false,
   }) =>
+      showFrame<T>(
+        context,
+        isDismissible: isDismissible,
+        builder: (context) => BasakSheetFrame(
+          title: title,
+          subtitle: subtitle,
+          largeTitle: largeTitle,
+          primary: primary?.call(context),
+          child: builder(context),
+        ),
+      );
+
+  /// Opens a sheet whose [builder] gives the whole [BasakSheetFrame]: for a
+  /// sheet that keeps state across its header, its list and its button (a
+  /// searchable picker).
+  static Future<T?> showFrame<T>(
+    BuildContext context, {
+    required WidgetBuilder builder,
+    bool isDismissible = true,
+  }) =>
       showModalBottomSheet<T>(
         context: context,
         isScrollControlled: true,
@@ -33,13 +53,7 @@ abstract final class BasakSheet {
           reverseDuration: BasakMotion.sheetOut,
           reverseCurve: BasakMotion.sheetOutCurve,
         ),
-        builder: (context) => BasakSheetFrame(
-          title: title,
-          subtitle: subtitle,
-          largeTitle: largeTitle,
-          primary: primary?.call(context),
-          child: builder(context),
-        ),
+        builder: builder,
       );
 }
 
@@ -54,8 +68,17 @@ class BasakSheetFrame extends StatelessWidget {
   /// its title is set 22 / 32 and the line under it 14 / 22.
   final bool largeTitle;
 
+  /// Stays put between the title and the scrolling content: a search box.
+  final Widget? header;
+
   const BasakSheetFrame(
-      {super.key, this.title, this.subtitle, required this.child, this.primary, this.largeTitle = false});
+      {super.key,
+      this.title,
+      this.subtitle,
+      required this.child,
+      this.primary,
+      this.largeTitle = false,
+      this.header});
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +130,10 @@ class BasakSheetFrame extends StatelessWidget {
                           style: largeTitle
                               ? text.bodySmall.copyWith(color: colors.ink2)
                               : text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400)),
+                    const SizedBox(height: BasakSpace.s14),
+                  ],
+                  if (header != null) ...[
+                    header!,
                     const SizedBox(height: BasakSpace.s14),
                   ],
                   Flexible(child: SingleChildScrollView(child: child)),

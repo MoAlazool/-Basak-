@@ -114,6 +114,9 @@ class BasakButton extends StatelessWidget {
   /// Shows a spinner in place of the label and ignores taps.
   final bool loading;
 
+  /// While [loading]: said beside the spinner ("جارٍ الإرسال…").
+  final String? loadingLabel;
+
   /// Fills the width it is given. Off: as wide as its label.
   final bool expand;
 
@@ -125,6 +128,7 @@ class BasakButton extends StatelessWidget {
     this.size = BasakButtonSize.large,
     this.icon,
     this.loading = false,
+    this.loadingLabel,
     this.expand = true,
   });
 
@@ -157,12 +161,23 @@ class BasakButton extends StatelessWidget {
       mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (loading)
+        if (loading) ...[
           SizedBox.square(
             dimension: 20,
             child: CircularProgressIndicator(strokeWidth: 2.25, color: ink),
-          )
-        else ...[
+          ),
+          if (loadingLabel != null) ...[
+            const SizedBox(width: BasakSpace.s10),
+            Flexible(
+              child: Text(
+                loadingLabel!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style.copyWith(color: ink, fontWeight: weight),
+              ),
+            ),
+          ],
+        ] else ...[
           if (icon != null) ...[
             Icon(icon, size: size == BasakButtonSize.small ? 16 : 20, color: ink),
             const SizedBox(width: BasakSpace.s8),
@@ -181,7 +196,7 @@ class BasakButton extends StatelessWidget {
 
     return BasakPressable(
       onTap: loading ? null : onPressed,
-      semanticLabel: loading ? label : null,
+      semanticLabel: loading ? (loadingLabel ?? label) : null,
       child: AnimatedContainer(
         duration: BasakMotion.fade,
         curve: BasakMotion.fadeCurve,

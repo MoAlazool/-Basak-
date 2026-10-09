@@ -24,7 +24,25 @@ class InfoRow {
 
   final Key? key;
 
-  const InfoRow({required this.label, this.value, this.caption, this.onTap, this.ltrValue = false, this.key});
+  /// The row could not be read: [label] says so ("تعذّر تحميل الإيصال"), with
+  /// a warning glyph before it and "إعادة المحاولة" at its end.
+  final VoidCallback? onRetry;
+
+  /// On the label's and the value's own text.
+  final Key? labelKey;
+  final Key? valueKey;
+
+  const InfoRow({
+    required this.label,
+    this.value,
+    this.caption,
+    this.onTap,
+    this.ltrValue = false,
+    this.key,
+    this.onRetry,
+    this.labelKey,
+    this.valueKey,
+  });
 }
 
 /// Label at the start, value at the end, one card, no icon per row. A chevron
@@ -36,7 +54,10 @@ class InfoRows extends StatelessWidget {
   /// block without a shadow, and rows 44 high.
   final bool sunken;
 
-  const InfoRows({super.key, required this.rows, this.sunken = false});
+  /// Under the last row, after a hairline: "عرض كل الاشتراكات السابقة · 5".
+  final Widget? footer;
+
+  const InfoRows({super.key, required this.rows, this.sunken = false, this.footer});
 
   @override
   Widget build(BuildContext context) => BasakCard(
@@ -51,6 +72,10 @@ class InfoRows extends StatelessWidget {
               if (i > 0) Divider(height: 1, thickness: 1, color: context.colors.hairline),
               _row(context, rows[i]),
             ],
+            if (footer != null) ...[
+              if (rows.isNotEmpty) Divider(height: 1, thickness: 1, color: context.colors.hairline),
+              footer!,
+            ],
           ],
         ),
       );
@@ -61,18 +86,41 @@ class InfoRows extends StatelessWidget {
     final navigates = row.onTap != null;
     final rtl = Directionality.of(context) == TextDirection.rtl;
 
+    if (row.onRetry != null) {
+      return KeyedSubtree(
+        key: row.key,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Row(
+            children: [
+              Icon(LucideIcons.triangleAlert, size: 18, color: colors.danger),
+              const SizedBox(width: BasakSpace.s10),
+              Expanded(child: Text(row.label, style: text.bodySmall)),
+              BasakButton(
+                label: 'إعادة المحاولة',
+                onPressed: row.onRetry,
+                variant: BasakButtonVariant.quiet,
+                size: BasakButtonSize.small,
+                expand: false,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     Widget? value;
     if (row.value != null) {
       value = Text(
         row.value!,
+        key: row.valueKey,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         // A left-to-right value still sits at the row's end edge.
         textAlign: row.ltrValue && rtl ? TextAlign.start : TextAlign.end,
         textDirection: row.ltrValue ? TextDirection.ltr : null,
-        style: navigates
-            ? text.bodySmall.copyWith(color: colors.ink3)
-            : text.body.copyWith(fontWeight: FontWeight.w500),
+        style:
+            navigates ? text.bodySmall.copyWith(color: colors.ink3) : text.body.copyWith(fontWeight: FontWeight.w500),
       );
     }
 
@@ -82,25 +130,34 @@ class InfoRows extends StatelessWidget {
         padding: EdgeInsetsDirectional.symmetric(vertical: sunken ? BasakSpace.s6 : BasakSpace.s8),
         child: Row(
           children: [
-            // The label keeps its words; a long value wraps beside it.
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * (value == null ? .8 : .45)),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    row.label,
-                    style: navigates
-                        ? text.body.copyWith(fontWeight: FontWeight.w500)
-                        : text.bodySmall.copyWith(color: colors.ink2),
-                  ),
-                  if (row.caption != null) Text(row.caption!, style: text.caption.copyWith(color: colors.ink3)),
-                ],
+            // The label keeps its words; a long value wraps beside it. With
+            // no value the label has the row to itself.
+            Flexible(
+              flex: value == null ? 1 : 0,
+              fit: value == null ? FlexFit.tight : FlexFit.loose,
+              child: ConstrainedBox(
+                constraints:
+                    BoxConstraints(maxWidth: value == null ? double.infinity : MediaQuery.sizeOf(context).width * .45),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row.label,
+                      key: row.labelKey,
+                      style: navigates
+                          ? text.body.copyWith(fontWeight: FontWeight.w500)
+                          : text.bodySmall.copyWith(color: colors.ink2),
+                    ),
+                    if (row.caption != null) Text(row.caption!, style: text.caption.copyWith(color: colors.ink3)),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: BasakSpace.s12),
-            Expanded(child: value ?? const SizedBox.shrink()),
+            if (value != null) ...[
+              const SizedBox(width: BasakSpace.s12),
+              Expanded(child: value),
+            ],
             if (navigates) ...[
               const SizedBox(width: BasakSpace.s6),
               Icon(rtl ? LucideIcons.chevronLeft : LucideIcons.chevronRight, size: 18, color: colors.ink3),
@@ -110,6 +167,8 @@ class InfoRows extends StatelessWidget {
       ),
     );
 
-    return navigates ? BasakPressable(key: row.key, onTap: row.onTap, child: content) : KeyedSubtree(key: row.key, child: content);
+    return navigates
+        ? BasakPressable(key: row.key, onTap: row.onTap, child: content)
+        : KeyedSubtree(key: row.key, child: content);
   }
 }

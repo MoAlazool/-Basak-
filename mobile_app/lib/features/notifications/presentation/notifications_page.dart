@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
+
 import '../../../core/network/network_errors.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/app_icons.dart';
+import '../../../core/ui/ui.dart';
+import '../../../core/widgets/basak_ui.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../data/notification_feed.dart';
 import '../data/notifications_repository.dart';
 import '../notification_router.dart';
@@ -51,6 +52,18 @@ String notificationDayLabel(DateTime day, DateTime now) {
   return day.year == now.year ? date : '$date ${day.year}';
 }
 
+/// "6:58 ص": the hour an alert arrived at, under its day's heading.
+String notificationTime(DateTime at) =>
+    BasakUi.time12('${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}');
+
+/// Who an alert is from, as its detail sheet says it: "محمود السيد · مشرف
+/// الباص", "إدارة الشركة", "باصك", or "أرسلته أنت" for the supervisor's own.
+String notificationSender(AppNotification n) {
+  if (n.mine) return 'أرسلته أنت';
+  if (n.senderRole != 'supervisor') return n.senderLabel;
+  return n.senderName.trim().isEmpty ? 'مشرف الباص' : '${n.senderName.trim()} · مشرف الباص';
+}
+
 /// One day of the inbox.
 typedef NotificationDay = ({DateTime day, String label, List<AppNotification> items});
 
@@ -67,44 +80,114 @@ List<NotificationDay> groupNotificationsByDay(List<AppNotification> items, DateT
   return days;
 }
 
-/// The Notification Center of students and supervisors: an optional [header]
-/// (the student's reminder days, the supervisor's send card), search, the
-/// all / unread filter and the inbox by day. Opening a notification marks it
-/// read and goes where it leads.
+/// What the detail sheet of an alert offers besides closing it («اتصل
+/// بالمشرف»). [run] is given the page under the sheet, after the sheet closed.
+typedef AlertAction = ({String label, IconData icon, void Function(BuildContext page) run});
+
+/// The inbox of students and supervisors: back, the title and «قراءة الكل»,
+/// the all / unread filter and the alerts by day. A tap marks the alert read
+/// and opens the screen it is about, or, when it has none, a sheet with its
+/// whole text.
+///
+/// A supervisor also gets what [header] holds (the send card), a search box
+/// and the way to the push switches ([preferences]). A student gets none of
+/// the three: only the phone's own permission, as one card when it is off.
 class NotificationsPage extends ConsumerStatefulWidget {
   final Widget? header;
 
-
-  /// Whether the user has notification settings in the app (supervisors). A
-  /// student has none: no settings button, and when the phone does not let the
-  /// app show notifications, one line that leads to the system's own prompt
-  /// or settings. The inbox itself is the same either way.
+  /// Whether the user has notification settings in the app (supervisors).
   final bool preferences;
 
-  const NotificationsPage({super.key, this.header, this.preferences = true});
+  /// The action a free-text alert's sheet offers, if any.
+  final AlertAction? Function(AppNotification notification)? detailAction;
 
-  static const months = [
-    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
-  ];
+  const NotificationsPage({super.key, this.header, this.preferences = true, this.detailAction});
 
-  static const ink = Color(0xFF17384A);
-  static const teal = Color(0xFF00658D);
-  static const muted = Color(0xFF718695);
-  static const soft = Color(0xFFE5F3FA);
-  static const line = Color(0xFFE3EDF3);
+  static const months = BasakUi.arabicMonths;
+
+  /// The whole text of [n] in a sheet: who sent it and when, its title, what
+  /// it says, and [action] over «إغلاق» when there is one.
+  static Future<void> showDetail(BuildContext context, AppNotification n, {AlertAction? action}) {
+    final language = Localizations.localeOf(context).languageCode;
+    final style = notificationStyle(n.type, n.category);
+    final when = '${notificationDayLabel(n.createdAt, DateTime.now())} ${notificationTime(n.createdAt)}';
+    return BasakSheet.show<void>(
+      context,
+      builder: (context) {
+        final colors = context.colors;
+        final text = context.text;
+        return Semantics(
+          container: true,
+          label: 'تفاصيل التنبيه',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ToneTile(style.icon, tone: style.tone, size: 44),
+                  const SizedBox(width: BasakSpace.s12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(notificationSender(n),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.body.copyWith(fontWeight: FontWeight.w500)),
+                        Text(
+                          [when, if (n.audience.isNotEmpty) n.audience].join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: BasakSpace.s18),
+              Semantics(header: true, child: Text(n.titleFor(language), style: text.title)),
+              if (n.bodyFor(language).isNotEmpty) ...[
+                const SizedBox(height: BasakSpace.s8),
+                Text(n.bodyFor(language), style: text.rowTitle.copyWith(fontWeight: FontWeight.w400)),
+              ],
+              const SizedBox(height: BasakSpace.s6),
+            ],
+          ),
+        );
+      },
+      primary: (sheet) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (action != null) ...[
+            BasakButton(
+              key: const Key('alert-detail-action'),
+              label: action.label,
+              icon: action.icon,
+              onPressed: () {
+                // What follows (the dialer, a toast) belongs to the page under the sheet.
+                final navigator = Navigator.of(sheet);
+                final page = navigator.context;
+                navigator.pop();
+                action.run(page);
+              },
+            ),
+            const SizedBox(height: BasakSpace.s2),
+          ],
+          SheetLink(label: 'إغلاق', onTap: () => Navigator.of(sheet).pop()),
+        ],
+      ),
+    );
+  }
 
   @override
   ConsumerState<NotificationsPage> createState() => _NotificationsPageState();
 }
 
 class _NotificationsPageState extends ConsumerState<NotificationsPage> {
-  static const _ink = NotificationsPage.ink;
-  static const _teal = NotificationsPage.teal;
-  static const _muted = NotificationsPage.muted;
-  static const _soft = NotificationsPage.soft;
-  static const _line = NotificationsPage.line;
-
   String _query = '';
 
   NotificationFeedNotifier get _feed => ref.read(notificationFeedProvider.notifier);
@@ -125,17 +208,18 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       await mark();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(errorMessage(error)),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-      ));
+      BasakToast.show(context, errorMessage(error), kind: BasakToastKind.failure);
     }
   }
 
   void _open(AppNotification n) {
     if (!n.read) _marking(() => _feed.markRead([n.id]));
-    ref.read(notificationRouterProvider).open(NotificationIntent.of(n), NotificationTapSource.list);
+    final router = ref.read(notificationRouterProvider);
+    final intent = NotificationIntent.of(n);
+    // No screen of its own: its whole text, in a sheet.
+    final stays = router.staysInCenter(intent);
+    router.open(intent, NotificationTapSource.list);
+    if (stays) NotificationsPage.showDetail(context, n, action: widget.detailAction?.call(n));
   }
 
   bool _onScroll(ScrollNotification notification) {
@@ -148,324 +232,194 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final async = ref.watch(notificationFeedProvider);
     final feed = async.valueOrNull ?? const NotificationFeed();
     final shown = feed.items.where((n) => n.matches(_query)).toList();
     final now = DateTime.now();
     final language = Localizations.localeOf(context).languageCode;
 
+    final loading = async.isLoading && !async.hasValue;
+    final failed = async.hasError && !async.hasValue;
+    // Nothing has ever arrived: no filter to offer and nothing to mark read.
+    final empty = !loading && !failed && feed.items.isEmpty && !feed.unreadOnly && !feed.switching;
+
+    final blocks = <Widget>[
+      if (widget.header != null) widget.header!,
+      _PushCard(plain: !widget.preferences),
+      if (widget.preferences && !empty)
+        _gutter(SearchBox(hint: 'ابحث في الإشعارات', onChanged: (value) => setState(() => _query = value))),
+      if (!empty)
+        _gutter(BasakSegmented<bool>(
+          options: const [false, true],
+          value: feed.unreadOnly,
+          onChanged: _feed.setUnreadOnly,
+          label: (unreadOnly) => !unreadOnly
+              ? 'الكل'
+              : (feed.unread > 0 ? 'غير المقروءة · ${feed.unread}' : 'غير المقروءة'),
+        )),
+      if (loading)
+        _gutter(const SkeletonList(rows: 5))
+      else if (failed)
+        _gutter(EmptyState(
+          icon: LucideIcons.wifiOff,
+          title: 'تعذر تحميل الإشعارات',
+          message: errorMessage(async.error!),
+          actionLabel: 'إعادة المحاولة',
+          onAction: () => ref.invalidate(notificationFeedProvider),
+        ))
+      else if (feed.items.isEmpty && feed.switching)
+        _gutter(const SkeletonList(rows: 3))
+      else if (feed.items.isEmpty && feed.unreadOnly)
+        _gutter(const EmptyState(
+            icon: LucideIcons.checkCheck, title: 'لا توجد إشعارات غير مقروءة', message: 'قرأت كل إشعاراتك.'))
+      else if (feed.items.isEmpty)
+        Padding(
+          padding: const EdgeInsetsDirectional.only(top: BasakSpace.s40),
+          child: EmptyState(
+            page: true,
+            icon: LucideIcons.bell,
+            title: 'لا توجد تنبيهات بعد',
+            message: widget.preferences
+                ? 'ستظهر هنا إشعارات رحلاتك واشتراكك.'
+                : 'ستظهر هنا حركة الباص، رسائل المشرف، وحالة اشتراكك.',
+          ),
+        )
+      else if (shown.isEmpty)
+        _gutter(EmptyState(
+            icon: LucideIcons.search, title: 'لا توجد نتائج', message: 'لا يوجد إشعار يطابق "$_query".'))
+      else ...[
+        for (final day in groupNotificationsByDay(shown, now))
+          _gutter(GroupSection(
+            title: day.label,
+            child: AlertRows(rows: [
+              for (final n in day.items) _row(n, language),
+            ]),
+          )),
+        if (feed.loadingMore || feed.moreError != null || feed.hasMore) _gutter(_more(feed)),
+      ],
+    ];
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F7FA),
-      body: Column(children: [
-        _topBar(context, feed.unread),
-        Expanded(
-          child: RefreshIndicator(
-            color: _teal,
-            onRefresh: _feed.refresh,
-            child: NotificationListener<ScrollNotification>(
-              onNotification: _onScroll,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(top: 18, bottom: 32),
+      backgroundColor: colors.ground,
+      body: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: SafeArea(
+          bottom: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: BasakSpace.maxContentWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (widget.header != null) ...[widget.header!, const SizedBox(height: 18)],
-                  _PushOffer(plain: !widget.preferences),
-                  _padded(_searchField()),
-                  const SizedBox(height: 14),
-                  _padded(_filters(feed)),
-                  const SizedBox(height: 12),
-                  if (async.isLoading && !async.hasValue)
-                    _padded(const SkeletonList(rows: 5))
-                  else if (async.hasError && !async.hasValue)
-                    _padded(_messageCard(
-                      LucideIcons.wifiOff,
-                      'تعذر تحميل الإشعارات',
-                      errorMessage(async.error!),
-                      action: TextButton(
-                        onPressed: () => ref.invalidate(notificationFeedProvider),
-                        child: const Text('إعادة المحاولة'),
-                      ),
-                    ))
-                  else if (feed.items.isEmpty && feed.switching)
-                    _padded(const SkeletonList(rows: 3))
-                  else if (feed.items.isEmpty && feed.unreadOnly)
-                    _padded(_messageCard(LucideIcons.checkCheck, 'لا توجد إشعارات غير مقروءة',
-                        'قرأت كل إشعاراتك.'))
-                  else if (feed.items.isEmpty)
-                    _padded(_messageCard(
-                        LucideIcons.bell, 'لا توجد إشعارات بعد', 'ستظهر هنا إشعارات رحلاتك واشتراكك.'))
-                  else if (shown.isEmpty)
-                    _padded(_messageCard(
-                        LucideIcons.badgeHelp, 'لا توجد نتائج', 'لا يوجد إشعار يطابق "$_query".'))
-                  else ...[
-                    for (final day in groupNotificationsByDay(shown, now)) ...[
-                      _padded(Padding(
-                        padding: const EdgeInsets.only(top: 6, bottom: 10),
-                        child: Text(day.label,
-                            style: AppTextStyles.bodyMedium
-                                .copyWith(color: _muted, fontWeight: FontWeight.w700)),
-                      )),
-                      for (final n in day.items) ...[
-                        _padded(_tile(n, now, language)),
-                        const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                        BasakSpace.gutter, BasakSpace.s12, BasakSpace.gutter, BasakSpace.s12),
+                    child: PageTitleBar(
+                      title: 'التنبيهات',
+                      actions: [
+                        if (!empty)
+                          TextAction(
+                            label: 'قراءة الكل',
+                            onTap: feed.unread == 0 ? null : () => _marking(_feed.markAllRead),
+                          ),
+                        if (widget.preferences) ...[
+                          const SizedBox(width: BasakSpace.s4),
+                          Tooltip(
+                            message: 'إعدادات الإشعارات',
+                            excludeFromSemantics: true,
+                            child: BasakIconButton(
+                              icon: LucideIcons.settings,
+                              label: 'إعدادات الإشعارات',
+                              onPressed: () => NotificationPreferencesScreen.open(context),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
-                    _padded(_more(feed)),
-                  ],
+                    ),
+                  ),
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: colors.teal,
+                      backgroundColor: colors.surface,
+                      onRefresh: _feed.refresh,
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _onScroll,
+                        child: ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                          padding: EdgeInsetsDirectional.only(
+                              top: BasakSpace.s4, bottom: BasakSpace.s32 + MediaQuery.paddingOf(context).bottom),
+                          itemCount: blocks.length,
+                          itemBuilder: (context, index) => blocks[index],
+                          // A block that shows nothing (the push card, when
+                          // notifications are on) takes no gap either.
+                          separatorBuilder: (context, index) =>
+                              blocks[index] is _PushCard ? const SizedBox.shrink() : const SizedBox(height: BasakSpace.s16),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ),
-      ]),
+      ),
     );
   }
 
-  Widget _padded(Widget child) =>
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: child);
+  Widget _gutter(Widget child) =>
+      Padding(padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.gutter), child: child);
 
-  Widget _topBar(BuildContext context, int unread) => Container(
-        padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 8, 12),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(bottom: BorderSide(color: _line)),
-        ),
-        child: Row(children: [
-          Semantics(
-            button: true,
-            label: 'رجوع',
-            child: Material(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-                side: const BorderSide(color: _line),
-              ),
-              child: InkWell(
-                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                onTap: () => Navigator.of(context).maybePop(),
-                child: const SizedBox(
-                  width: 46,
-                  height: 46,
-                  child: Icon(LucideIcons.arrowRight, color: _ink, size: 21),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text('الإشعارات',
-                style: AppTextStyles.titleLarge.copyWith(color: _ink, fontSize: 21)),
-          ),
-          TextButton.icon(
-            onPressed: unread == 0 ? null : () => _marking(_feed.markAllRead),
-            icon: const Icon(LucideIcons.checkCheck, size: 18),
-            label: const Text('قراءة الكل'),
-            style: TextButton.styleFrom(
-              foregroundColor: _teal,
-              textStyle: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-          if (widget.preferences)
-            IconButton(
-              tooltip: 'إعدادات الإشعارات',
-              onPressed: () => NotificationPreferencesScreen.open(context),
-              icon: const Icon(LucideIcons.settings, color: _ink, size: 21),
-            ),
-        ]),
-      );
+  AlertRow _row(AppNotification n, String language) {
+    final style = notificationStyle(n.type, n.category);
+    return AlertRow(
+      key: Key('alert-${n.id}'),
+      icon: style.icon,
+      tone: style.tone,
+      title: n.titleFor(language),
+      body: n.bodyFor(language),
+      time: notificationTime(n.createdAt),
+      unread: !n.read,
+      onTap: () => _open(n),
+    );
+  }
 
-  Widget _searchField() => TextField(
-        onChanged: (value) => setState(() => _query = value),
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: 'ابحث في الإشعارات',
-          prefixIcon: const Icon(LucideIcons.search, color: _muted, size: 20),
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: _line),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: _line),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: _teal),
-          ),
-        ),
-      );
-
-  Widget _filters(NotificationFeed feed) => Row(children: [
-        _filter('الكل', !feed.unreadOnly, () => _feed.setUnreadOnly(false)),
-        const SizedBox(width: 8),
-        _filter(feed.unread > 0 ? 'غير المقروءة (${feed.unread})' : 'غير المقروءة', feed.unreadOnly,
-            () => _feed.setUnreadOnly(true)),
-        const Spacer(),
-        if (feed.switching)
-          const SizedBox(
-              width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _teal)),
-      ]);
-
-  Widget _filter(String label, bool selected, VoidCallback onTap) => ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        showCheckmark: false,
-        selectedColor: _teal,
-        backgroundColor: Colors.white,
-        labelStyle: AppTextStyles.bodyMedium.copyWith(
-            color: selected ? Colors.white : _ink,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
-        side: BorderSide(color: selected ? _teal : _line),
-      );
-
-  /// The end of the list: the next page loading, a retry, or nothing.
+  /// The end of the list: the next page loading, a retry, or the way to it.
   Widget _more(NotificationFeed feed) {
     if (feed.loadingMore) return const SkeletonList(rows: 2);
     if (feed.moreError != null) {
-      return Column(children: [
-        Text(errorMessage(feed.moreError!),
-            textAlign: TextAlign.center, style: AppTextStyles.labelSmall.copyWith(color: _muted)),
-        TextButton(onPressed: _feed.loadMore, child: const Text('إعادة المحاولة')),
-      ]);
+      return InlineError(message: errorMessage(feed.moreError!), onRetry: _feed.loadMore);
     }
-    if (feed.hasMore) {
-      return Center(
-        child: TextButton(onPressed: _feed.loadMore, child: const Text('عرض إشعارات أقدم')),
-      );
-    }
-    return const SizedBox.shrink();
+    return Center(child: TextAction(label: 'عرض تنبيهات أقدم', onTap: _feed.loadMore));
   }
-
-  Widget _tile(AppNotification n, DateTime now, String language) {
-    final style = notificationStyle(n.type, n.category);
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: n.read ? _line : _teal.withOpacity(.35)),
-      ),
-      child: InkWell(
-        customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        onTap: () => _open(n),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: style.background, shape: BoxShape.circle),
-              child: Icon(style.icon, color: style.color, size: 21),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(
-                    child: Text(n.titleFor(language),
-                        style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(notificationAge(n.createdAt, now),
-                      style: AppTextStyles.labelSmall.copyWith(color: _muted)),
-                  if (!n.read) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      margin: const EdgeInsets.only(top: 5),
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(color: _teal, shape: BoxShape.circle),
-                    ),
-                  ],
-                ]),
-                const SizedBox(height: 5),
-                Text(n.bodyFor(language),
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(color: const Color(0xFF3D5566), height: 1.5)),
-                const SizedBox(height: 8),
-                Text(
-                  [n.mine ? 'أرسلته أنت' : n.senderLabel, if (n.audience.isNotEmpty) n.audience]
-                      .join(' · '),
-                  style: AppTextStyles.labelSmall.copyWith(color: _muted),
-                ),
-              ]),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _messageCard(IconData icon, String title, String message, {Widget? action}) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _line),
-        ),
-        child: Column(children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: const BoxDecoration(color: _soft, shape: BoxShape.circle),
-            child: Icon(icon, color: _teal, size: 28),
-          ),
-          const SizedBox(height: 14),
-          Text(title, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-          const SizedBox(height: 6),
-          Text(message,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: _muted)),
-          if (action != null) ...[const SizedBox(height: 8), action],
-        ]),
-      );
 }
 
 /// Shown while this phone could receive pushes but the system does not let
-/// the app show them: one tap away from switching them on.
-class _PushOffer extends ConsumerWidget {
-  /// Ask the system directly, with no explanation sheet of the app's own.
+/// the app show them: one card, one tap away from switching them on.
+class _PushCard extends ConsumerWidget {
+  /// A student: the phone is asked directly (or its settings open), with no
+  /// sheet of the app's own in between.
   final bool plain;
-  const _PushOffer({this.plain = false});
+  const _PushCard({this.plain = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (ref.watch(pushReadyProvider).valueOrNull != true) return const SizedBox.shrink();
     final permission = ref.watch(pushPermissionProvider).valueOrNull;
     if (permission == null || permission == PushPermission.granted) return const SizedBox.shrink();
+    final blocked = permission == PushPermission.blocked;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-      child: Material(
-        color: NotificationsPage.soft,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => plain
-              ? requestSystemPushPermission(ref, openSettingsWhenBlocked: true)
-              : offerPushNotifications(context, ref),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Row(children: [
-              const Icon(LucideIcons.bellRing, color: NotificationsPage.teal, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                    plain && permission == PushPermission.blocked
-                        ? 'الإشعارات متوقفة من إعدادات الهاتف.'
-                        : 'فعّل الإشعارات لتصلك التنبيهات حتى والتطبيق مغلق.',
-                    style: AppTextStyles.bodyMedium.copyWith(color: NotificationsPage.ink)),
-              ),
-              const SizedBox(width: 8),
-              Text(plain && permission == PushPermission.blocked ? 'فتح الإعدادات' : 'تفعيل',
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(color: NotificationsPage.teal, fontWeight: FontWeight.w700)),
-            ]),
-          ),
-        ),
+      padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, 0, BasakSpace.gutter, BasakSpace.s16),
+      child: ActionNotice(
+        key: const Key('push-off-card'),
+        icon: LucideIcons.bellOff,
+        title: blocked ? 'الإشعارات متوقفة' : 'الإشعارات غير مفعّلة على هذا الهاتف',
+        message: blocked ? 'فعّلها من إعدادات الهاتف لتصلك التنبيهات.' : 'فعّلها لتصلك التنبيهات حتى والتطبيق مغلق.',
+        actionLabel: blocked ? 'فتح إعدادات الهاتف' : 'تفعيل الإشعارات',
+        onAction: () => plain
+            ? requestSystemPushPermission(ref, openSettingsWhenBlocked: true)
+            : offerPushNotifications(context, ref),
       ),
     );
   }

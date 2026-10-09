@@ -156,6 +156,10 @@ class EmptyState extends StatelessWidget {
   /// larger, light on dark, and its action is the page's primary button.
   final bool onInk;
 
+  /// A whole page on the light ground (no lines for the university yet):
+  /// the larger glyph and title, and a sunken button that carries its icon.
+  final bool page;
+
   const EmptyState({
     super.key,
     required this.icon,
@@ -165,6 +169,7 @@ class EmptyState extends StatelessWidget {
     this.onAction,
     this.actionIcon,
     this.onInk = false,
+    this.page = false,
   });
 
   @override
@@ -197,6 +202,41 @@ class EmptyState extends StatelessWidget {
                 label: actionLabel!,
                 onPressed: onAction,
                 icon: actionIcon,
+                size: BasakButtonSize.medium,
+                expand: false,
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+    if (page) {
+      return Padding(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(color: colors.sunken, borderRadius: BasakRadius.all(22)),
+                child: Icon(icon, size: 28, color: colors.ink2),
+              ),
+            ),
+            const SizedBox(height: BasakSpace.s16),
+            Text(title, textAlign: TextAlign.center, style: text.sheetTitle),
+            if (message != null) ...[
+              const SizedBox(height: BasakSpace.s10),
+              Text(message!, textAlign: TextAlign.center, style: text.body.copyWith(color: colors.ink2)),
+            ],
+            if (actionLabel != null) ...[
+              const SizedBox(height: BasakSpace.s20),
+              BasakButton(
+                label: actionLabel!,
+                onPressed: onAction,
+                icon: actionIcon,
+                variant: BasakButtonVariant.secondary,
                 size: BasakButtonSize.medium,
                 expand: false,
               ),
