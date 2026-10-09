@@ -4,7 +4,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { type ApplePushConfig, type AppleSigner, type PushResult, sendPassUpdatePush } from './apple.ts';
 import { type GoogleConfig, upsertClass, upsertObject } from './google.ts';
 import { buildGoogleClass, buildGoogleObject, type CardContent } from './pass_data.ts';
-import { hasUsablePhoto } from './photo.ts';
+import { hasUsablePhoto, photoLinkColour } from './photo.ts';
 
 /** Secrets are pasted as PEM; some shells store the line breaks as a literal "\n". */
 function pem(name: string): string | null {
@@ -164,7 +164,10 @@ async function googlePhotoUrl(
       .update({ photo_token: token, photo_version: version }).eq('student_id', key.student_id).eq('platform', 'google');
     if (error) throw error;
   }
-  return token ? `${config.publicBaseUrl}/functions/v1/wallet-photo/${token}.jpg` : null;
+  if (!token) return null;
+  // The card colour is in the link: the strip's sides match the card, and a new colour is a new link Google fetches.
+  const colour = photoLinkColour(card.content.theme.background_color);
+  return `${config.publicBaseUrl}/functions/v1/wallet-photo/${token}${colour ? `-${colour}` : ''}.jpg`;
 }
 
 let classReady: { issuerId: string; done: Promise<void> } | null = null;

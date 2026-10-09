@@ -21,11 +21,11 @@ function project(path: string | null, version = 'v1', file = 'photo-a') {
   });
 }
 
-Deno.test('a known token gets the small JPEG, found with one query and no card computation', async () => {
+Deno.test('a known token gets the photo strip, found with one query and no card computation', async () => {
   const pictures = fakeImaging();
   try {
     const fake = project('student-1/a.png');
-    assertEquals(text(await portraitForToken(fake.client, TOKEN)), 'jpeg of photo-a');
+    assertEquals(text(await portraitForToken(fake.client, TOKEN)), 'strip 00658d of photo-a');
     assertEquals(fake.log, ['select wallet_passes', 'storage student-avatars.download']);
     assertEquals(fake.db[0].filters, { photo_token: TOKEN, platform: 'google' });
     assertEquals(fake.db[0].columns, 'photo_version, student:students(profile_image_url)');
@@ -43,12 +43,23 @@ Deno.test('the same photo is served again without downloading or decoding, but t
   } finally { pictures.restore(); }
 });
 
+Deno.test("the strip takes the link's colour, and each colour is drawn once from one download", async () => {
+  const pictures = fakeImaging();
+  try {
+    const fake = project('student-8/a.png');
+    assertEquals(text(await portraitForToken(fake.client, TOKEN, 'aa3322')), 'strip aa3322 of photo-a');
+    assertEquals(text(await portraitForToken(fake.client, TOKEN, 'aa3322')), 'strip aa3322 of photo-a');
+    assertEquals(text(await portraitForToken(fake.client, TOKEN, '112233')), 'strip 112233 of photo-a');
+    assertEquals([fake.count('storage student-avatars.download'), pictures.decoded()], [1, 1]);
+  } finally { pictures.restore(); }
+});
+
 Deno.test('a new version of the photo is fetched afresh', async () => {
   const pictures = fakeImaging();
   try {
     await portraitForToken(project('student-3/a.png', 'v1').client, TOKEN);
     const next = project('student-3/a.png', 'v2', 'photo-b');
-    assertEquals(text(await portraitForToken(next.client, TOKEN)), 'jpeg of photo-b');
+    assertEquals(text(await portraitForToken(next.client, TOKEN)), 'strip 00658d of photo-b');
     assertEquals(next.count('storage student-avatars.download'), 1);
   } finally { pictures.restore(); }
 });

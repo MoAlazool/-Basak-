@@ -8,16 +8,21 @@ import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@1';
 const online = (await Deno.permissions.query({ name: 'net', host: 'deno.land' })).state === 'granted';
 const test = (name: string, fn: () => Promise<void>) => Deno.test({ name, ignore: !online, fn });
 
-test('a tall photo becomes a 480px square taken from its upper part; thumbnails are 90/180/270', async () => {
+test('a tall photo becomes a square from its upper part; thumbnails are 90/180/270; Google gets a 3:1 strip', async () => {
   const { decode, Image } = await import('https://deno.land/x/imagescript@1.3.0/mod.ts');
   const { photoSquare } = await import('./artwork.ts');
   // Red above row 300, blue below. The crop is rows 60..660, so red ends 40% down the square.
   const tall = await new Image(600, 900).fill((_x: number, y: number) => y < 300 ? 0xff0000ff : 0x0000ffff).encode();
   const square = await photoSquare(tall);
-  const jpeg = await square.jpeg();
+  const jpeg = await square.strip('00ff00');
   assertEquals([jpeg[0], jpeg[1]], [0xff, 0xd8]);
-  const portrait = await decode(jpeg) as InstanceType<typeof Image>;
-  assertEquals([portrait.width, portrait.height], [480, 480]);
+  const strip = await decode(jpeg) as InstanceType<typeof Image>;
+  assertEquals([strip.width, strip.height], [960, 320]);
+  // Google's strip: the sides are the card colour (green here), the photo is in the middle.
+  const [r, g, b] = Image.colorToRGBA(strip.getPixelAt(40, 160));
+  assert(g > 200 && r < 60 && b < 60, 'side is the card colour');
+  assert(Image.colorToRGBA(strip.getPixelAt(480, 70))[0] > 200, 'photo: upper part is red');
+  assert(Image.colorToRGBA(strip.getPixelAt(480, 260))[2] > 200, 'photo: lower part is blue');
   for (const side of [90, 180, 270]) {
     const thumbnail = await decode(await square.png(side)) as InstanceType<typeof Image>;
     assertEquals([thumbnail.width, thumbnail.height], [side, side]);
