@@ -6,6 +6,7 @@ import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { Skeleton, SkeletonForm } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
+import { useGuard } from '../lib/guard';
 import { ACCEPTED_IMAGES, uploadWalletArtwork, validateImage, walletArtworkUrl } from '../lib/walletArtwork';
 
 interface Settings {
@@ -259,7 +260,9 @@ export const WalletCardDesignPage: React.FC = () => {
     }
   };
 
-  const save = async () => {
+  const guard = useGuard();
+  // Saving uploads the artwork and then updates the installed cards: one run at a time.
+  const save = () => guard('save', async () => {
     if (!settings || !draft) return;
     try {
       setSaving(true);
@@ -281,7 +284,7 @@ export const WalletCardDesignPage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const phoneValid = !draft || draft.phone.trim() === '' || PHONE.test(draft.phone.trim());
   const valid = !!draft && HEX.test(draft.background) && HEX.test(draft.foreground) && HEX.test(draft.label)

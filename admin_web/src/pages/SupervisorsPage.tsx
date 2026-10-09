@@ -1,7 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
-import { useLineNames, useSupervisorLines, useSupervisors, type LineName, type SupervisorRow } from '../lib/reference';
+import { useQueryClient } from '@tanstack/react-query';
+import { keys, refreshIfNotUpdated } from '../lib/query';
+import { SUPERVISOR_COLUMNS as COLUMNS, useLineNames, useSupervisorLines, useSupervisors, type LineName, type SupervisorLine, type SupervisorRow } from '../lib/reference';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { notifyDone, notifyError } from '../lib/toasts';
 import { useSignedUrls } from '../lib/signedUrls';
 import { SkeletonRows } from '../components/Skeleton';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
@@ -71,13 +76,23 @@ export const SupervisorsPage: React.FC = () => {
   const loading = supervisorsPage.loading;
   const pageError = supervisorsPage.error || linesPage.error || assignmentsPage.error;
   const fetchData = async () => { await Promise.all([supervisorsPage.reload(), assignmentsPage.reload()]); };
+  const client = useQueryClient();
+  const guard = useGuard();
+  const supervisorsKey = keys.company(companyId, 'supervisors');
+  const assignmentsKey = keys.company(companyId, 'supervisorLines');
+  // A saved row goes straight into the list on screen; its announcement on the live topic
+  // then re-reads nothing here (the company's numbers still follow it).
+  const applyRow = (row: Supervisor) => {
+    rememberApplied([row.id], ['supervisors']);
+    client.setQueryData<Supervisor[]>(supervisorsKey, (list) => list?.map((item) => (item.id === row.id ? row : item)));
+  };
 
   const linesById = useMemo(() => new Map(lines.map((line) => [line.id, line])), [lines]);
   // Signed once per photo and reused (lib/signedUrls.ts): a focus or a return here does not download them again.
   const photos = useSignedUrls(PHOTO_BUCKET, supervisors.map((s) => s.profile_image_url));
 
   // The photo the supervisor sees in the app, and the students of their lines.
-  const handlePhoto = async (sup: Supervisor, file: File | undefined) => {
+  const handlePhoto = (sup: Supervisor, file: File | undefined) => guard(`photo:${sup.id}`, async () => {
     if (!file) return;
     try {
       setUploadingId(sup.id);
@@ -86,106 +101,105 @@ export const SupervisorsPage: React.FC = () => {
       const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET)
         .upload(path, image, { contentType: 'image/jpeg', upsert: false });
       if (uploadError) throw uploadError;
-      const { error: rowError } = await supabase.from('supervisors').update({ profile_image_url: path }).eq('id', sup.id);
-      if (rowError) {
+      const { data, error: rowError } = await supabase.from('supervisors').update({ profile_image_url: path }).eq('id', sup.id).select(COLUMNS).single();
+      if (rowError || !data) {
         await supabase.storage.from(PHOTO_BUCKET).remove([path]);
-        throw rowError;
+        throw rowError ?? new Error('لم تُحفظ الصورة.');
       }
       // The new photo shows first; the old file is cleaned up behind it.
-      await fetchData();
+      applyRow(data as Supervisor);
       if (sup.profile_image_url) void supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
     } catch (err: any) {
-      alert('فشل رفع الصورة: ' + err.message);
+      notifyError('فشل رفع الصورة', err.message);
     } finally {
       setUploadingId(null);
     }
-  };
+  });
 
-  const handleRemovePhoto = async (sup: Supervisor) => {
+  const handleRemovePhoto = (sup: Supervisor) => guard(`photo:${sup.id}`, async () => {
     if (!sup.profile_image_url || !confirm(`إزالة صورة المشرف "${sup.full_name}"؟`)) return;
-    const { error } = await supabase.from('supervisors').update({ profile_image_url: null }).eq('id', sup.id);
-    if (error) {
-      alert('فشل إزالة الصورة: ' + error.message);
-      return;
-    }
-    await supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
-    void fetchData();
-  };
+    const { data, error } = await supabase.from('supervisors').update({ profile_image_url: null }).eq('id', sup.id).select(COLUMNS).single();
+    if (error || !data) return notifyError('فشل إزالة الصورة', error?.message);
+    applyRow(data as Supervisor);
+    void supabase.storage.from(PHOTO_BUCKET).remove([sup.profile_image_url]);
+  });
 
-  const handleAddSupervisor = async (e: React.FormEvent) => {
+  const handleAddSupervisor = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !phone.trim() || !companyId) {
-      alert('يرجى ملء جميع الحقول المطلوبة.');
-      return;
-    }
-    if (password.trim().length < 8) {
-      alert('كلمة المرور يجب ألا تقل عن 8 أحرف.');
-      return;
-    }
-    if (lineIds.length === 0) {
-      alert('اختر خطاً واحداً على الأقل يكون المشرف مسؤولاً عنه.');
-      return;
-    }
+    if (!fullName.trim() || !phone.trim() || !companyId) return notifyError('يرجى ملء جميع الحقول المطلوبة.');
+    if (password.trim().length < 8) return notifyError('كلمة المرور يجب ألا تقل عن 8 أحرف.');
+    if (lineIds.length === 0) return notifyError('اختر خطاً واحداً على الأقل يكون المشرف مسؤولاً عنه.');
 
-    try {
-      setIsSubmitting(true);
-      // Server-side creation: confirmed Auth account, company-scoped row and the
-      // supervisor's lines, all-or-nothing. No password is stored by Basak.
-      await invokeEdgeFunction('admin-create-supervisor', {
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        password: password.trim(),
-        companyId,
-        lineIds,
-      });
-      setFullName('');
-      setPhone('');
-      setPassword('');
-      setLineIds([]);
-      await fetchData();
-      alert('تمت إضافة المشرف وتعيين خطوطه. يدخل التطبيق برقم الهاتف وكلمة المرور التي كتبتها، فسلّمها له الآن: تُحفظ مشفّرة ولا يمكن عرضها مرة أخرى في لوحة التحكم.');
-    } catch (err: any) {
-      alert('فشل إضافة المشرف: ' + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // A second submit while the first is on its way does nothing (the account must not be created twice).
+    void guard('add', async () => {
+      try {
+        setIsSubmitting(true);
+        // Server-side creation: confirmed Auth account, company-scoped row and the
+        // supervisor's lines, all-or-nothing. No password is stored by Basak.
+        await invokeEdgeFunction('admin-create-supervisor', {
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          password: password.trim(),
+          companyId,
+          lineIds,
+        });
+        setFullName('');
+        setPhone('');
+        setPassword('');
+        setLineIds([]);
+        notifyDone('تمت إضافة المشرف وتعيين خطوطه',
+          'يدخل التطبيق برقم الهاتف وكلمة المرور التي كتبتها، فسلّمها له الآن: تُحفظ مشفّرة ولا يمكن عرضها مرة أخرى.');
+        // The new supervisor and their lines are announced on the live topic, which reads both lists once.
+        refreshIfNotUpdated(supervisorsKey);
+        refreshIfNotUpdated(assignmentsKey);
+      } catch (err: any) {
+        notifyError('فشل إضافة المشرف', err.message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   };
 
-  const saveLines = async (supervisor: Supervisor) => {
+  const saveLines = (supervisor: Supervisor) => guard(`lines:${supervisor.id}`, async () => {
     try {
       setSavingLines(true);
+      const lineIdsNow = editingLines;
       const { error } = await supabase.rpc('set_supervisor_lines', {
         p_supervisor_id: supervisor.id,
-        p_line_ids: editingLines,
+        p_line_ids: lineIdsNow,
       });
       if (error) throw error;
+      // What was saved is what was sent: shown at once. The live topic confirms it with one read.
+      client.setQueryData<SupervisorLine[]>(assignmentsKey, (rows) => (rows ? [
+        ...rows.filter((row) => row.supervisor_id !== supervisor.id),
+        ...lineIdsNow.map((line_id) => ({ supervisor_id: supervisor.id, line_id })),
+      ] : rows));
       setEditingId(null);
-      await fetchData();
+      refreshIfNotUpdated(assignmentsKey);
     } catch (err: any) {
-      alert('فشل حفظ خطوط المشرف: ' + err.message);
+      notifyError('فشل حفظ خطوط المشرف', err.message);
     } finally {
       setSavingLines(false);
     }
-  };
+  });
 
-  const handleToggleActive = async (sup: Supervisor) => {
-    const { error } = await supabase
-      .from('supervisors')
-      .update({ is_active: !sup.is_active })
-      .eq('id', sup.id);
-    if (error) alert('فشل تغيير الحالة: ' + error.message);
-    else void fetchData();
-  };
+  const handleToggleActive = (sup: Supervisor) => guard(`row:${sup.id}`, async () => {
+    const { data, error } = await supabase.from('supervisors').update({ is_active: !sup.is_active }).eq('id', sup.id).select(COLUMNS).single();
+    if (error || !data) notifyError('فشل تغيير الحالة', error?.message);
+    else applyRow(data as Supervisor);
+  });
 
-  const handleDelete = async (id: string, name: string) => {
+  const handleDelete = (id: string, name: string) => guard(`row:${id}`, async () => {
     if (!confirm(`هل أنت متأكد من حذف المشرف "${name}"؟ سيتم حذف حساب الدخول الخاص به أيضاً.`)) return;
     try {
       await invokeEdgeFunction('admin-delete-supervisor', { supervisorId: id });
-      void fetchData();
+      rememberApplied([id], ['supervisors']);
+      client.setQueryData<Supervisor[]>(supervisorsKey, (list) => list?.filter((item) => item.id !== id));
+      client.setQueryData<SupervisorLine[]>(assignmentsKey, (rows) => rows?.filter((row) => row.supervisor_id !== id));
     } catch (err: any) {
-      alert('فشل الحذف: ' + err.message);
+      notifyError('فشل الحذف', err.message);
     }
-  };
+  });
 
   return (
     <div className="space-y-6">

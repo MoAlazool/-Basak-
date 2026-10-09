@@ -1,17 +1,16 @@
 /**
  * Pure helpers of the notifications page: shapes, audience → payload, the
- * idempotency key, labels and Cairo time. Nothing here touches the network or
- * React, so every function can be tested with plain values.
+ * idempotency key and labels. Nothing here touches the network or React, so
+ * every function can be tested with plain values. Cairo time is in lib/time.ts.
  */
+import { CAIRO_LABEL, addDays, cairoLocalToIso, clockLabel, isDay } from './time';
 
 export const TITLE_MAX = 80;
 export const BODY_MAX = 600;
-export const CAIRO_ZONE = 'Africa/Cairo';
-export const CAIRO_LABEL = 'بتوقيت القاهرة';
 
 // ---------------------------------------------------------------- shapes ----
 
-export type AudienceKind = 'company' | 'line' | 'trip' | 'university';
+type AudienceKind = 'company' | 'line' | 'trip' | 'university';
 
 /** What the server takes. It resolves the recipients itself; ids of people are never sent. */
 export type AudienceSpec =
@@ -44,10 +43,10 @@ export interface NotificationDraft {
 
 export interface AudiencePreview { label: string; students: number; supervisors: number; devices: number; }
 
-export type NotificationStatus = 'scheduled' | 'sent' | 'cancelled' | 'failed';
+type NotificationStatus = 'scheduled' | 'sent' | 'cancelled' | 'failed';
 export type StatusFilter = 'all' | NotificationStatus;
 
-export interface PushStats { devices: number; queued: number; accepted: number; failed: number; skipped: number; }
+interface PushStats { devices: number; queued: number; accepted: number; failed: number; skipped: number; }
 
 export interface HistoryRow {
   id: string;
@@ -83,7 +82,7 @@ export interface ComposeResult { id: string; status: 'sent' | 'scheduled'; stude
 
 /** What the platform admin writes to every company at once. */
 export const PLATFORM_ANNOUNCEMENT = 'announcement.platform';
-export const PLATFORM_SENDER = 'منصة باصك';
+const PLATFORM_SENDER = 'منصة باصك';
 
 /** Who a platform notification would reach. `companies` counts those with at least one student to receive it. */
 export interface PlatformPreview { companies: number; students: number; supervisors: number; devices: number; }
@@ -110,7 +109,7 @@ export function platformAudience(preview: PlatformPreview, all: boolean, chosen:
 
 // -------------------------------------------------------------- audience ----
 
-export const emptyAudience = (today: string): AudienceDraft =>
+const emptyAudience = (today: string): AudienceDraft =>
   ({ kind: 'company', lineId: '', tripId: '', rideDate: today, universityId: '' });
 
 export const emptyDraft = (today: string): NotificationDraft =>
@@ -160,7 +159,7 @@ export const AUDIENCE_KINDS: { key: AudienceKind; label: string }[] = [
 ];
 
 /** What is still missing from the audience, in the admin's words ('' = complete). */
-export function audienceProblem(audience: AudienceDraft): string {
+function audienceProblem(audience: AudienceDraft): string {
   if (audience.kind === 'line' && !audience.lineId) return 'اختر الخط.';
   if (audience.kind === 'trip' && !audience.lineId) return 'اختر الخط ثم الرحلة.';
   if (audience.kind === 'trip' && !audience.tripId) return 'اختر الرحلة.';
@@ -277,72 +276,12 @@ export function pushStatParts(push: PushStats | null | undefined): { key: keyof 
 
 export const percent = (part: number, whole: number) => (whole > 0 ? Math.min(100, Math.round((part / whole) * 100)) : 0);
 
-/** `07:30:00` → `7:30 ص`. */
-export function clockLabel(time: string | null | undefined): string {
-  if (!time) return '';
-  const [h, m] = time.slice(0, 5).split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return '';
-  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`;
-}
-
 export function tripLabel(trip: { direction: 'departure' | 'return'; label?: string | null; start_time: string }): string {
   const direction = trip.direction === 'departure' ? 'ذهاب' : 'عودة من الجامعة';
   return [direction, clockLabel(trip.start_time), trip.label?.trim()].filter(Boolean).join(' · ');
 }
 
-// ------------------------------------------------------------- Cairo time ----
-
-const isDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
-
-const cairoPartsFormat = new Intl.DateTimeFormat('en-CA', {
-  timeZone: CAIRO_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-});
-
-function cairoParts(date: Date) {
-  const parts: Record<string, string> = {};
-  cairoPartsFormat.formatToParts(date).forEach((part) => { parts[part.type] = part.value; });
-  // Some engines print midnight as 24 with h23 missing; keep the wall clock sane.
-  const hour = parts.hour === '24' ? '00' : parts.hour;
-  return { day: `${parts.year}-${parts.month}-${parts.day}`, time: `${hour}:${parts.minute}` };
-}
-
-/** Today's calendar day in Cairo, `YYYY-MM-DD`, wherever the browser is. */
-export const cairoToday = (now: Date = new Date()) => cairoParts(now).day;
-
-export function addDays(day: string, days: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
-
-/** An instant as the value of a `datetime-local` field showing Cairo wall time. */
-export function isoToCairoLocal(iso: string | Date): string {
-  const date = typeof iso === 'string' ? new Date(iso) : iso;
-  if (Number.isNaN(date.getTime())) return '';
-  const parts = cairoParts(date);
-  return `${parts.day}T${parts.time}`;
-}
-
-const wallMs = (local: string): number | null => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
-  return match ? Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5]) : null;
-};
-
-/**
- * Cairo wall time (`YYYY-MM-DDTHH:mm`) → the instant, as ISO. The offset is
- * taken from the zone's own rules for that day (Egypt moves between +2 and +3),
- * not from the browser's time zone.
- */
-export function cairoLocalToIso(local: string): string | null {
-  const wall = wallMs(local);
-  if (wall === null) return null;
-  let utc = wall - 2 * 3_600_000;
-  for (let round = 0; round < 2; round += 1) {
-    const shown = wallMs(isoToCairoLocal(new Date(utc)));
-    if (shown === null) return null;
-    utc += wall - shown;
-  }
-  return new Date(utc).toISOString();
-}
+// ------------------------------------------------------------ schedule ----
 
 /** Why this send time cannot be used ('' = it can). */
 export function scheduleProblem(local: string, now: Date = new Date()): string {
@@ -350,17 +289,6 @@ export function scheduleProblem(local: string, now: Date = new Date()): string {
   if (!iso) return 'حدد موعد الإرسال.';
   if (new Date(iso).getTime() <= now.getTime()) return `موعد الإرسال يجب أن يكون في المستقبل (${CAIRO_LABEL}).`;
   return '';
-}
-
-/** A moment for the admin to read, always in Cairo time. */
-export function formatCairo(iso: string | null | undefined, withYear = false): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('ar-EG', {
-    timeZone: CAIRO_ZONE, day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit',
-    ...(withYear ? { year: 'numeric' as const } : {}),
-  });
 }
 
 /** A ride day in words: اليوم / غداً, or the date itself. */

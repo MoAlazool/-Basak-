@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { KeyRound, Phone, RefreshCw, X, Copy } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
 import { keys, unwrap, usePageData } from '../lib/query';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { notifyError } from '../lib/toasts';
+import { isOpenReset as isOpen } from '../lib/resetRequests';
 
 interface ResetRequest {
   id: string;
@@ -37,32 +42,48 @@ export const PasswordResetRequests: React.FC<{ companyId: string | null }> = ({ 
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // New requests arrive through the live topic of the workspace or the platform.
-  const page = usePageData(companyId ? keys.company(companyId, 'resetRequests') : keys.platform('resetRequests'), () =>
+  const listKey = companyId ? keys.company(companyId, 'resetRequests') : keys.platform('resetRequests');
+  const page = usePageData(listKey, () =>
     unwrap<ResetRequest[]>(supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId })));
   const requests = page.data ?? [];
   const error = page.error;
   const load = page.reload;
+  const client = useQueryClient();
+  const guard = useGuard();
 
-  const issueCode = async (request: ResetRequest) => {
+  // What the admin just did to a request is shown from the server's answer; its
+  // announcement on the live topic then re-reads neither the list nor the badge's count.
+  const applyChange = (request: ResetRequest, change: Partial<ResetRequest>) => {
+    rememberApplied([request.id], ['resetRequests']);
+    client.setQueryData<ResetRequest[]>(listKey, (rows) => rows?.map((row) => (row.id === request.id ? { ...row, ...change } : row)));
+    const closes = isOpen(request) && change.status !== undefined && !isOpen({ status: change.status });
+    if (closes) client.setQueryData<number>([...listKey, 'count'], (count) => (count === undefined ? count : Math.max(0, count - 1)));
+  };
+
+  const issueCode = (request: ResetRequest) => guard(request.id, async () => {
     if (!confirm(`تأكد أولاً من هوية الطالب "${request.student_name}" بالاتصال على ${request.student_phone}. إصدار الرمز الآن؟`)) return;
     setBusyId(request.id);
     const { data, error: issueError } = await supabase.rpc('admin_issue_password_reset_code', { p_request_id: request.id });
     setBusyId(null);
-    if (issueError) { alert('تعذر إصدار الرمز: ' + issueError.message); return; }
+    if (issueError || !data) return notifyError('تعذر إصدار الرمز', issueError?.message);
     setIssued({ request, code: data.code, expiresAt: data.expires_at });
-    void load();
-  };
+    applyChange(request, { status: 'code_issued', code_issued_at: new Date().toISOString(), code_expires_at: data.expires_at });
+  });
 
-  const cancel = async (request: ResetRequest) => {
+  const cancel = (request: ResetRequest) => guard(request.id, async () => {
     if (!confirm('إلغاء طلب الاستعادة؟')) return;
     setBusyId(request.id);
     const { error: cancelError } = await supabase.rpc('admin_cancel_password_reset', { p_request_id: request.id });
     setBusyId(null);
-    if (cancelError) alert('تعذر الإلغاء: ' + cancelError.message);
-    void load();
-  };
+    if (cancelError) {
+      notifyError('تعذر الإلغاء', cancelError.message);
+      // It may have been completed or cancelled meanwhile: show what it is now.
+      return load();
+    }
+    applyChange(request, { status: 'cancelled' });
+  });
 
-  const open = requests.filter((r) => r.status === 'pending' || r.status === 'code_issued');
+  const open = requests.filter(isOpen);
   if (!error && requests.length === 0) return null;
 
   return (
@@ -113,7 +134,7 @@ export const PasswordResetRequests: React.FC<{ companyId: string | null }> = ({ 
             </thead>
             <tbody className="divide-y divide-slate-100">
               {requests.map((r) => {
-                const isOpen = r.status === 'pending' || r.status === 'code_issued';
+                const stillOpen = isOpen(r);
                 return (
                   <tr key={r.id}>
                     <td className="p-2">
@@ -122,13 +143,13 @@ export const PasswordResetRequests: React.FC<{ companyId: string | null }> = ({ 
                     </td>
                     <td className="p-2 text-xs text-slate-500">{fmt(r.requested_at)}</td>
                     <td className="p-2 text-xs">
-                      <span className={`rounded-full px-2 py-0.5 font-bold ${isOpen ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className={`rounded-full px-2 py-0.5 font-bold ${stillOpen ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
                         {statusLabels[r.status]}
                       </span>
                       {r.status === 'code_issued' && <span className="mr-2 text-slate-400">حتى {fmt(r.code_expires_at)}</span>}
                     </td>
                     <td className="p-2">
-                      {isOpen && (
+                      {stillOpen && (
                         <div className="flex gap-2">
                           <button disabled={busyId === r.id} onClick={() => void issueCode(r)}
                             className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50">

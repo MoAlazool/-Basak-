@@ -1,7 +1,7 @@
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 
-export interface StatCard {
+interface StatCard {
   label: string;
   value: string;
   hint: string;

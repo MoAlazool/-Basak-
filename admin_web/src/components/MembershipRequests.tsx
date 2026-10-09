@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { Clock, Mail, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
 import { keys, unwrap, usePageData } from '../lib/query';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { notifyError } from '../lib/toasts';
 
 interface Invite { id: string; phone: string; status: string; created_at: string; expires_at: string; lines: { name: string } | null; }
 interface Correction { id: string; field: 'full_name' | 'university'; old_value: string | null; new_value: string; status: string; created_at: string; decision_note: string | null; }
@@ -15,21 +19,30 @@ const correctionStatus: Record<string, string> = { pending: 'بانتظار إد
  */
 export const MembershipRequests: React.FC<{ companyId: string }> = ({ companyId }) => {
   const [busy, setBusy] = useState<string | null>(null);
-  const invites = usePageData(keys.company(companyId, 'invites'), () =>
+  const client = useQueryClient();
+  const guard = useGuard();
+  const invitesKey = keys.company(companyId, 'invites');
+  const invites = usePageData(invitesKey, () =>
     unwrap<Invite[]>(supabase.from('company_invites').select('id, phone, status, created_at, expires_at, lines(name)')
       .eq('company_id', companyId).order('created_at', { ascending: false }).limit(10) as unknown as PromiseLike<{ data: Invite[] | null; error: { message: string } | null }>));
   const corrections = usePageData(keys.company(companyId, 'corrections'), () =>
     unwrap<Correction[]>(supabase.from('student_correction_requests').select('id, field, old_value, new_value, status, created_at, decision_note')
       .eq('company_id', companyId).order('created_at', { ascending: false }).limit(10)));
 
-  const cancel = async (invite: Invite) => {
+  const cancel = (invite: Invite) => guard(invite.id, async () => {
     if (!window.confirm(`إلغاء الدعوة المرسلة إلى ${invite.phone}؟`)) return;
     setBusy(invite.id);
     const { error } = await supabase.rpc('company_cancel_invite', { p_invite_id: invite.id });
     setBusy(null);
-    if (error) alert(error.message);
-    await invites.reload();
-  };
+    if (error) {
+      notifyError('تعذر إلغاء الدعوة', error.message);
+      // The student may have answered it meanwhile: show what it is now.
+      return invites.reload();
+    }
+    // Shown as cancelled at once; its announcement re-reads neither the invitations nor the students.
+    rememberApplied([invite.id], ['invites', 'students']);
+    client.setQueryData<Invite[]>(invitesKey, (rows) => rows?.map((row) => (row.id === invite.id ? { ...row, status: 'cancelled' } : row)));
+  });
 
   if (!(invites.data?.length || corrections.data?.length)) return null;
   return (

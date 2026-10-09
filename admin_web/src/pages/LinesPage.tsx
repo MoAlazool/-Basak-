@@ -3,8 +3,12 @@ import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, queryClient, STALE, unwrap, usePageData } from '../lib/query';
 import {
-  settingsKey, switchesKey, useLines, useSupervisorLines, useSupervisors, useUniversities, type LineRow,
+  activeStations, settingsKey, switchesKey, useLines, useSupervisorLines, useSupervisors, useUniversities, type LineName, type LineRow,
 } from '../lib/reference';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { clockLabel, hhmm } from '../lib/time';
+import { notifyError } from '../lib/toasts';
 import { SkeletonCards } from '../components/Skeleton';
 import { SALE_OPTIONS, optionName, type SaleOption, type SaleRow } from '../lib/saleOptions';
 import {
@@ -34,12 +38,7 @@ interface LineDraft {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-const hhmm = (t?: string | null) => (t ? t.slice(0, 5) : '');
-const fmt12 = (t?: string | null) => {
-  if (!t) return '—';
-  const [h, m] = t.slice(0, 5).split(':').map(Number);
-  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`;
-};
+const fmt12 = (t?: string | null) => clockLabel(t) || '—';
 const addMinutes = (t: string, minutes: number) => {
   const [h, m] = t.split(':').map(Number);
   const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
@@ -47,8 +46,6 @@ const addMinutes = (t: string, minutes: number) => {
 };
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
-const activeStations = (line: LineRow) =>
-  (line.stations ?? []).filter((s) => s.is_active).sort((a, b) => a.order_index - b.order_index);
 const tripsOf = (line: LineRow, direction: Direction) =>
   (line.line_trips ?? []).filter((t) => t.direction === direction).sort((a, b) => a.start_time.localeCompare(b.start_time));
 
@@ -143,33 +140,44 @@ export const LinesPage: React.FC = () => {
   }, [assignments]);
   const loading = page.loading;
   const pageError = page.error;
-  // After this page's own writes: the lines, plus the light list and the payable periods derived from them.
+  // After a line is saved: the lines, plus the light list and the payable periods derived from them.
   const fetchData = async () => {
     void queryClient.invalidateQueries({ queryKey: keys.company(company.id, 'lineNames') });
     void queryClient.invalidateQueries({ queryKey: keys.company(company.id, 'periods') });
     await page.reload();
   };
+  const guard = useGuard();
+  const linesKey = keys.company(company.id, 'lines');
+  const namesKey = keys.company(company.id, 'lineNames');
+  // Switching a line on/off or deleting it is shown from what was asked and confirmed
+  // by the server: both cached lists are edited, and the announcement of the line's own
+  // rows re-reads neither (the payable periods and the company's numbers still follow it).
+  const applyToLists = (line: LineRow, edit: <T extends { id: string; is_active: boolean }>(rows: T[]) => T[]) => {
+    rememberApplied([line.id, ...line.stations.map((s) => s.id), ...line.line_trips.map((t) => t.id)], ['lines', 'lineNames']);
+    queryClient.setQueryData<LineRow[]>(linesKey, (rows) => (rows ? edit(rows) : rows));
+    queryClient.setQueryData<LineName[]>(namesKey, (rows) => (rows ? edit(rows) : rows));
+  };
 
   const uniName = (id?: string | null) => (allUniversities ?? []).find((u) => u.id === id)?.name;
 
-  const toggleLine = async (line: LineRow) => {
+  const toggleLine = (line: LineRow) => guard(line.id, async () => {
     const next = !line.is_active;
     if (!next && !confirm(`تعطيل خط "${line.name}"؟\nسيبقى بكل بياناته واشتراكاته وسجلاته، لكنه لن يظهر للطلاب ولن يُسند لمشرفين جدد.`)) return;
     setBusyLine(line.id);
     const { error } = await supabase.rpc('set_line_active', { p_line_id: line.id, p_active: next });
     setBusyLine(null);
-    if (error) alert('تعذر تغيير حالة الخط: ' + error.message);
-    else void fetchData();
-  };
+    if (error) notifyError('تعذر تغيير حالة الخط', error.message);
+    else applyToLists(line, (rows) => rows.map((row) => (row.id === line.id ? { ...row, is_active: next } : row)));
+  });
 
-  const deleteLine = async (line: LineRow) => {
+  const deleteLine = (line: LineRow) => guard(line.id, async () => {
     if (!confirm(`حذف خط "${line.name}" نهائياً مع محطاته ورحلاته؟\nلا يمكن التراجع. الخطوط التي لها اشتراكات أو سجلات لا تُحذف — عطّلها بدلاً من ذلك.`)) return;
     setBusyLine(line.id);
     const { error } = await supabase.rpc('delete_line', { p_line_id: line.id });
     setBusyLine(null);
-    if (error) alert(error.message);
-    else void fetchData();
-  };
+    if (error) notifyError('تعذر حذف الخط', error.message);
+    else applyToLists(line, (rows) => rows.filter((row) => row.id !== line.id));
+  });
 
   const defaultCompany = company.id;
 
@@ -422,7 +430,10 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
     ...cur, trips: [...cur.trips, { ...trip, key: newKey(), id: undefined, label: '', times: { ...trip.times } }],
   }));
 
-  const save = async () => {
+  const saveGuard = useGuard();
+  // One save at a time: a second click cannot send the line twice.
+  const save = () => saveGuard('save', saveLine);
+  const saveLine = async () => {
     setError('');
     if (d.university_ids.length === 0) { setError('اختر جامعة واحدة على الأقل يخدمها الخط.'); return; }
     const noPrice = SALE_OPTIONS.find((o) => d.prices[o].enabled && priceOf(o) <= 0);
@@ -474,6 +485,9 @@ const LineEditor: React.FC<LineEditorProps> = ({ initial, universities, onClose,
       SALE_OPTIONS.map((o) => ({ line_id: lineId as string, option: o, price: priceOf(o), is_enabled: d.prices[o].enabled })),
       { onConflict: 'line_id,option' });
     setSaving(false);
+    // The page reads the saved line once (below, through onSaved). The rows it already knew
+    // announce their change too; that announcement does not read the lines a second time.
+    rememberApplied([lineId as string, ...d.stations.map((s) => s.id), ...d.trips.map((t) => t.id)], ['lines', 'lineNames', 'periods']);
     if (priceError) setError('تم حفظ الخط لكن تعذر حفظ الأسعار: ' + priceError.message);
     else onSaved();
   };

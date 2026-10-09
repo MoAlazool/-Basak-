@@ -39,7 +39,7 @@ body {
 }
 
 /* Status Pills */
-.pill-active, .pill-approved {
+.pill-active {
   background-color: #DDF3E6;
   color: #2E9E5B;
   font-weight: 700;

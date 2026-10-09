@@ -31,7 +31,7 @@ export const normalizePaths = (paths: readonly (string | null | undefined)[]): s
   [...new Set(paths.filter((path): path is string => !!path))].sort();
 
 /** Links for all of `paths`, signing in ONE request only those not already held. */
-export async function signPaths(bucket: string, paths: readonly string[]): Promise<Record<string, string>> {
+async function signPaths(bucket: string, paths: readonly string[]): Promise<Record<string, string>> {
   const known = (path: string) => {
     const state = queryClient.getQueryState<string>(urlKey(bucket, path));
     return state?.data ? state.dataUpdatedAt : undefined;

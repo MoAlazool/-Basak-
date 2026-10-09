@@ -2,13 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { invokeEdgeFunction } from '../lib/edgeFunctions';
 import { useAdminScope, useCompany } from '../lib/adminScope';
-import { useQueryClient } from '@tanstack/react-query';
-import { keys, STALE, unwrap, usePageData } from '../lib/query';
-import { type LineOption, type StationOption, type TripOption, type UniversityOption } from '../lib/lineOptions';
-import { switchesKey, useLineOptions } from '../lib/reference';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keys, refreshIfNotUpdated, STALE, unwrap, usePageData, VARIANT_GC } from '../lib/query';
+import { type LineOption, type StationOption, type TripOption } from '../lib/lineOptions';
+import { activeStations, switchesKey, useLineOptions } from '../lib/reference';
 import { useSignedUrls } from '../lib/signedUrls';
+import { fetchStudentsPage, withoutStudent, withSubscription, type StudentRow, type StudentsPageAnswer, type StudentSubscription } from '../lib/students';
+import { forgetApplied, rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { hhmm } from '../lib/time';
+import { notifyDone, notifyError } from '../lib/toasts';
 import { SkeletonTable } from '../components/Skeleton';
-import { Users, Plus, Trash2, Search, GraduationCap, Phone, CheckCircle2, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
+import { Users, Plus, Trash2, Search, GraduationCap, Phone, AlertCircle, KeyRound, PencilLine, UserMinus } from 'lucide-react';
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
 import { MembershipRequests } from '../components/MembershipRequests';
@@ -33,46 +38,8 @@ const phaseLabels: Record<string, { label: string; className: string }> = {
   expired: { label: 'منتهي', className: 'bg-slate-100 text-slate-500' },
 };
 
-interface Student {
-  id: string;
-  phone: string;
-  full_name: string;
-  university: string;
-  college: string;
-  profile_image_url?: string | null;
-  created_at: string;
-  subscriptions?: {
-    id: string;
-    status: string;
-    type: string;
-    price: number;
-    created_at: string;
-    start_date?: string | null;
-    end_date?: string | null;
-    period_label?: string | null;
-    period_phase?: string | null;
-    departure_time?: string | null;
-    return_time?: string | null;
-    lines?: LineRef | LineRef[] | null;
-    departure_trip?: { label: string; universities?: { name: string } | null } | null;
-  }[];
-}
+type Student = StudentRow;
 
-type LineRef = { name: string };
-
-/** The search box as a PostgREST filter over name, phone and university. */
-const searchFilter = (search: string) => {
-  const term = search.replace(/[%,()]/g, ' ');
-  return `full_name.ilike.%${term}%,phone.ilike.%${term}%,university.ilike.%${term}%`;
-};
-
-const one = <T,>(value: T | T[] | null | undefined): T | undefined => (Array.isArray(value) ? value[0] : value ?? undefined);
-
-type University = UniversityOption;
-
-const activeStations = (line?: LineOption) =>
-  (line?.stations ?? []).filter((station) => station.is_active).sort((a, b) => a.order_index - b.order_index);
-const fmtTime = (time: string) => time.slice(0, 5);
 // Active trips of a line open to this university (or to every university).
 const tripsServing = (line: LineOption | undefined, direction: 'departure' | 'return', universityId: string | undefined) =>
   (line?.line_trips ?? []).filter((trip) => trip.is_active && trip.direction === direction
@@ -114,53 +81,44 @@ export const StudentsPage: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
+  const client = useQueryClient();
+  const guard = useGuard();
+  const listRoot = keys.company(company.id, 'students', 'page');
+  const totalKey = (term: string) => keys.company(company.id, 'students', 'total', { search: term });
+
   // The company's active members, a page at a time, each with their subscriptions to
-  // this company only. Searching is done by the database, not over what happens to be loaded.
-  // One row more than a page tells whether there is a next page; the exact total is
-  // asked for apart (below), not on every keystroke and every page change.
-  const studentsPage = usePageData(keys.company(company.id, 'students', { search, pageIndex }), async () => {
-    let query = supabase
-      .from('students')
-      .select(`
-        id, phone, full_name, university, college, profile_image_url, created_at,
-        company_students!inner(company_id, status),
-        subscriptions(id, status, type, price, created_at, start_date, end_date, period_label, period_phase, departure_time, return_time, lines(name),
-          departure_trip:departure_trip_id(label, universities(name)))
-      `)
-      .eq('company_students.company_id', company.id)
-      .eq('company_students.status', 'active')
-      .eq('subscriptions.company_id', company.id);
-    if (search) query = query.or(searchFilter(search));
-    const { data, error } = await query
-      .order('created_at', { ascending: false })
-      .range(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE);
-    if (error) throw new Error(error.message);
-    const rows = (data || []) as unknown as Student[];
-    return { rows: rows.slice(0, PAGE_SIZE), hasNext: rows.length > PAGE_SIZE };
-  }, { keepPrevious: true });
+  // this company only, in ONE request (get_company_students_page). Searching is done
+  // by the database, not over what happens to be loaded. The default view asks for
+  // the total with its rows; a search or a later page does not.
+  const studentsPage = usePageData(keys.company(company.id, 'students', 'page', { search, pageIndex }), async () => {
+    const page = await fetchStudentsPage({
+      companyId: company.id, search, limit: PAGE_SIZE, offset: pageIndex * PAGE_SIZE, withTotal: !search && pageIndex === 0,
+    });
+    if (page.total !== null) client.setQueryData(totalKey(search), page.total);
+    return page;
+  }, { keepPrevious: true, gcTime: search || pageIndex ? VARIANT_GC : undefined });
   const students = studentsPage.data?.rows ?? [];
-  const hasNext = studentsPage.data?.hasNext ?? false;
+  const hasNext = studentsPage.data?.has_next ?? false;
   const loading = studentsPage.loading;
 
-  // The exact total: at once on first load, and only after typing has stopped for a
-  // moment while searching (counting the matches of every half-typed word is wasted work).
+  // The total of a search is asked for apart, only after typing has stopped for a
+  // moment (counting the matches of every half-typed word is wasted work), and
+  // kept: changing page never counts again.
   const [countSearch, setCountSearch] = useState('');
   useEffect(() => {
     const timer = window.setTimeout(() => setCountSearch(search), search ? 700 : 0);
     return () => window.clearTimeout(timer);
   }, [search]);
-  const countQuery = usePageData(keys.company(company.id, 'students', 'count', countSearch), async () => {
-    let query = supabase.from('students')
-      .select('id, company_students!inner(company_id, status)', { count: 'exact', head: true })
-      .eq('company_students.company_id', company.id)
-      .eq('company_students.status', 'active');
-    if (countSearch) query = query.or(searchFilter(countSearch));
-    const { count, error } = await query;
-    if (error) throw new Error(error.message);
-    return count ?? 0;
+  const totalQuery = useQuery({
+    queryKey: totalKey(countSearch),
+    queryFn: async () => (await fetchStudentsPage({ companyId: company.id, search: countSearch, limit: 1, offset: 0, withTotal: true })).total ?? 0,
+    // The default view's first page brings its own total (above).
+    enabled: !!countSearch || pageIndex > 0,
+    staleTime: Infinity,   // a live change or this page's own writes mark it out of date
+    ...(countSearch ? { gcTime: VARIANT_GC } : {}),
   });
   // Shown only when it belongs to what is being searched for now.
-  const totalStudents = countSearch === search ? countQuery.data : undefined;
+  const totalStudents = countSearch === search ? totalQuery.data : undefined;
 
   // Signed photo links are kept per file and reused (lib/signedUrls.ts): a refresh,
   // a focus or a return to this page neither signs nor downloads the photos again.
@@ -190,9 +148,9 @@ export const StudentsPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.data]);
 
-  const client = useQueryClient();
-  // After this page's own writes: the page on screen and the total (both mounted) are read again.
-  const fetchInitialData = () => client.invalidateQueries({ queryKey: keys.company(company.id, 'students') });
+  // After a write whose result cannot be worked out here: the live topic announces it and
+  // the list is read again once; this reads it only if that announcement did not arrive.
+  const awaitStudentsRefresh = () => refreshIfNotUpdated(keys.company(company.id, 'students'));
 
   const universityIdOf = (name: string) => universities.find((university) => university.name === name)?.id;
 
@@ -265,119 +223,119 @@ export const StudentsPage: React.FC = () => {
     if (!keys.includes(periodKey)) setPeriodKey(keys[0] || '');
   }, [periods, subscriptionType, dailyAvailable]);
 
-  const handleAddStudent = async (e: React.FormEvent) => {
+  const handleAddStudent = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. Validate name: at least 3 parts, same rule as the app's sign-up
+    // Same rule as the app's sign-up: at least three names.
     const nameParts = fullName.trim().split(/\s+/);
-    if (nameParts.length < 3) {
-      alert('يرجى كتابة اسم الطالب ثلاثياً على الأقل.');
-      return;
-    }
+    if (nameParts.length < 3) return notifyError('يرجى كتابة اسم الطالب ثلاثياً على الأقل.');
 
     const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      alert('يرجى إدخال رقم هاتف صحيح.');
-      return;
-    }
+    if (!cleanPhone || cleanPhone.length < 10) return notifyError('يرجى إدخال رقم هاتف صحيح.');
 
     const finalUniversity = selectedUniversity.trim();
-    if (!finalUniversity) {
-      alert('اختر الجامعة من القائمة.');
-      return;
-    }
-    if (!selectedLine || !selectedStation) {
-      alert('اختر خطاً ومحطة نشطين تابعين للشركة المختارة ويخدمان جامعة الطالب.');
-      return;
-    }
+    if (!finalUniversity) return notifyError('اختر الجامعة من القائمة.');
+    if (!selectedLine || !selectedStation) return notifyError('اختر خطاً ومحطة نشطين تابعين للشركة المختارة ويخدمان جامعة الطالب.');
     if (!departureTripId || (returnOptions.length > 0 && !returnTripId)) {
-      alert('اختر رحلة الذهاب والعودة. إن لم تظهر رحلات، أضفها للخط من صفحة الخطوط.');
-      return;
+      return notifyError('اختر رحلة الذهاب والعودة.', 'إن لم تظهر رحلات، أضفها للخط من صفحة الخطوط.');
     }
-    if (password.length < 8) {
-      alert('كلمة المرور يجب ألا تقل عن 8 أحرف.');
-      return;
-    }
-    if (subscriptionType !== 'daily' && !periodKey) {
-      alert('لا توجد فترة اشتراك متاحة للدفع الآن لهذا النوع.');
-      return;
-    }
+    if (password.length < 8) return notifyError('كلمة المرور يجب ألا تقل عن 8 أحرف.');
+    if (subscriptionType !== 'daily' && !periodKey) return notifyError('لا توجد فترة اشتراك متاحة للدفع الآن لهذا النوع.');
     const [periodCode, academicYear] = periodKey.split(':');
 
-    try {
-      setIsSubmitting(true);
-
-      const created = await invokeEdgeFunction<{ id?: string; invited?: boolean }>('admin-create-student', {
-        fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password,
-        lineId: selectedLineId, stationId: selectedStationId, subscriptionType,
-        departureTripId, returnTripId: returnTripId || null,
-        ...(subscriptionType !== 'daily' ? { periodCode, academicYear: Number(academicYear) } : {}),
-      });
-
-      alert(created?.invited
-        ? 'لهذا الرقم حساب في باصك بالفعل، فأُرسلت له دعوة للانضمام إلى شركتك. يظهر في قائمتك بعد أن يوافق من التطبيق (بحسابه وكلمة مروره الحاليين).'
-        : 'تم تسجيل الطالب بنجاح!');
-      void client.invalidateQueries({ queryKey: keys.company(company.id, 'invites') });
-      setFullName('');
-      setPhone('');
-      setPassword('');
-      fetchInitialData();
-    } catch (err: any) {
-      alert('فشل إضافة الطالب: ' + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // A second submit while the first is on its way does nothing (the account must not be created twice).
+    void guard('add', async () => {
+      try {
+        setIsSubmitting(true);
+        const created = await invokeEdgeFunction<{ id?: string; invited?: boolean }>('admin-create-student', {
+          fullName: fullName.trim(), phone: cleanPhone, university: finalUniversity, password,
+          lineId: selectedLineId, stationId: selectedStationId, subscriptionType,
+          departureTripId, returnTripId: returnTripId || null,
+          ...(subscriptionType !== 'daily' ? { periodCode, academicYear: Number(academicYear) } : {}),
+        });
+        if (created?.invited) {
+          notifyDone('أُرسلت دعوة للانضمام إلى شركتك', 'لهذا الرقم حساب في باصك بالفعل. يظهر في قائمتك بعد أن يوافق من التطبيق (بحسابه وكلمة مروره الحاليين).');
+          // The invitation is announced on the live topic, which reads the invitations again.
+          refreshIfNotUpdated(keys.company(company.id, 'invites'));
+        } else {
+          notifyDone('تم تسجيل الطالب بنجاح');
+          awaitStudentsRefresh();
+        }
+        setFullName('');
+        setPhone('');
+        setPassword('');
+      } catch (err: any) {
+        notifyError('فشل إضافة الطالب', err.message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   };
 
   // A company ends its relationship with a student; the person's account, QR,
   // wallet card and any other company they ride with are not touched.
-  const handleRemoveStudent = async (studentId: string, studentName: string) => {
+  const handleRemoveStudent = (studentId: string, studentName: string) => guard(`student:${studentId}`, async () => {
     if (!confirm(`إزالة الطالب "${studentName}" من ${company.name}؟\nتنتهي اشتراكاته المفتوحة مع الشركة ولا يظهر في قوائمها. يبقى حسابه في التطبيق كما هو، وتبقى الإيرادات المسجلة في تقارير الشركة.`)) {
       return;
     }
     const { error } = await supabase.rpc('company_remove_student', { p_company_id: company.id, p_student_id: studentId });
-    if (error) alert('تعذرت إزالة الطالب: ' + error.message);
-    else await fetchInitialData();
+    if (error) return notifyError('تعذرت إزالة الطالب', error.message);
+    leaveList(studentId);
+  });
+
+  // The row leaves at once; the change's announcement then brings the page back to full length.
+  const leaveList = (studentId: string) => {
+    client.setQueriesData<StudentsPageAnswer>({ queryKey: listRoot }, (page) => withoutStudent(page, studentId));
+    awaitStudentsRefresh();
   };
 
   // A member's name belongs to their account, which other companies may share:
   // the company proposes the fix and the platform admin applies it.
-  const requestCorrection = async (student: Student) => {
+  const requestCorrection = (student: Student) => guard(`student:${student.id}`, async () => {
     const value = window.prompt(`الاسم الصحيح للطالب (رباعي). الاسم الحالي: ${student.full_name}\nيُرسل الطلب لإدارة المنصة للاعتماد.`, student.full_name);
     if (!value || value.trim() === student.full_name) return;
-    const { error } = await supabase.rpc('request_student_correction', {
+    const { data: requestId, error } = await supabase.rpc('request_student_correction', {
       p_company_id: company.id, p_student_id: student.id, p_field: 'full_name', p_new_value: value.trim(),
     });
-    if (error) alert('تعذر إرسال الطلب: ' + error.message);
-    else { alert('أُرسل طلب التصحيح إلى إدارة المنصة.'); void client.invalidateQueries({ queryKey: keys.company(company.id, 'corrections') }); }
-  };
+    if (error) return notifyError('تعذر إرسال الطلب', error.message);
+    notifyDone('أُرسل طلب التصحيح إلى إدارة المنصة');
+    // The new request is announced on the live topic, which reads the requests list again
+    // (not the students: nothing about them changes until the platform admin decides).
+    if (typeof requestId === 'string') rememberApplied([requestId], ['students']);
+    refreshIfNotUpdated(keys.company(company.id, 'corrections'));
+  });
 
   // Deleting the whole account is the platform admin's call (or the student's own, in the app).
-  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+  const handleDeleteStudent = (studentId: string, studentName: string) => guard(`student:${studentId}`, async () => {
     if (!confirm(`حذف حساب الطالب "${studentName}" نهائياً من المنصة؟\nيُحذف حسابه وبياناته واشتراكاته لدى كل الشركات، مع الاحتفاظ بمبالغ الإيرادات في السجل المالي. لا يمكن التراجع.`)) {
       return;
     }
-
     try {
       await invokeEdgeFunction('admin-delete-student', { studentId });
-      alert('تم حذف حساب الطالب.');
-      fetchInitialData();
+      notifyDone('تم حذف حساب الطالب');
+      leaveList(studentId);
     } catch (err: any) {
-      alert('فشل حذف الطالب: ' + err.message);
+      notifyError('فشل حذف الطالب', err.message);
     }
-  };
+  });
 
-  const updateSubscriptionStatus = async (subscriptionId: string, status: string) => {
-    const { error } = await supabase.from('subscriptions').update({ status }).eq('id', subscriptionId).select('id').single();
-    if (error) alert('فشل تحديث حالة الاشتراك: ' + error.message);
-    else await fetchInitialData();
-  };
+  // One request: the server's answer is put into the row on screen. The change's own
+  // announcement then refreshes the company's numbers, not this list.
+  const updateSubscriptionStatus = (subscriptionId: string, status: string) => guard(`subscription:${subscriptionId}`, async () => {
+    rememberApplied([subscriptionId], ['students']);
+    const { data, error } = await supabase.from('subscriptions').update({ status }).eq('id', subscriptionId)
+      .select('id, status, start_date, end_date, period_label, period_phase').single();
+    if (error || !data) {
+      forgetApplied([subscriptionId]);
+      return notifyError('فشل تحديث حالة الاشتراك', error?.message);
+    }
+    client.setQueriesData<StudentsPageAnswer>({ queryKey: listRoot }, (page) => withSubscription(page, subscriptionId, data as Partial<StudentSubscription>));
+  });
 
   const statusLabels: Record<string, string> = {
     pending_payment: 'بانتظار الدفع', pending_review: 'قيد مراجعة الإيصال', active: 'نشط', rejected: 'مرفوض', expired: 'منتهي',
   };
 
-  const filteredStudents = students;
   const pageCount = pagesFor(totalStudents, PAGE_SIZE);
 
   return (
@@ -468,13 +426,13 @@ export const StudentsPage: React.FC = () => {
               <select aria-label="رحلة الذهاب" value={departureTripId} onChange={(e) => setDepartureTripId(e.target.value)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" required>
                 {departureOptions.length === 0 && <option value="">لا رحلات ذهاب من هذه المحطة</option>}
                 {departureOptions.map(({ trip, time }) => (
-                  <option key={trip.id} value={trip.id}>ذهاب {fmtTime(time)}{trip.label ? ` · ${trip.label}` : ''}</option>
+                  <option key={trip.id} value={trip.id}>ذهاب {hhmm(time)}{trip.label ? ` · ${trip.label}` : ''}</option>
                 ))}
               </select>
               <select aria-label="رحلة العودة" value={returnTripId} onChange={(e) => setReturnTripId(e.target.value)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 {returnOptions.length === 0 && <option value="">لا رحلات عودة</option>}
                 {returnOptions.map(({ trip, time }) => (
-                  <option key={trip.id} value={trip.id}>عودة {fmtTime(time)}{trip.label ? ` · ${trip.label}` : ''}</option>
+                  <option key={trip.id} value={trip.id}>عودة {hhmm(time)}{trip.label ? ` · ${trip.label}` : ''}</option>
                 ))}
               </select>
             </div>
@@ -551,7 +509,7 @@ export const StudentsPage: React.FC = () => {
           <SkeletonTable rows={5} columns={5} />
         ) : studentsPage.error ? (
           <div role="alert" className="p-8 text-center text-rose-700">تعذر تحميل الطلاب: {studentsPage.error}</div>
-        ) : filteredStudents.length === 0 ? (
+        ) : students.length === 0 ? (
           <div className="p-8 text-center text-slate-500">{search ? 'لا يوجد طلاب مطابقون للبحث.' : 'لا يوجد طلاب مسجلون في هذه الشركة بعد.'}</div>
         ) : (
           <div className="overflow-x-auto">
@@ -567,8 +525,8 @@ export const StudentsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((s) => {
-                  const studentSubscriptions = s.subscriptions || [];
+                {students.map((s) => {
+                  const studentSubscriptions = s.subscriptions;
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/80">
                       <td className="p-4 font-bold text-slate-800">
@@ -601,11 +559,11 @@ export const StudentsPage: React.FC = () => {
                                 {sub.period_label && (
                                   <span className="font-semibold text-slate-600" title={`${sub.start_date ?? ''} → ${sub.end_date ?? ''}`}>{sub.period_label}</span>
                                 )}
-                                <span className="font-semibold text-slate-700">{one(sub.lines)?.name || '—'}</span>
+                                <span className="font-semibold text-slate-700">{sub.line_name || '—'}</span>
                                 {sub.departure_time && (
                                   <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">
-                                    {one(sub.departure_trip)?.universities?.name ? `${one(sub.departure_trip)?.universities?.name} ← ` : ''}
-                                    {fmtTime(sub.departure_time)}{sub.return_time ? ` / ${fmtTime(sub.return_time)}` : ''}
+                                    {sub.trip_university ? `${sub.trip_university} ← ` : ''}
+                                    {hhmm(sub.departure_time)}{sub.return_time ? ` / ${hhmm(sub.return_time)}` : ''}
                                   </span>
                                 )}
                                 <span className="text-slate-500">{Number(sub.price).toLocaleString('ar-EG')} ج.م</span>
@@ -651,7 +609,7 @@ export const StudentsPage: React.FC = () => {
                         </button>
                         {admin.role === 'super_admin' && (
                           <button
-                            onClick={() => handleDeleteStudent(s.id, s.full_name)}
+                            onClick={() => void handleDeleteStudent(s.id, s.full_name)}
                             className="mr-3 text-rose-400 hover:text-rose-600 transition"
                             title="حذف الحساب نهائياً من المنصة"
                           >

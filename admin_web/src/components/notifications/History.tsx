@@ -2,10 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { Bell, Building2, Bus, CalendarClock, Cog, Eye, PencilLine, RefreshCw, Search, Trash2, Users, XCircle } from 'lucide-react';
 import { Refreshing, SkeletonRows } from '../Skeleton';
 import {
-  CAIRO_LABEL, PLATFORM_ANNOUNCEMENT, STATUS_FILTERS, formatCairo, percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel,
-  type HistoryRow, type StatusFilter,
+  PLATFORM_ANNOUNCEMENT, STATUS_FILTERS, percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel, type HistoryRow,
+  type StatusFilter,
 } from '../../lib/notifications';
+import { CAIRO_LABEL, formatCairo } from '../../lib/time';
 import type { HistoryActions, HistoryState } from '../../lib/notificationsData';
+import { useGuard } from '../../lib/guard';
 import { EditScheduledDialog } from './EditScheduledDialog';
 import { NotificationDetails } from './NotificationDetails';
 import { ConfirmDialog } from './parts';
@@ -131,12 +133,14 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history,
   }, [history.rows, query]);
 
   // The row leaves (or changes) at once; a refusal puts it back and says why, in the server's words.
+  // A second click on the confirmation does nothing while the first is being carried out.
+  const guard = useGuard();
   const act = (run: (id: string) => Promise<void>) => {
     if (!open) return;
     const { row } = open;
     setOpen(null);
     setError('');
-    run(row.id).catch((err: unknown) => setError(err instanceof Error ? err.message : 'تعذر تنفيذ الطلب.'));
+    void guard(row.id, () => run(row.id).catch((err: unknown) => setError(err instanceof Error ? err.message : 'تعذر تنفيذ الطلب.')));
   };
 
   // The details follow the live row, so a refresh updates the numbers on screen.

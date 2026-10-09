@@ -3,9 +3,8 @@ import { FileCheck, Check, X, Eye, AlertOctagon, Clock, Building2, MapPin, Phone
 import { RECEIPTS_BUCKET, type PendingReceiptRow } from '../lib/pendingReceipts';
 import { resignPath, useSignedUrls } from '../lib/signedUrls';
 import { notifyError } from '../lib/toasts';
+import { useGuard } from '../lib/guard';
 import { SkeletonTable } from './Skeleton';
-
-export type { PendingReceiptRow } from '../lib/pendingReceipts';
 
 const typeLabels: Record<string, string> = { termly: 'فصلي (ترم)', yearly: 'الفصلان معاً', daily: 'يومي' };
 const formatUpload = (iso: string) => {
@@ -84,7 +83,9 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
   };
   const previewUrl = previewReceipt ? imageUrlOf(previewReceipt) : null;
 
-  const handleApprove = async (receiptId: string) => {
+  // One decision per receipt: a second click on the same row does nothing while the first is being saved.
+  const guard = useGuard();
+  const handleApprove = (receiptId: string) => guard(receiptId, async () => {
     try {
       setProcessingId(receiptId);
       await onReview(receiptId, 'approved');
@@ -93,7 +94,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
     } finally {
       setProcessingId(null);
     }
-  };
+  });
 
   // A written reason is mandatory for a rejection.
   const handleConfirmReject = async () => {
@@ -104,16 +105,18 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
       return;
     }
     const receiptId = rejectModalReceiptId;
-    try {
-      setProcessingId(receiptId);
-      setRejectModalReceiptId(null);
-      setRejectionReason('');
-      await onReview(receiptId, 'rejected', cleanReason);
-    } catch (err: any) {
-      notifyError('تعذر رفض الإيصال', err?.message);
-    } finally {
-      setProcessingId(null);
-    }
+    setRejectModalReceiptId(null);
+    setRejectionReason('');
+    await guard(receiptId, async () => {
+      try {
+        setProcessingId(receiptId);
+        await onReview(receiptId, 'rejected', cleanReason);
+      } catch (err: any) {
+        notifyError('تعذر رفض الإيصال', err?.message);
+      } finally {
+        setProcessingId(null);
+      }
+    });
   };
 
   return (
@@ -256,7 +259,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => handleApprove(row.id)}
+                          onClick={() => void handleApprove(row.id)}
                           disabled={isProcessing}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2E9E5B] text-white text-xs font-bold hover:bg-[#25854c] transition shadow-sm"
                         >
@@ -324,7 +327,7 @@ export const PendingReceiptsTable: React.FC<PendingReceiptsProps> = ({
                 إلغاء
               </button>
               <button
-                onClick={handleConfirmReject}
+                onClick={() => void handleConfirmReject()}
                 className="px-5 py-2 rounded-xl bg-[#DC2626] text-white text-xs font-bold hover:bg-[#b91c1c] transition shadow-md"
               >
                 تأكيد الرفض

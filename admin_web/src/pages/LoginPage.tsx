@@ -4,6 +4,7 @@ import { BasakLogo } from '../components/BasakLogo';
 import { supabase } from '../lib/supabase';
 import { AdminProfile } from '../lib/adminScope';
 import { loadAdminProfile } from '../lib/adminProfile';
+import { useGuard } from '../lib/guard';
 
 interface LoginPageProps {
   onLogin: (admin: AdminProfile) => void;
@@ -17,7 +18,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [resetNotice, setResetNotice] = useState('');
 
-  const handlePasswordReset = async () => {
+  // One request to the sign-in service at a time, whichever button or key started it.
+  const guard = useGuard();
+  const handlePasswordReset = () => guard('auth', async () => {
     setError('');
     setResetNotice('');
     const cleanEmail = email.trim();
@@ -37,10 +40,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     } finally {
       setLoading(false);
     }
-  };
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    void guard('auth', signIn);
+  };
+  const signIn = async () => {
     setError('');
     setLoading(true);
 

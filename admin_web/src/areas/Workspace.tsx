@@ -9,6 +9,7 @@ import { keys, queryClient, STALE, usePageData } from '../lib/query';
 import type { CompanyOption } from '../lib/reference';
 import { useCompanyOverview } from '../lib/overview';
 import { useWorkspaceSync } from '../lib/sync';
+import { OPEN_RESET_STATUSES } from '../lib/resetRequests';
 import { workspaceNav } from '../lib/nav';
 import { AdminProfile, CompanyScope, CompanyScopeProvider, companyStatusLabel } from '../lib/adminScope';
 import {
@@ -90,9 +91,13 @@ export const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> 
   );
 };
 
-/** How many reset requests there are, without downloading them: the same function and checks as the list, rows left out. */
+/**
+ * How many reset requests are waiting, without downloading them: the same function and
+ * checks as the list, counted by the server, the handled ones left out.
+ */
 async function countResetRequests(companyId: string): Promise<number> {
-  const { count, error } = await supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId }, { head: true, count: 'exact' });
+  const { count, error } = await supabase.rpc('admin_list_password_reset_requests', { p_company_id: companyId }, { head: true, count: 'exact' })
+    .in('status', OPEN_RESET_STATUSES);
   if (error) throw new Error(error.message);
   return count ?? 0;
 }

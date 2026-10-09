@@ -2,12 +2,12 @@ import React, { useRef, useState } from 'react';
 import { CalendarClock, Megaphone, Send } from 'lucide-react';
 import { notify } from '../../lib/toasts';
 import {
-  CAIRO_LABEL, cairoLocalToIso, cairoToday, draftProblem, emptyDraft, formatCairo, idempotencyKeyFor, isDirty,
-  platformAudience, platformCompanyIds, type NotificationDraft, type PlatformPreview,
+  draftProblem, emptyDraft, idempotencyKeyFor, isDirty, platformAudience, platformCompanyIds, type NotificationDraft,
+  type PlatformPreview,
 } from '../../lib/notifications';
-import {
-  platformComposeNotification, usePlatformCompanies, usePlatformNotificationActions, usePlatformPreview, type CompanyOption,
-} from '../../lib/notificationsData';
+import { CAIRO_LABEL, cairoLocalToIso, cairoToday, formatCairo } from '../../lib/time';
+import { awaitPlatformHistory, platformComposeNotification, usePlatformPreview } from '../../lib/notificationsData';
+import { usePlatformCompanies, type CompanyOption } from '../../lib/reference';
 import { NotificationForm } from './NotificationForm';
 import { PhonePreview } from './PhonePreview';
 import { AudiencePreviewCard, ConfirmDialog, labelClass } from './parts';
@@ -91,7 +91,6 @@ export const PlatformComposer: React.FC = () => {
   // Before the lookup says which are active, none is hidden; the server refuses the ones it will not send to.
   const companies = (lookup.data ?? []).filter((company) => (company.status ?? 'active') === 'active');
   const preview = usePlatformPreview(all, selected);
-  const { refresh } = usePlatformNotificationActions();
 
   const problem = draftProblem(draft) || (!all && selected.length === 0 ? 'اختر شركة واحدة على الأقل.' : '');
   const students = preview.status === 'ready' ? preview.data?.students ?? 0 : 0;
@@ -121,7 +120,7 @@ export const PlatformComposer: React.FC = () => {
       idempotencyKey.current = null;
       setDraft(emptyDraft(today));
       setConfirming(null);
-      void refresh();
+      awaitPlatformHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر إرسال الإشعار.');
     } finally {

@@ -4,7 +4,8 @@ import { Topbar } from '../components/Topbar';
 import { Skeleton } from '../components/Skeleton';
 import { count } from '../components/StatsRow';
 import type { PlatformPush, StatusFilter } from '../lib/notifications';
-import { usePlatformCompanies, usePlatformNotificationActions, usePlatformNotificationHistory } from '../lib/notificationsData';
+import { usePlatformNotificationActions, usePlatformNotificationHistory } from '../lib/notificationsData';
+import { usePlatformCompanies } from '../lib/reference';
 import { PlatformComposer } from '../components/notifications/PlatformComposer';
 import { History } from '../components/notifications/History';
 

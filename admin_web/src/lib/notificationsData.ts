@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQueryClient, type InfiniteData, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from './supabase';
-import { keys, unwrap, usePageData } from './query';
-import { useLineOptions, usePlatformCompanies, type CompanyOption } from './reference';
+import { keys, refreshIfNotUpdated, unwrap, usePageData, VARIANT_GC } from './query';
+import { forgetApplied, rememberApplied } from './recentChanges';
 import {
   audienceKey, platformCompanyIds, withCancelled, withoutRow,
   type AudiencePreview, type AudienceSpec, type ComposeResult, type HistoryPage, type HistoryRow, type PlatformComposeResult,
@@ -12,16 +12,15 @@ import {
 const PAGE_SIZE = 30;
 
 /**
- * Everything of this page lives under `keys.company(id, 'notifications', …)`,
- * the key `useWorkspaceSync` refreshes when the `notifications` table changes.
+ * The history lives under `keys.company(id, 'notifications', …)`, the key
+ * `useWorkspaceSync` refreshes when the `notifications` table changes.
  */
 const historyRoot = (companyId: string) => keys.company(companyId, 'notifications', 'history');
 const historyKey = (companyId: string, filter: StatusFilter) => keys.company(companyId, 'notifications', 'history', filter);
+/** What a write to a notification brings up to date in this tab (the name lib/sync.ts refreshes for the table). */
+const APPLIED_HERE = ['notifications'];
 
 type History = InfiniteData<{ items: HistoryRow[] }, string | null>;
-
-/** The lines (with their trips) and universities the audience is chosen from: the cache other pages already fill. */
-export const useAudienceOptions = (companyId: string) => useLineOptions(companyId);
 
 /** A history, newest first, a page at a time: the company's own or the platform's. */
 function useHistoryPages<P extends { items: HistoryRow[]; next_before: string | null }>(
@@ -82,9 +81,11 @@ export function useAudiencePreview(companyId: string, spec: AudienceSpec | null)
   const wanted = audienceKey(spec);
   const asked = useDebounced(wanted, 350);
   const query = usePageData(
-    keys.company(companyId, 'notifications', 'audience', asked),
+    // Its own key, apart from the history: a new notification does not change who a line or a university reaches.
+    keys.company(companyId, 'audience', asked),
     () => unwrap<AudiencePreview>(supabase.rpc('preview_notification_audience', { p_company_id: companyId, p_audience: JSON.parse(asked) })),
-    { enabled: !!asked },
+    // One answer per audience tried: kept only while it is likely to be asked for again.
+    { enabled: !!asked, gcTime: VARIANT_GC },
   );
   if (!wanted) return { status: 'incomplete', error: '' };
   if (asked !== wanted || query.loading || query.refreshing) return { status: 'loading', error: '' };
@@ -94,7 +95,7 @@ export function useAudiencePreview(companyId: string, spec: AudienceSpec | null)
 
 // ------------------------------------------------------------------ writes ----
 
-export interface ComposeInput {
+interface ComposeInput {
   title: string; body: string; audience: AudienceSpec; scheduledAt: string | null; idempotencyKey: string; priority: Priority;
 }
 
@@ -104,7 +105,7 @@ export const composeNotification = (companyId: string, input: ComposeInput) =>
     p_scheduled_at: input.scheduledAt, p_idempotency_key: input.idempotencyKey, p_priority: input.priority,
   }));
 
-export interface UpdateScheduledInput { id: string; title: string; body: string; audience: AudienceSpec; scheduledAt: string; }
+interface UpdateScheduledInput { id: string; title: string; body: string; audience: AudienceSpec; scheduledAt: string; }
 
 export async function updateScheduledNotification(input: UpdateScheduledInput): Promise<void> {
   const { error } = await supabase.rpc('update_scheduled_notification', {
@@ -137,25 +138,35 @@ const restore = (client: QueryClient, before: [QueryKey, History | undefined][])
 /**
  * Delete and cancel: the row changes on screen at once, the server is asked,
  * and on a refusal the lists go back to what they were and the error is thrown
- * for the page to show.
+ * for the page to show. Nothing is read again afterwards: what is on screen is
+ * what was saved, and the change's own announcement is recognised as such.
  */
-function useHistoryActions(scope: readonly unknown[], history: readonly unknown[]) {
+function useHistoryActions(history: readonly unknown[]) {
   const client = useQueryClient();
-  const refresh = () => client.invalidateQueries({ queryKey: scope });
 
   const run = async (rpc: 'delete_notification' | 'cancel_scheduled_notification', id: string,
     change: (items: HistoryRow[], filter: StatusFilter) => HistoryRow[]) => {
+    rememberApplied([id], APPLIED_HERE);
     const before = await patchHistory(client, history, change);
     const { error } = await supabase.rpc(rpc, { p_id: id });
     if (error) {
+      forgetApplied([id]);
       restore(client, before);
       throw new Error(error.message);
     }
-    void refresh();
+    // Out of date in name only: read again the next time the list is opened, not now.
+    void client.invalidateQueries({ queryKey: history, refetchType: 'none' });
   };
 
   return {
-    refresh,
+    /**
+     * After a notification was written or changed here: the history is read once.
+     * With the row's id, the announcement of that same change does not read it a second time.
+     */
+    refresh: (id?: string) => {
+      if (id) rememberApplied([id], APPLIED_HERE);
+      return client.invalidateQueries({ queryKey: history });
+    },
     remove: (id: string) => run('delete_notification', id, (items) => withoutRow(items, id)),
     cancel: (id: string) => run('cancel_scheduled_notification', id, (items, filter) => withCancelled(items, id, filter)),
   };
@@ -163,19 +174,15 @@ function useHistoryActions(scope: readonly unknown[], history: readonly unknown[
 
 export type HistoryActions = Pick<ReturnType<typeof useHistoryActions>, 'remove' | 'cancel'>;
 
-export const useNotificationActions = (companyId: string) =>
-  useHistoryActions(keys.company(companyId, 'notifications'), historyRoot(companyId));
+export const useNotificationActions = (companyId: string) => useHistoryActions(historyRoot(companyId));
 
 // ---------------------------------------------------------------- platform ----
 
 /**
- * The platform admin's side lives under `keys.platform('notifications', …)`:
- * `usePlatformSync` refreshes everything of the platform on any announced change.
+ * The platform admin's side lives under `keys.platform('notifications', …)`,
+ * the key `usePlatformSync` refreshes when a notification changes.
  */
-const platformRoot = keys.platform('notifications');
 const platformHistoryRoot = keys.platform('notifications', 'history');
-
-export { usePlatformCompanies, type CompanyOption };
 
 /** Notifications of every company (or of one), with the platform's push numbers on the first page. */
 export function usePlatformNotificationHistory(filter: StatusFilter, companyId: string) {
@@ -188,9 +195,15 @@ export function usePlatformNotificationHistory(filter: StatusFilter, companyId: 
   return { ...history, push, pushConfigured: first ? push?.configured ?? false : null };
 }
 
-export const usePlatformNotificationActions = () => useHistoryActions(platformRoot, platformHistoryRoot);
+export const usePlatformNotificationActions = () => useHistoryActions(platformHistoryRoot);
 
-export interface PlatformPreviewState { status: AudiencePreviewState['status']; data?: PlatformPreview; error: string; }
+/**
+ * After a platform notification was composed: one notification per company was
+ * created, each announced on the platform's topic, which reads the history once.
+ */
+export const awaitPlatformHistory = () => refreshIfNotUpdated(platformHistoryRoot);
+
+interface PlatformPreviewState { status: AudiencePreviewState['status']; data?: PlatformPreview; error: string; }
 
 /** Who a platform notification would reach, counted by the server a moment after the choice settles. */
 export function usePlatformPreview(all: boolean, selected: string[]): PlatformPreviewState {
@@ -198,9 +211,9 @@ export function usePlatformPreview(all: boolean, selected: string[]): PlatformPr
   const wanted = ids === null ? 'all' : ids.join(',');
   const asked = useDebounced(wanted, 350);
   const query = usePageData(
-    keys.platform('notifications', 'preview', asked),
+    keys.platform('preview', asked),
     () => unwrap<PlatformPreview>(supabase.rpc('platform_preview_notification', { p_company_ids: asked === 'all' ? null : asked.split(',') })),
-    { enabled: !!asked },
+    { enabled: !!asked, gcTime: VARIANT_GC },
   );
   if (!wanted) return { status: 'incomplete', error: '' };
   if (asked !== wanted || query.loading || query.refreshing) return { status: 'loading', error: '' };
@@ -208,7 +221,7 @@ export function usePlatformPreview(all: boolean, selected: string[]): PlatformPr
   return { status: 'ready', data: query.data, error: '' };
 }
 
-export interface PlatformComposeInput {
+interface PlatformComposeInput {
   title: string; body: string; companyIds: string[] | null; scheduledAt: string | null; idempotencyKey: string; priority: Priority;
 }
 

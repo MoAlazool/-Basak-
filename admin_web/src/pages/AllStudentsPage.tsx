@@ -4,8 +4,12 @@ import { Check, Search, X } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
 import { SkeletonTable } from '../components/Skeleton';
 import { supabase } from '../lib/supabase';
-import { keys, unwrap, usePageData } from '../lib/query';
-import { usePlatformCompanies } from '../lib/notificationsData';
+import { useQueryClient } from '@tanstack/react-query';
+import { keys, refreshIfNotUpdated, unwrap, usePageData, VARIANT_GC } from '../lib/query';
+import { usePlatformCompanies } from '../lib/reference';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { notifyError } from '../lib/toasts';
 
 interface Membership { company_id: string; company: string; status: 'active' | 'removed'; joined_at: string; }
 interface PlatformStudent {
@@ -39,11 +43,14 @@ export const AllStudentsPage: React.FC = () => {
 
   const companies = usePlatformCompanies().data ?? [];
 
-  const page = usePageData(keys.platform('students', filters, pageIndex), () =>
+  const client = useQueryClient();
+  const guard = useGuard();
+  const variant = !!(filters.search || filters.companyId || filters.membership || pageIndex);
+  const page = usePageData(keys.platform('students', { ...filters, pageIndex }), () =>
     unwrap<{ total: number; rows: PlatformStudent[] }>(supabase.rpc('platform_students', {
       p_search: filters.search || null, p_company_id: filters.companyId || null, p_membership: filters.membership || null,
       p_limit: PAGE_SIZE, p_offset: pageIndex * PAGE_SIZE,
-    })), { keepPrevious: true });
+    })), { keepPrevious: true, gcTime: variant ? VARIANT_GC : undefined });
   const rows = page.data?.rows ?? [];
   const total = page.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -53,7 +60,7 @@ export const AllStudentsPage: React.FC = () => {
       .select('id, student_id, company_id, field, old_value, new_value, note, created_at, companies(name)')
       .eq('status', 'pending').order('created_at') as unknown as PromiseLike<{ data: Correction[] | null; error: { message: string } | null }>));
 
-  const decide = async (request: Correction, approve: boolean) => {
+  const decide = (request: Correction, approve: boolean) => guard(request.id, async () => {
     const question = approve
       ? `اعتماد تغيير ${fieldLabel[request.field]} من «${request.old_value ?? '—'}» إلى «${request.new_value}»؟ يتغير لدى كل الشركات التي ينتمي إليها الطالب.`
       : 'رفض طلب التصحيح؟';
@@ -61,9 +68,16 @@ export const AllStudentsPage: React.FC = () => {
     setBusy(request.id);
     const { error } = await supabase.rpc('decide_student_correction', { p_request_id: request.id, p_approve: approve });
     setBusy(null);
-    if (error) alert(error.message);
-    await Promise.all([corrections.reload(), page.reload()]);
-  };
+    if (error) {
+      notifyError('تعذر حفظ القرار', error.message);
+      return corrections.reload();
+    }
+    // The request leaves the waiting list at once. An approval changes the account, so its
+    // announcement reads the accounts again (once); a refusal changes nothing else.
+    rememberApplied([request.id], approve ? ['corrections'] : ['corrections', 'students']);
+    client.setQueryData<Correction[]>(keys.platform('corrections'), (rows) => rows?.filter((row) => row.id !== request.id));
+    if (approve) refreshIfNotUpdated(keys.platform('students'));
+  });
 
   const set = (patch: Partial<typeof filters>) => { setFilters((f) => ({ ...f, ...patch })); setPageIndex(0); };
 

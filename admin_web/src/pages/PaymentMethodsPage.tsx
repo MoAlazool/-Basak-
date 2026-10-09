@@ -1,8 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Landmark, Pencil, Plus, Power, Smartphone, Trash2, Wallet, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useCompany } from '../lib/adminScope';
 import { keys, unwrap, usePageData } from '../lib/query';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { notifyError } from '../lib/toasts';
 import { SkeletonRows } from '../components/Skeleton';
 
 type MethodType = 'instapay' | 'vodafone_cash' | 'bank';
@@ -21,6 +25,10 @@ const TYPES: Record<MethodType, { label: string; icon: React.ReactNode }> = {
   bank: { label: 'حساب بنكي', icon: <Landmark className="h-4 w-4" /> },
 };
 
+const COLUMNS = 'id, company_id, method_type, display_name, account_holder, instapay_address, wallet_phone, bank_name, bank_account_number, iban, instructions, is_active, sort_order';
+/** As the page lists them: by position, then as they were added (a new one goes last among equals). */
+const inOrder = (methods: PaymentMethod[]) => [...methods].sort((a, b) => a.sort_order - b.sort_order);
+
 const empty = (companyId: string, order: number): Draft => ({
   company_id: companyId, method_type: 'instapay', display_name: 'InstaPay', account_holder: '', instapay_address: '',
   wallet_phone: '', bank_name: '', bank_account_number: '', iban: '', instructions: '', is_active: true, sort_order: order,
@@ -32,14 +40,27 @@ export const PaymentMethodsPage: React.FC = () => {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
 
-  const page = usePageData(keys.company(companyId, 'paymentMethods'), async () =>
-    unwrap<PaymentMethod[]>(supabase.from('company_payment_methods').select('id, company_id, method_type, display_name, account_holder, instapay_address, wallet_phone, bank_name, bank_account_number, iban, instructions, is_active, sort_order')
+  const [saving, setSaving] = useState(false);
+  const client = useQueryClient();
+  const guard = useGuard();
+  const queryKey = keys.company(companyId, 'paymentMethods');
+
+  const page = usePageData(queryKey, async () =>
+    unwrap<PaymentMethod[]>(supabase.from('company_payment_methods').select(COLUMNS)
       .eq('company_id', companyId).order('sort_order').order('created_at')));
   const methods = page.data ?? [];
   const loading = page.loading;
-  const load = page.reload;
 
-  const save = async () => {
+  // Every write answers with the saved row, which goes straight into the list on
+  // screen: nothing is read again, not even when the change is announced back to us.
+  const apply = (change: (list: PaymentMethod[]) => PaymentMethod[], ...ids: string[]) => {
+    rememberApplied(ids, ['paymentMethods']);
+    client.setQueryData<PaymentMethod[]>(queryKey, (list) => (list ? inOrder(change(list)) : list));
+  };
+  const put = (row: PaymentMethod) =>
+    apply((list) => (list.some((m) => m.id === row.id) ? list.map((m) => (m.id === row.id ? row : m)) : [...list, row]), row.id);
+
+  const save = () => guard('save', async () => {
     if (!draft) return;
     setError('');
     const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
@@ -55,40 +76,50 @@ export const PaymentMethodsPage: React.FC = () => {
       instructions: clean(draft.instructions), is_active: draft.is_active, sort_order: draft.sort_order,
       updated_at: new Date().toISOString(),
     };
-    const { error: saveError } = draft.id
-      ? await supabase.from('company_payment_methods').update(row).eq('id', draft.id).select('id').single()
-      : await supabase.from('company_payment_methods').insert(row).select('id').single();
-    if (saveError) {
-      setError(saveError.message.includes('payment_method_fields')
+    setSaving(true);
+    const { data, error: saveError } = draft.id
+      ? await supabase.from('company_payment_methods').update(row).eq('id', draft.id).select(COLUMNS).single()
+      : await supabase.from('company_payment_methods').insert(row).select(COLUMNS).single();
+    setSaving(false);
+    if (saveError || !data) {
+      setError(saveError?.message.includes('payment_method_fields')
         ? 'أكمل بيانات الوسيلة: عنوان InstaPay، أو رقم محفظة فودافون كاش (01xxxxxxxxx)، أو اسم البنك ورقم الحساب.'
-        : saveError.message);
+        : saveError?.message ?? 'تعذر حفظ وسيلة الدفع.');
       return;
     }
+    put(data as PaymentMethod);
     setDraft(null);
-    void load();
-  };
+  });
 
-  const update = async (m: PaymentMethod, patch: Partial<PaymentMethod>) => {
-    const { error: e } = await supabase.from('company_payment_methods').update(patch).eq('id', m.id).select('id').single();
-    if (e) alert(e.message); else void load();
-  };
-  const move = async (index: number, delta: number) => {
+  const update = (m: PaymentMethod, patch: Partial<PaymentMethod>) => guard(m.id, async () => {
+    const { data, error: e } = await supabase.from('company_payment_methods').update(patch).eq('id', m.id).select(COLUMNS).single();
+    if (e || !data) notifyError('تعذر تعديل وسيلة الدفع', e?.message);
+    else put(data as PaymentMethod);
+  });
+  // One move at a time: a second click waits for the first swap to be saved.
+  const move = (index: number, delta: number) => guard('move', async () => {
     const a = methods[index]; const b = methods[index + delta];
     if (!a || !b) return;
-    // The two rows swap places: independent updates, sent together.
+    // The two rows swap places: independent updates, sent together, shown at once.
+    const orderA = b.sort_order;
+    const orderB = a.sort_order === b.sort_order ? a.sort_order + delta : a.sort_order;
+    apply((list) => list.map((m) => (m.id === a.id ? { ...m, sort_order: orderA } : m.id === b.id ? { ...m, sort_order: orderB } : m)), a.id, b.id);
     const [first, second] = await Promise.all([
-      supabase.from('company_payment_methods').update({ sort_order: b.sort_order }).eq('id', a.id),
-      supabase.from('company_payment_methods').update({ sort_order: a.sort_order === b.sort_order ? a.sort_order + delta : a.sort_order }).eq('id', b.id),
+      supabase.from('company_payment_methods').update({ sort_order: orderA }).eq('id', a.id).select('id').single(),
+      supabase.from('company_payment_methods').update({ sort_order: orderB }).eq('id', b.id).select('id').single(),
     ]);
     const failed = first.error ?? second.error;
-    if (failed) alert(failed.message);
-    void load();
-  };
-  const remove = async (m: PaymentMethod) => {
+    if (!failed) return;
+    notifyError('تعذر تغيير الترتيب', failed.message);
+    // What was really saved is unknown (one of the two may have gone through): read it.
+    await page.reload();
+  });
+  const remove = (m: PaymentMethod) => guard(m.id, async () => {
     if (!confirm(`حذف "${m.display_name}"؟ الإيصالات السابقة تبقى محفوظة بدون ربط بالوسيلة. يمكنك تعطيلها بدلاً من الحذف.`)) return;
-    const { error: e } = await supabase.from('company_payment_methods').delete().eq('id', m.id);
-    if (e) alert(e.message); else void load();
-  };
+    const { data, error: e } = await supabase.from('company_payment_methods').delete().eq('id', m.id).select('id');
+    if (e || !data?.length) notifyError('تعذر حذف وسيلة الدفع', e?.message);
+    else apply((list) => list.filter((item) => item.id !== m.id), m.id);
+  });
 
   const input = 'mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none';
   const detail = (m: PaymentMethod) => m.method_type === 'instapay' ? m.instapay_address
@@ -171,7 +202,7 @@ export const PaymentMethodsPage: React.FC = () => {
             {error && <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setDraft(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600">إلغاء</button>
-              <button onClick={() => void save()} className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white">حفظ</button>
+              <button onClick={() => void save()} disabled={saving} className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? 'جاري الحفظ…' : 'حفظ'}</button>
             </div>
           </div>
         </div>

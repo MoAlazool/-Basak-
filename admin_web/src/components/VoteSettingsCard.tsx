@@ -2,8 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { SkeletonForm } from './Skeleton';
 import { BellRing, CalendarOff, Clock3, Plus, RotateCcw, Save, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
 import { keys, unwrap, usePageData } from '../lib/query';
 import { clockLabel } from '../lib/overview';
+import { rememberApplied } from '../lib/recentChanges';
+import { useGuard } from '../lib/guard';
+import { cairoToday } from '../lib/time';
+import { notifyError } from '../lib/toasts';
 
 interface Settings {
   opens_at: string;
@@ -30,8 +35,6 @@ const dateLabel = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'nume
 const formatDate = (ymd: string) => dateLabel.format(new Date(`${ymd}T00:00:00Z`));
 const sameList = <T,>(a: T[], b: T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const sorted = (list: number[]) => [...list].sort((a, b) => a - b);
-/** Today in Cairo, YYYY-MM-DD. */
-const cairoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
 
 /** The days off in words: "كل الجمعة، الثلاثاء ٦ أكتوبر". */
 function daysOffText(weekdays: number[], dates: string[]): string {
@@ -83,7 +86,10 @@ function reminderTimes(opens: string, closes: string, every: number): string[] {
  * every company follows until it sets its own.
  */
 export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName: string }> = ({ companyId, companyName }) => {
-  const page = usePageData(companyId ? keys.company(companyId, 'vote') : keys.platform('vote'), () =>
+  const client = useQueryClient();
+  const guard = useGuard();
+  const voteKey = companyId ? keys.company(companyId, 'vote') : keys.platform('vote');
+  const page = usePageData(voteKey, () =>
     unwrap<VoteSettings>(supabase.rpc('get_vote_settings', { p_company_id: companyId })));
   const vote = page.data ?? null;
   const [opens, setOpens] = useState('16:00');
@@ -123,25 +129,27 @@ export const VoteSettingsCard: React.FC<{ companyId: string | null; companyName:
   const sameTimes = opens === closes;
   const times = reminderTimes(opens, closes, every);
 
-  const save = async (reset = false) => {
-    try {
-      setSaving(true);
-      const { error } = await supabase.rpc('set_vote_settings', {
-        p_company_id: companyId,
-        p_opens_at: reset ? null : opens,
-        p_closes_at: reset ? null : closes,
-        p_reminder_minutes: reset ? null : every,
-        p_off_weekdays: reset ? null : offWeekdays,
-        p_off_dates: reset ? null : offDates,
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      alert('تعذر حفظ مواعيد التصويت: ' + err.message);
-    } finally {
-      setSaving(false);
-      await page.reload();
+  // One request: the function answers with the settings as they are now, which replace the cached ones.
+  const save = (reset = false) => guard('save', async () => {
+    setSaving(true);
+    const { data, error } = await supabase.rpc('set_vote_settings', {
+      p_company_id: companyId,
+      p_opens_at: reset ? null : opens,
+      p_closes_at: reset ? null : closes,
+      p_reminder_minutes: reset ? null : every,
+      p_off_weekdays: reset ? null : offWeekdays,
+      p_off_dates: reset ? null : offDates,
+    });
+    setSaving(false);
+    if (error) {
+      notifyError('تعذر حفظ مواعيد التصويت', error.message);
+      return page.reload();
     }
-  };
+    // The company row's announcement refreshes the overview (it shows when the vote closes), nothing else.
+    if (companyId) rememberApplied([companyId], ['company', 'settings', 'switches', 'vote']);
+    if (data) client.setQueryData<VoteSettings>(voteKey, data as VoteSettings);
+    else await page.reload();
+  });
 
   const input = 'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50';
   const options = REMINDERS.some((r) => r.value === every) ? REMINDERS : [...REMINDERS, { value: every, label: reminderLabel(every) }];

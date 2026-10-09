@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { SkeletonShell } from './components/Skeleton';
@@ -15,7 +15,7 @@ const preloadHome = (admin: AdminProfile | null) => {
   else Workspace.preload();
 };
 
-export function App() {
+function App() {
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [recoveryMode, setRecoveryMode] = useState(() => /type=(recovery|invite)/.test(window.location.hash));
@@ -31,17 +31,24 @@ export function App() {
     // The check that is under way, so the same user announced twice at once (the
     // stored session and the library's own first event on a reload) is checked once.
     let checking: string | null = null;
+    // Whose data the cache holds. Another account taking over this tab (a sign-in in
+    // another tab replaces the shared session) starts from an empty cache: nothing the
+    // previous account loaded stays in memory or is written to this tab's storage.
+    let cachedFor: string | null = null;
 
     const applySession = async (userId: string | null) => {
       if (userId && checking === userId) return;
       const current = ++generation;
       checking = userId;
       if (!userId) {
+        cachedFor = null;
         clearCache();
         preloadHome(null);
         if (mounted) { setAdmin(null); setAuthLoading(false); }
         return;
       }
+      if (cachedFor && cachedFor !== userId) clearCache();
+      cachedFor = userId;
       // One request: the admin row with its company (which lands in the workspace's cache).
       const profile = await loadAdminProfile(userId).catch(() => null);
       if (current === generation) checking = null;
