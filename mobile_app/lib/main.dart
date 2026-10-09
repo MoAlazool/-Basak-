@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/network/supabase_service.dart';
 import 'core/sync/sync_hub.dart';
 import 'core/theme/app_theme.dart';
+import 'features/app_update/update_gate.dart';
+import 'features/auth/biometrics/biometric_sign_in.dart';
+import 'features/auth/biometrics/presentation/biometric_offer.dart';
 import 'features/auth/models/user_role.dart';
 import 'features/auth/presentation/login_register_screen.dart';
 import 'features/auth/presentation/wrong_role_screen.dart';
@@ -54,7 +57,9 @@ class BasakApp extends ConsumerWidget {
       ],
       // Above every route: the banner of a push that arrives while the app is open.
       builder: (context, child) => NotificationsHost(child: child ?? const SizedBox.shrink()),
-      home: const SplashGate(child: AuthGate()),
+      // The update check stands before everything, signed in or not; with no
+      // answer (offline, an older server) it is simply the gate under it.
+      home: const SplashGate(child: UpdateGate(child: AuthGate())),
     );
   }
 }
@@ -73,7 +78,14 @@ class AuthGate extends ConsumerWidget {
       return OnboardingScreen(isSignedIn: authState.isAuthenticated);
     }
 
-    if (authState.isInitialLoading || onboardingDone == null) {
+    // Nobody signed in: whether this phone has a sign-in stored for Face ID
+    // or a fingerprint decides the first screen, so it is read (from the
+    // phone alone) before one is shown.
+    final entryUnknown = !authState.isAuthenticated &&
+        !authState.isInitialLoading &&
+        ref.watch(biometricEntryReadyProvider).isLoading;
+
+    if (authState.isInitialLoading || onboardingDone == null || entryUnknown) {
       // A moment only: the session and role are read from the device.
       return const Scaffold(
         backgroundColor: Color(0xFFEAF5FA),
@@ -91,12 +103,13 @@ class AuthGate extends ConsumerWidget {
       case UserRole.student:
         // After an admin password reset the student must choose a new password first.
         return ref.watch(mustChangePasswordProvider).maybeWhen(
-              data: (mustChange) =>
-                  mustChange ? const ForcePasswordChangeScreen() : const SyncScope(child: StudentMainScreen()),
-              orElse: () => const SyncScope(child: StudentMainScreen()),
+              data: (mustChange) => mustChange
+                  ? const ForcePasswordChangeScreen()
+                  : const BiometricOfferHost(child: SyncScope(child: StudentMainScreen())),
+              orElse: () => const BiometricOfferHost(child: SyncScope(child: StudentMainScreen())),
             );
       case UserRole.supervisor:
-        return const SyncScope(child: SupervisorMainScreen());
+        return const BiometricOfferHost(child: SyncScope(child: SupervisorMainScreen()));
       case UserRole.admin:
       case UserRole.unknown:
         return const WrongRoleScreen();

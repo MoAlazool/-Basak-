@@ -7,6 +7,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:basak_mobile/core/ui/ui.dart';
 
+import '../biometrics/biometric_device.dart';
+import '../biometrics/biometric_sign_in.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
@@ -21,6 +23,9 @@ class LoginScreen extends ConsumerStatefulWidget {
     this.onBack,
     this.onOtherRole,
     this.supervisor = false,
+    this.notice,
+    this.biometric,
+    this.onBiometric,
   });
 
   /// "طالب جديد؟ إنشاء حساب".
@@ -33,6 +38,15 @@ class LoginScreen extends ConsumerStatefulWidget {
   final VoidCallback? onOtherRole;
 
   final bool supervisor;
+
+  /// One line above the fields: why the faster sign-in is not offered this
+  /// time (the phone's biometrics changed, the stored sign-in expired).
+  final String? notice;
+
+  /// What the phone offers for the sign-in stored on it: the square button
+  /// beside «دخول». Null: no button.
+  final BiometricKind? biometric;
+  final VoidCallback? onBiometric;
 
   /// What a refused sign-in says, under the password field.
   static const wrongCredentialsMessage = 'رقم الهاتف أو كلمة المرور غير صحيحة.';
@@ -110,11 +124,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_validate()) return;
     // Kept beside the sign-in, never in its way.
     unawaited(_saveRemembered());
+    // Taken now: once signed in, this screen is gone.
+    final offerPending = ref.read(biometricOfferPendingProvider.notifier);
     try {
       await ref.read(authStateProvider.notifier).signIn(
             identifier: _phone.text.trim(),
             password: _password.text,
           );
+      // Signed in with the password: the app may now offer the faster way.
+      offerPending.state = true;
     } catch (error) {
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -221,6 +239,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
       ],
       children: [
+        if (widget.notice != null) InfoNote(widget.notice!, key: const Key('login-notice')),
         // Lets the phone's password manager offer and save the login.
         AutofillGroup(
           child: GroupedFields(children: [
@@ -287,7 +306,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ],
           ),
         if (_failure != null) InlineError(message: _failure!),
-        // The square biometric button takes its place beside this one.
         Row(
           children: [
             Expanded(
@@ -298,6 +316,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: _submit,
               ),
             ),
+            // Only where a sign-in is stored on this phone for this kind of account.
+            if (widget.biometric != null) ...[
+              const SizedBox(width: BasakSpace.s8),
+              GroundSquareButton(
+                key: const Key('login-biometric'),
+                icon: widget.biometric!.icon,
+                label: widget.biometric!.settingLabel,
+                onPressed: loading ? null : widget.onBiometric,
+              ),
+            ],
           ],
         ),
       ],

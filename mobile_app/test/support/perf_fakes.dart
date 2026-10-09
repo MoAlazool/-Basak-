@@ -5,7 +5,9 @@ import 'dart:typed_data';
 import 'package:basak_mobile/core/media/signed_url_cache.dart';
 import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException, StorageException;
+import 'package:basak_mobile/features/app_update/app_update_repository.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
+import 'package:basak_mobile/features/rating/rating.dart';
 import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
 import 'package:basak_mobile/features/student/daily_ride/models/vote_settings.dart';
 import 'package:basak_mobile/features/student/invites/invites.dart';
@@ -374,4 +376,44 @@ void fakeSigner(RequestLog log, {bool Function()? offline}) {
     if (offline?.call() ?? false) throw Exception('SocketException: Failed host lookup');
     return 'https://x.supabase.co/storage/v1/object/sign/$bucket/$path?token=${++token}';
   };
+}
+
+/// The version every fake phone runs.
+const installedVersion = '1.0.6';
+
+/// `get_app_version`: what the dashboard set for this platform. Null: no row.
+class FakeAppVersions implements AppVersionGateway {
+  final RequestLog log;
+  FakeAppVersions(this.log);
+
+  Object? answer = {
+    'platform': 'android', 'min_version': '0.0.0', 'latest_version': '0.0.0', 'whats_new': <dynamic>[],
+    'store_url': null,
+  };
+
+  /// Thrown instead of answering: an older database, or no connection.
+  Object? fails;
+
+  @override
+  Future<Object?> appVersion(String platform) async {
+    log.hit('app_version');
+    if (fails != null) throw fails!;
+    return answer;
+  }
+}
+
+/// `get_my_boarded_rides_count`: the student's successful check-ins.
+class FakeBoardedRides implements BoardedRidesGateway {
+  final RequestLog log;
+  FakeBoardedRides(this.log);
+
+  Object? count = 0;
+  Object? fails;
+
+  @override
+  Future<Object?> boardedRidesCount() async {
+    log.hit('rating.boarded_rides');
+    if (fails != null) throw fails!;
+    return count;
+  }
 }

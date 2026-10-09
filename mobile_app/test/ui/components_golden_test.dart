@@ -560,6 +560,120 @@ final _scenes = <_Scene>[
     background: BasakPalette.scanPanel,
   ),
   _Scene(
+    'scan_parts',
+    (context) => _column(const [
+      ScanNotice(lead: 'بدون إنترنت.', message: 'المسح يعرض بيانات محفوظة ولا يسجّل الصعود.'),
+      SizedBox(height: 180, child: Center(child: ScanFrame())),
+      SizedBox(height: 140, child: Center(child: ScanFrame(color: BasakPalette.refusedFrame))),
+      ScanLastRow(label: 'آخر صعود: يوسف طارق حسن', time: '7:17 ص'),
+    ]),
+    background: BasakPalette.scanPanel,
+  ),
+  _Scene(
+    'scan_person',
+    (context) => _column(const [
+      BasakCard(
+        child: PersonFacts(name: 'سارة أحمد محمود', caption: 'جامعة المنصورة الجديدة', facts: [
+          PersonFact('المحطة', 'كوبري السرو'),
+          PersonFact('تأكيد اليوم', 'ذهاب 7:23 ص · عودة 3:30 م'),
+          PersonFact('الهاتف', '010 2345 6789', ltr: true),
+        ]),
+      ),
+      BasakCard(
+        child: PersonFacts(name: 'عمر خالد منصور', caption: 'جامعة المنصورة الجديدة', facts: [
+          PersonFact('الخط والمحطة', 'الزرقا · السرو'),
+          PersonFact('الاشتراك', 'غير مفعّل أو منتهٍ', tone: BasakTone.danger),
+        ]),
+      ),
+    ]),
+  ),
+  _Scene(
+    'scan_gate',
+    (context) => ScanGate(
+      title: 'اسمح باستخدام الكاميرا',
+      message: 'المسح يحتاج الكاميرا لقراءة رمز الطالب. فعّل الإذن لتطبيق باصك من إعدادات الهاتف.',
+      primaryLabel: 'فتح الإعدادات',
+      primaryIcon: LucideIcons.settings,
+      onPrimary: () {},
+      secondaryLabel: 'إعادة المحاولة',
+      onSecondary: () {},
+    ),
+    pageHeight: 560,
+  ),
+  _Scene(
+    'send_parts',
+    (context) => _column([
+      IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+              child: AudienceTile(title: 'ركاب رحلة', subtitle: 'من أكّدوا موعداً', selected: true, onTap: () {})),
+          const SizedBox(width: BasakSpace.s8),
+          Expanded(
+              child: AudienceTile(title: 'كل طلاب الخط', subtitle: '124 مشتركاً', selected: false, onTap: () {})),
+        ]),
+      ),
+      const AudienceTile(title: 'ركاب رحلة', subtitle: 'لا توجد تأكيدات بعد', selected: false, onTap: null),
+      PickRow(value: 'اليوم · ذهاب 7:00 ص', note: '38 طالباً', onTap: () {}),
+      PickRow(label: 'يصل إلى', value: 'كل طلاب خط الزرقا · 124', opensSheet: false, onTap: () {}),
+      MessageRows(rows: [
+        MessageRow(
+            title: 'تأخير في موعد الحافلة', preview: 'ستتأخر الحافلة نحو … دقيقة. نعتذر عن التأخير.', onTap: () {}),
+        MessageRow(
+            title: 'الحافلة تحركت',
+            preview: 'بدأت رحلة الذهاب والحافلة في طريقها. كن في محطتك في الموعد.',
+            onTap: () {}),
+      ]),
+      LinkCard(icon: LucideIcons.pencil, title: 'رسالة أخرى', subtitle: 'اكتب العنوان والنص بنفسك', onTap: () {}),
+      const BasakCard(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          NotificationPreview(
+              sender: 'باصك · مشرف الباص',
+              title: 'تأخير في موعد الحافلة',
+              body: 'ستتأخر الحافلة نحو 15 دقيقة. نعتذر عن التأخير.'),
+          SizedBox(height: BasakSpace.s16),
+          ReachLine(count: '38 طالباً', audience: 'ركاب ذهاب 7:00 ص اليوم'),
+        ]),
+      ),
+      CountedField(label: 'العنوان', controller: TextEditingController(text: 'تغيير مكان الركوب'), maxLength: 80),
+      CountedField(
+          label: 'نص الإشعار',
+          controller: TextEditingController(text: 'غداً الركوب من أمام البنك بدل الموقف.'),
+          maxLength: 600,
+          lines: 5),
+    ]),
+  ),
+  _Scene(
+    'month_parts',
+    (context) => _column([
+      MonthSwitcher(label: 'أكتوبر 2026', onPrevious: () {}, onNext: null),
+      const MonthHero(
+        label: 'تسجيلات الصعود',
+        total: '1,284',
+        rate: '91%',
+        rateCaption: 'من الركوب المؤكَّد',
+        split: [('ذهاب', '702'), ('عودة', '582')],
+      ),
+      TitledCard(
+        title: 'الصعود اليومي',
+        trailing: DayBars.legend(context, lower: 'ذهاب', upper: 'عودة'),
+        child: const DayBars(
+          semanticLabel: 'الصعود في كل يوم عمل من أكتوبر',
+          days: [
+            DayBar(label: '1', lower: 83, upper: 69),
+            DayBar(label: '3', lower: 82, upper: 66),
+            DayBar(label: '4', lower: 85, upper: 71),
+            DayBar(label: '5', lower: 79, upper: 66),
+            DayBar(label: '6', lower: 76, upper: 61),
+            DayBar(label: '7', lower: 84, upper: 70),
+            DayBar(label: '8', lower: 81, upper: 69),
+            DayBar(label: '10', lower: 86, upper: 72),
+            DayBar(label: '11', lower: 52, upper: 32, emphasised: true),
+          ],
+        ),
+      ),
+    ]),
+  ),
+  _Scene(
     'result_header',
     (context) => _column(const [
       BasakCard(
@@ -844,6 +958,27 @@ final _scenes = <_Scene>[
     background: BasakPalette.surface,
   ),
   _Scene(
+    'biometric_parts',
+    (context) => _column([
+      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+        BiometricGlyph(icon: LucideIcons.scanFace, label: 'انظر إلى الهاتف للدخول', onTap: () {}),
+        BiometricGlyph(icon: LucideIcons.fingerprint, label: 'لم يتعرّف الهاتف عليك', warning: true, onTap: () {}),
+      ]),
+      Row(children: [
+        Expanded(child: BasakButton(label: 'دخول', onPressed: () {})),
+        const SizedBox(width: BasakSpace.s8),
+        GroundSquareButton(icon: LucideIcons.scanFace, label: 'الدخول بـ Face ID', onPressed: () {}),
+      ]),
+      BasakCard(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s18),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SwitchRow(label: 'الدخول بـ Face ID', value: true, onChanged: (_) {}),
+          SwitchRow(label: 'الدخول بالبصمة أو الوجه', value: false, onChanged: (_) {}),
+        ]),
+      ),
+    ]),
+  ),
+  _Scene(
     'splash_rail',
     (context) => _column(const [
       Center(child: SplashRail(progress: 0)),
@@ -932,6 +1067,202 @@ final _scenes = <_Scene>[
       ]),
     ]),
   ),
+  // The supervisor's Home and Trips: the line row, a trip row with the bus's
+  // seats, the trip card, the trip sheet's rows, a closed group, an entry.
+  _Scene(
+    'supervisor_trip_parts',
+    (context) => _column([
+      LineSwitchRow(name: 'خط الزرقا', caption: 'النورس للنقل · 1 من 3 خطوط', onTap: () {}),
+      const LineSwitchRow(name: 'خط السنبلاوين', caption: 'النورس للنقل', tag: 'خط متوقف', onTap: null),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: BarList(title: 'الذهاب', trailing: '3 رحلات', rows: [
+              BarRow(time: '6:15 ص', count: 12, share: .2, state: BarRowState.past, onTap: () {}),
+              BarRow(
+                  time: '7:00 ص',
+                  count: 62,
+                  share: 1,
+                  state: BarRowState.next,
+                  note: 'يحتاج باصين',
+                  noteWarns: true,
+                  onTap: () {}),
+              BarRow(time: '7:45 ص', count: 45, share: .73, note: '45 من 50', onTap: () {}),
+            ]),
+          ),
+          const SizedBox(width: BasakSpace.s8),
+          Expanded(
+            child: BarList(title: 'العودة', trailing: 'رحلتان', rows: [
+              BarRow(time: '12:30 م', count: 8, share: .26, onTap: () {}),
+              BarRow(time: '3:30 م', count: 31, share: 1, onTap: () {}),
+            ]),
+          ),
+        ],
+      ),
+      TripCard(
+        time: '7:00 ص',
+        direction: 'ذهاب',
+        detail: 'خط الزرقا · الوصول إلى الجامعة 8:20 ص',
+        note: 'مقاعد الباص: 38 من 50',
+        onChange: () {},
+        child: const ProgressLine(sentence: 'صعد 14 من 38', trailing: 'بقي 24', value: 14 / 38),
+      ),
+      BasakCard(
+        child: _column([
+          TripChoiceRow(time: '6:15 ص', note: 'مضى موعدها', riders: '12 طالباً', selected: false, past: true, onTap: () {}),
+          TripChoiceRow(time: '7:00 ص', note: 'الآن', riders: '38 طالباً', selected: true, onTap: () {}),
+          TripChoiceRow(time: '12:30 م', note: 'بعد 27 دقيقة', riders: '9 طلاب', selected: false, onTap: () {}),
+        ]),
+      ),
+      BasakCard(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s4),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          StopRow(
+            name: 'شرباص',
+            time: '7:15 ص',
+            boarded: 0,
+            expected: 2,
+            countLabel: '2',
+            state: StopState.upcoming,
+            isFirst: true,
+            isLast: true,
+            expanded: true,
+            onToggle: () {},
+            riders: const [
+              StopRider(name: 'ندى إبراهيم خليل', plain: true),
+              StopRider(name: 'كريم محمد عبد الله', plain: true),
+            ],
+          ),
+        ]),
+      ),
+      DisclosureCard(
+        title: 'لم يؤكّدوا اليوم · 5',
+        subtitle: 'مشتركون على الخط لم يحدّدوا موعدهم',
+        expanded: false,
+        onToggle: () {},
+        child: const SizedBox.shrink(),
+      ),
+      DisclosureCard(
+        title: 'لم يؤكّدوا اليوم · 2',
+        subtitle: 'مشتركون على الخط لم يحدّدوا موعدهم',
+        expanded: true,
+        onToggle: () {},
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PersonRow(name: 'سلمى عبد الرحمن', caption: 'شرباص', onTap: () {}),
+          PersonRow(name: 'عمر خالد', caption: 'كوبري السرو', onTap: () {}),
+        ]),
+      ),
+      EntryRow(
+          icon: LucideIcons.megaphone, title: 'إشعار للطلاب', subtitle: 'لكل الخط أو لركاب رحلة واحدة', onTap: () {}),
+      const ToneState(
+        icon: LucideIcons.userX,
+        tone: BasakTone.danger,
+        title: 'الحساب موقوف',
+        message: 'أوقفت إدارة الشركة حساب المشرف. تواصل مع شركتك لإعادة تفعيله.',
+      ),
+    ]),
+  ),
+  // ---- the term recap (boards Recap*)
+  _Scene(
+    'recap_banner',
+    (context) => RecapBanner(title: 'ملخّص ترمك جاهز', message: '109 ساعة في الباص… والباقي جوّه.', onTap: () {}),
+  ),
+  _Scene(
+    'recap_story_page',
+    (context) => StoryScaffold(
+      ground: StoryGround.sky,
+      rings: const [StoryRing(end: -200, bottom: -220, size: 440, stroke: 56)],
+      index: 2,
+      count: 11,
+      brand: 'باصك · ملخّص الترم',
+      closeLabel: 'إغلاق',
+      onClose: () {},
+      onNext: () {},
+      child: const StoryBody(children: [
+        StoryKicker(text: 'جدولك', ground: StoryGround.sky),
+        StoryNumber(numeral: '41', unit: 'يوم ركبت الباص', ground: StoryGround.sky),
+        StoryBars(ground: StoryGround.sky, bars: [
+          StoryBar(letter: 'س'),
+          StoryBar(letter: 'ح', count: 14, height: 1, strong: true),
+          StoryBar(letter: 'ن'),
+          StoryBar(letter: 'ث', count: 14, height: 1, strong: true),
+          StoryBar(letter: 'ر', count: 5, height: .36),
+          StoryBar(letter: 'خ', count: 13, height: .93, strong: true),
+        ]),
+        StoryLine(text: '3 أيام في الأسبوع؟ ده جدول يتحسد عليه.', ground: StoryGround.sky, level: StoryLineLevel.body),
+        StoryLine(
+            text: 'وحضرت 41 من 45 في أيامك. الباقي إجازة رسمي، مش غياب.',
+            ground: StoryGround.sky,
+            level: StoryLineLevel.second),
+        StoryChip(text: 'أطول غيبة: 9 أيام · كنا هنسأل عليك', ground: StoryGround.sky, icon: LucideIcons.calendar),
+      ]),
+    ),
+    pageHeight: 760,
+  ),
+  _Scene(
+    'recap_story_parts',
+    (context) => ColoredBox(
+      color: StoryGround.ink.background,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
+        child: _column([
+          const StoryKicker(text: 'الفصل الأول', ground: StoryGround.ink, ltrTail: '2026 / 2027'),
+          const StoryHeadline(text: 'عمدة\nكوبري السرو', ground: StoryGround.ink, accent: true),
+          const StoryHeadline(text: 'وصول متأخر… بس وصول', ground: StoryGround.ink, accent: true),
+          const StoryNumber(numeral: '7:23', suffix: 'ص', unit: 'ركبته 41 مرة', ground: StoryGround.ink, accent: true),
+          const StoryLine(text: 'الباص بقى عارفك.', ground: StoryGround.ink),
+          const StoryLine(text: 'رقم تقريبي، من مواعيد الرحلات اللي أكّدتها.', ground: StoryGround.ink, level: StoryLineLevel.note),
+          const StoryBox(title: '109 ساعة = 36 محاضرة استاتيكا', body: 'اختار اللي يوجع أقل.', ground: StoryGround.ink),
+          const StoryCta(text: 'شوف البوستر', ground: StoryGround.ink),
+          const StoryRail(
+            before: ['موقف الزرقا', 'ميت الخولي'],
+            stop: 'كوبري السرو',
+            after: ['السرو', 'فارسكور'],
+            ground: StoryGround.ink,
+          ),
+          StoryCalendar(letters: const ['س', 'ح', 'ن', 'ث', 'ر', 'خ'], weeks: [
+            const StoryWeek(month: 'سبتمبر', days: [TermDot.none, TermDot.on, TermDot.on, TermDot.off, TermDot.off, TermDot.on]),
+            for (var w = 0; w < 4; w++)
+              StoryWeek(month: w == 1 ? 'أكتوبر' : null, days: [
+                for (var d = 0; d < 6; d++) (w * 5 + d * 3) % 4 == 0 ? TermDot.off : TermDot.on,
+              ]),
+          ]),
+        ]),
+      ),
+    ),
+  ),
+  for (final theme in PosterTheme.values)
+    _Scene(
+      'recap_poster_${theme.name}',
+      (context) => Center(
+        child: PosterFrame(
+          child: RecapPoster(
+            theme: theme,
+            head: 'ملخّص الترم',
+            term: 'الفصل الأول',
+            years: '2026/27',
+            titleKicker: 'لقبي الترم ده',
+            title: theme == PosterTheme.teal ? 'ديك الفجر' : 'عمدة\nكوبري السرو',
+            why: '62 يوم على نفس المحطة. المحطة بقت باسمي.',
+            line: theme == PosterTheme.mint ? null : '109 ساعة في الباص، ولسه الشيت ما اتحلّش.',
+            patternLabel: 'ترمي يوم بيوم',
+            patternCount: '62 يوم من 101',
+            pattern: [
+              for (var w = 0; w < 17; w++)
+                [for (var d = 0; d < 6; d++) (w * 7 + d * 5) % 8 < 5 && (w < 8 || w > 9) ? TermDot.on : TermDot.off],
+            ],
+            stats: [
+              const PosterStat('109', 'ساعة'),
+              const PosterStat('62', 'يوم'),
+              if (theme != PosterTheme.sky) const PosterStat('7:23 ص', 'معادي') else const PosterStat('91%', 'من جدولي', ltr: true),
+            ],
+            signature: 'سارة · خط الزرقا',
+            site: 'Basak.app',
+          ),
+        ),
+      ),
+    ),
 ];
 
 void main() {

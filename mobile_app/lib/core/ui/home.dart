@@ -290,19 +290,21 @@ class ActionTile extends StatelessWidget {
   }
 }
 
-/// The glyph a sheet opens with when it explains something: 64, teal on tint.
+/// The glyph a sheet opens with when it explains something: 64, teal on tint
+/// (amber when what it says cannot wait: a required update).
 class SheetGlyph extends StatelessWidget {
   final IconData icon;
+  final BasakTone tone;
 
-  const SheetGlyph(this.icon, {super.key});
+  const SheetGlyph(this.icon, {super.key, this.tone = BasakTone.info});
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
         child: Container(
           width: 64,
           height: 64,
-          decoration: BoxDecoration(color: context.colors.tealTint, borderRadius: BasakRadius.all(22)),
-          child: Icon(icon, size: 28, color: context.colors.teal),
+          decoration: BoxDecoration(color: tone.tint(context.colors), borderRadius: BasakRadius.all(22)),
+          child: Icon(icon, size: 28, color: tone.foreground(context.colors)),
         ),
       );
 }
@@ -424,7 +426,11 @@ class SheetLink extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  const SheetLink({super.key, required this.label, required this.onTap});
+  /// Teal: the link leads somewhere of its own («عرض بطاقتي») instead of
+  /// only closing what asks.
+  final bool accent;
+
+  const SheetLink({super.key, required this.label, required this.onTap, this.accent = false});
 
   @override
   Widget build(BuildContext context) => BasakPressable(
@@ -434,7 +440,8 @@ class SheetLink extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: context.text.body.copyWith(color: context.colors.ink2, fontWeight: FontWeight.w500),
+            style: context.text.body.copyWith(
+                color: accent ? context.colors.teal : context.colors.ink2, fontWeight: FontWeight.w500),
           ),
         ),
       );

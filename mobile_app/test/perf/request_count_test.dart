@@ -10,6 +10,7 @@ import 'package:basak_mobile/core/media/signed_url_cache.dart';
 import 'package:basak_mobile/core/widgets/avatar_image.dart';
 import 'package:basak_mobile/core/storage/offline_cache.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
+import 'package:basak_mobile/features/app_update/app_update_repository.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
 import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
@@ -113,6 +114,7 @@ void main() {
         await AuthRepository(roles: FakeRoles(world.log)).detectUserRole(studentId);
       });
       late ProviderContainer container;
+      var updateChecked = false;
       void onRefreshed() {
         // What SyncScope does when a saved copy turned out to be stale.
         final tables = <String>{};
@@ -136,6 +138,10 @@ void main() {
         child: MaterialApp(
           home: Consumer(builder: (context, ref, _) {
             container = ProviderScope.containerOf(context);
+            // What the gate at the app's root does on every launch, for every
+            // user: asks whether this version may still run.
+            ref.watch(appUpdateProvider);
+            updateChecked = true;
             // The other tabs, built in the background a moment after the home
             // tab. The card tab's provider is also what saves the pass for
             // offline use at sign-in.
@@ -152,6 +158,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 200));
       }
       OfflineCache.refreshed.removeListener(onRefreshed);
+      expect(updateChecked, isTrue);
       await tester.pumpWidget(const SizedBox());
     }
 
@@ -173,7 +180,10 @@ void main() {
     expect(world.log.of('invites.list'), 1);
     expect(world.inbox.pageRequests, 1, reason: 'the inbox (the bell), counted apart from the rest');
     expect(world.log.of('sale_catalog'), 0, reason: 'nothing on screen shows what is on sale');
-    expect(world.log.total, lessThanOrEqualTo(10));
+    expect(world.log.of('app_version'), 1, reason: 'the update check: once per launch, for every user');
+    expect(world.log.of('rating.boarded_rides'), 1,
+        reason: 'the rides behind the rating question: once per launch, until this version has been asked');
+    expect(world.log.total, lessThanOrEqualTo(12));
   });
 
   test('(d) changing the profile photo, with its live echo', () async {

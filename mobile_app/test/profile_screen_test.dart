@@ -145,7 +145,12 @@ void main() {
     await open(tester, push: FakePushMessaging());
     await tester.pumpAndSettle();
     expect(find.text('مفعّلة'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.externalLink), findsOneWidget, reason: 'it opens the phone\'s settings');
+    // (The rating row under it leaves the app too, and has the same glyph.)
+    expect(
+        find.descendant(
+            of: find.byKey(const Key('profile-phone-notifications')), matching: find.byIcon(LucideIcons.externalLink)),
+        findsOneWidget,
+        reason: 'it opens the phone\'s settings');
     await tester.tap(find.byKey(const Key('profile-phone-notifications')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -211,7 +216,12 @@ void main() {
     await open(tester, supervised: false);
     await tester.pumpAndSettle();
     expect(find.text('المساعدة والدعم'), findsNothing);
-    expect(find.text('التطبيق'), findsNothing, reason: 'an empty group is not drawn');
+    expect(find.text('إشعارات الهاتف'), findsNothing);
+    // The group is never empty now: «قيّم التطبيق» is always there, alone here.
+    expect(find.text('التطبيق'), findsOneWidget);
+    expect(find.byKey(const Key('profile-rate')), findsOneWidget);
+    expect(find.byKey(const Key('profile-help')), findsNothing);
+    expect(find.byKey(const Key('profile-phone-notifications')), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
     await open(tester, supervised: false, support: [

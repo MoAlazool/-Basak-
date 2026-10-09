@@ -378,6 +378,9 @@ class IdentityCard extends StatelessWidget {
   /// A new photo is on its way: a spinner over the photo, the control waits.
   final bool busy;
 
+  /// At the end of the card: the supervisor's `StatusChip`.
+  final Widget? trailing;
+
   const IdentityCard({
     super.key,
     required this.name,
@@ -386,6 +389,7 @@ class IdentityCard extends StatelessWidget {
     this.onChangePhoto,
     this.photoKey,
     this.busy = false,
+    this.trailing,
   });
 
   static const double _photo = 64;
@@ -480,6 +484,7 @@ class IdentityCard extends StatelessWidget {
               ),
             ),
           ),
+          if (trailing != null) ...[const SizedBox(width: BasakSpace.s10), trailing!],
         ],
       ),
     );

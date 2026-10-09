@@ -41,6 +41,7 @@ abstract final class LucideIcons {
   static const IconData chevronUp = IconData(57456, fontFamily: 'Lucide');
   static const IconData circle = IconData(57462, fontFamily: 'Lucide');
   static const IconData circleCheck = IconData(57894, fontFamily: 'Lucide');
+  static const IconData circleHelp = IconData(57474, fontFamily: 'Lucide');
   static const IconData circleX = IconData(57476, fontFamily: 'Lucide');
   static const IconData clock3 = IconData(57936, fontFamily: 'Lucide');
   static const IconData clockAlert = IconData(58922, fontFamily: 'Lucide');
@@ -51,6 +52,7 @@ abstract final class LucideIcons {
   static const IconData eye = IconData(57530, fontFamily: 'Lucide');
   static const IconData eyeOff = IconData(57531, fontFamily: 'Lucide');
   static const IconData fileCheck2 = IconData(57538, fontFamily: 'Lucide');
+  static const IconData fingerprint = IconData(58059, fontFamily: 'Lucide');
   static const IconData flashlight = IconData(57555, fontFamily: 'Lucide');
   static const IconData graduationCap = IconData(57908, fontFamily: 'Lucide');
   static const IconData hash = IconData(57583, fontFamily: 'Lucide');
@@ -81,6 +83,7 @@ abstract final class LucideIcons {
   static const IconData refreshCw = IconData(57669, fontFamily: 'Lucide');
   static const IconData route = IconData(58686, fontFamily: 'Lucide');
   static const IconData scan = IconData(57943, fontFamily: 'Lucide');
+  static const IconData scanFace = IconData(58225, fontFamily: 'Lucide');
   static const IconData scanLine = IconData(57944, fontFamily: 'Lucide');
   static const IconData school = IconData(58339, fontFamily: 'Lucide');
   static const IconData search = IconData(57681, fontFamily: 'Lucide');

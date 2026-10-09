@@ -162,7 +162,8 @@ void main() {
       expect(find.byTooltip('إعدادات الإشعارات'), findsNothing);
       expect(find.byType(Switch), findsNothing);
       expect(find.text('تأخير الباص'), findsOneWidget);
-      expect(find.text('تذكير تأكيد الرحلة'), findsOneWidget, reason: 'the reminder days are still shown');
+      expect(find.text('تذكير تأكيد الرحلة'), findsNothing, reason: 'the reminder-days card is not built');
+      expect(find.byType(TextField), findsNothing, reason: 'no search either');
       expect(find.textContaining('أوقفت التذكيرات'), findsNothing);
       expect(repo.preferenceRequests, 0, reason: 'the switches are neither read nor written for a student');
     });
@@ -176,11 +177,12 @@ void main() {
 
       expect(find.text('تم اعتماد اشتراكك'), findsOneWidget);
       expect(find.text('تأخير الباص'), findsOneWidget);
-      expect(find.text('الإشعارات متوقفة من إعدادات الهاتف.'), findsOneWidget);
-      expect(find.text('فتح الإعدادات'), findsOneWidget);
+      expect(find.text('الإشعارات متوقفة'), findsOneWidget);
+      expect(find.text('فعّلها من إعدادات الهاتف لتصلك التنبيهات.'), findsOneWidget);
+      expect(find.text('فتح إعدادات الهاتف'), findsOneWidget);
 
       // The line leads to the phone's settings: no sheet of the app, no prompt.
-      await tester.tap(find.text('فتح الإعدادات'));
+      await tester.tap(find.text('فتح إعدادات الهاتف'));
       await tester.pumpAndSettle();
       expect(push.prompts, 0);
       expect(find.text('تفعيل الإشعارات'), findsNothing);
@@ -192,13 +194,14 @@ void main() {
       await tester.pumpWidget(app(const NotificationsScreen(), repo: FakeNotificationsRepo(), push: push));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.textContaining('فعّل الإشعارات لتصلك التنبيهات'));
+      expect(find.text('الإشعارات غير مفعّلة على هذا الهاتف'), findsOneWidget);
+      await tester.tap(find.text('تفعيل الإشعارات'));
       await tester.pumpAndSettle();
 
       expect(push.prompts, 1, reason: 'the system prompt, at once');
       expect(find.text('ليس الآن'), findsNothing, reason: 'no explanation sheet in between');
       expect(find.textContaining('تختار ما يصلك'), findsNothing);
-      expect(find.textContaining('فعّل الإشعارات لتصلك التنبيهات'), findsNothing, reason: 'granted: the line goes');
+      expect(find.byKey(const Key('push-off-card')), findsNothing, reason: 'granted: the card goes');
     });
 
     testWidgets('after sign-in the app says why first, then the phone asks its one question, once',

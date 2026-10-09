@@ -4,11 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 import 'package:basak_mobile/core/media/signed_url_cache.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
+import 'package:basak_mobile/features/app_update/app_update_repository.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
 import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
 import 'package:basak_mobile/features/notifications/data/notification_feed.dart';
 import 'package:basak_mobile/features/notifications/data/notifications_repository.dart';
+import 'package:basak_mobile/features/rating/rating.dart';
 import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
 import 'package:basak_mobile/features/student/invites/invites.dart';
 import 'package:basak_mobile/features/student/profile/data/profile_repository.dart';
@@ -36,6 +38,8 @@ class StudentWorld {
   late final profile = FakeProfileServer(log, pass);
   late final rides = FakeRides(log);
   late final invites = FakeInvites(log, server);
+  late final versions = FakeAppVersions(log);
+  late final boarded = FakeBoardedRides(log);
   final inbox = FakeNotificationsRepo();
 
   StudentWorld() {
@@ -56,6 +60,9 @@ class StudentWorld {
         dailyRideRepoProvider.overrideWithValue(rides),
         invitesGatewayProvider.overrideWithValue(invites),
         notificationsRepoProvider.overrideWithValue(inbox),
+        installedVersionProvider.overrideWith((ref) => installedVersion),
+        appUpdateRepoProvider.overrideWithValue(AppUpdateRepository(gateway: versions)),
+        ratingRepoProvider.overrideWithValue(RatingRepository(gateway: boarded)),
       ];
 
   /// A running app: its providers, kept alive like the screens keep them.

@@ -8,6 +8,8 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>يستخدم باصك الكاميرا لمسح بطاقة الطالب ضوئياً والتحقق من بيانات الاشتراك.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>يستخدم باصك Face ID لتسجيل دخولك بسرعة بدلاً من كتابة كلمة المرور، عندما تفعّل ذلك.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>لحفظ رقم مشرف الحافلة في جهات الاتصال عندما تطلب ذلك.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

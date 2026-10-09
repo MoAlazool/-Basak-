@@ -133,6 +133,13 @@ abstract final class BasakRecapColors {
   static const inkRaised = BasakPalette.inkRaised;
   static const inkDim = Color(0xFF2A566C);
   static const onInkSoft = Color(0xFFB7C8D2);
+
+  // The posters' second tone and resting dots, per ground.
+  static const onTealSoft = Color(0xFFD3E8F3);
+  static const tealDim = Color(0xFF1787B3);
+  static const onMintSoft = Color(0xFF1B5343);
+  static const onSkySoft = Color(0xFF2F5468);
+  static const lightDim = Color(0xFFE1E9EE);
 }
 
 /// The fifteen text roles. Sizes and line heights are the canvas's; Flutter's

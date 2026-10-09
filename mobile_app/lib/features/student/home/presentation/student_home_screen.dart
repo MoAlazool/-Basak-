@@ -22,6 +22,10 @@ import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../invites/invites.dart';
+import '../../recap/recap_copy.dart';
+import '../../recap/recap_repository.dart';
+import '../../recap/recap_screen.dart';
+import '../../../rating/rating.dart';
 import '../../subscription/data/subscription_repository.dart';
 import '../../subscription/models/subscription_model.dart';
 import '../../subscription/presentation/purchase_flow.dart' show formatMoney;
@@ -368,6 +372,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final name = (user?.userMetadata?['full_name'] as String?)?.trim();
     final photo = studentPhoto(profileAsync.valueOrNull?['profile_image_url'] as String?);
     final invites = ref.watch(myInvitesProvider).valueOrNull ?? const <CompanyInvite>[];
+    // The term's recap: only at the end of a term, and only when there is one.
+    final recap = ref.watch(termRecapProvider).valueOrNull;
     final colors = context.colors;
 
     final List<Widget> children;
@@ -393,6 +399,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             ),
           ],
         ),
+        if (recap != null)
+          RecapBanner(
+            key: const Key('recap-banner'),
+            title: RecapCopy.bannerTitle,
+            message: recap.bannerLine,
+            onTap: () => RecapScreen.open(context, recap),
+          ),
         if (invites.isNotEmpty) const InvitesCard(),
         if (sub != null)
           _pass(sub)
@@ -434,11 +447,16 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         systemNavigationBarColor: colors.ground,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
-      child: BasakPage(
-        onRefresh: _handleRefresh,
-        // Clear of the floating tab bar, whose height the shell reports here.
-        bottomInset: MediaQuery.paddingOf(context).bottom + BasakSpace.s24,
-        children: children,
+      // The store rating is asked from here, at a calm moment, once Home has
+      // loaded with a running subscription.
+      child: RatingMoment(
+        ready: subAsync.valueOrNull?.isActive == true,
+        child: BasakPage(
+          onRefresh: _handleRefresh,
+          // Clear of the floating tab bar, whose height the shell reports here.
+          bottomInset: MediaQuery.paddingOf(context).bottom + BasakSpace.s24,
+          children: children,
+        ),
       ),
     );
   }

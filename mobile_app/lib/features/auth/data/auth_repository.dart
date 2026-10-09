@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/supabase_config.dart';
 import '../../../core/constants/supabase_tables.dart';
 import '../../../core/network/perf_trace.dart';
 import '../../../core/network/supabase_service.dart';
@@ -329,6 +330,48 @@ class AuthRepository {
 
   Future<void> signOut() async {
     await _client.auth.signOut();
+  }
+
+  /// The signed-in session's refresh token: what signing out puts aside when
+  /// signing in with Face ID or a fingerprint is switched on.
+  String? get currentRefreshToken {
+    try {
+      return _client.auth.currentSession?.refreshToken;
+    } catch (_) {
+      return null; // Supabase not started (tests, previews)
+    }
+  }
+
+  /// Signs out of this phone only: the session stays alive on the server, to
+  /// be picked up again by [restoreSession].
+  Future<void> signOutKeepingSession() => SupabaseService.signOutOnThisPhone();
+
+  /// Signs in with a refresh token put aside by an earlier sign-out. Throws
+  /// what the server answers when the token is no longer good.
+  Future<({User user, UserRole role})> restoreSession(String refreshToken) async {
+    final response = await _client.auth.setSession(refreshToken);
+    final user = response.user ?? response.session?.user ?? _client.auth.currentUser;
+    if (user == null) throw const AuthException('The session could not be restored.');
+    return (user: user, role: await detectUserRole(user.id));
+  }
+
+  /// Ends on the server a session this phone no longer wants («حساب آخر»),
+  /// through a client of its own: nobody is signed in here meanwhile.
+  Future<void> revokeSession(String refreshToken) async {
+    final auth = GoTrueClient(
+      url: '${SupabaseConfig.supabaseUrl}/auth/v1',
+      headers: {
+        'apikey': SupabaseConfig.supabaseAnonKey,
+        'Authorization': 'Bearer ${SupabaseConfig.supabaseAnonKey}',
+      },
+      autoRefreshToken: false,
+    );
+    try {
+      await auth.setSession(refreshToken).timeout(const Duration(seconds: 10));
+      await auth.signOut().timeout(const Duration(seconds: 10));
+    } finally {
+      auth.dispose();
+    }
   }
 
   /// Forgot password, step 1 (no sign-in): asks the student's bus company to

@@ -300,7 +300,8 @@ class BasakIconButton extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: onCard ? null : BasakShadow.card,
               ),
-              child: Icon(icon, size: 20, color: colors.ink),
+              // Without a tap it is drawn quieter: the next month, on the current one.
+              child: Icon(icon, size: 20, color: onPressed == null ? colors.disabled : colors.ink),
             ),
             if (count > 0)
               PositionedDirectional(

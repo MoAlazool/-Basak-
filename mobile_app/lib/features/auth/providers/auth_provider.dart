@@ -8,6 +8,7 @@ import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
 import '../../../core/storage/snapshot_store.dart';
 import '../../../core/sync/own_changes.dart';
+import '../biometrics/biometric_vault.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
 import '../../notifications/push/push_providers.dart';
@@ -32,6 +33,9 @@ final studentProfileSummaryProvider =
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository();
 });
+
+/// What signing in with Face ID or a fingerprint keeps on the phone.
+final biometricVaultProvider = Provider<BiometricVault>((ref) => BiometricVault());
 
 class AuthState {
   final User? user;
@@ -81,7 +85,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Puts together the signed-in student's pass (see [_refreshOfflineStudentPass]).
   final Future<void> Function()? refreshStudentPass;
 
-  AuthNotifier(this._repo, {this.beforeSignOut, this.refreshStudentPass})
+  /// What signing in with Face ID or a fingerprint keeps (null: the feature
+  /// is not there, as in most tests).
+  final BiometricVault? biometrics;
+
+  AuthNotifier(this._repo, {this.beforeSignOut, this.refreshStudentPass, this.biometrics})
       : super(const AuthState(isInitialLoading: true)) {
     _init();
     _watchSession();
@@ -113,6 +121,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final current = SupabaseService.currentUser;
       if (current != null) {
+        // Signed in: a token put aside by a sign-out that never finished is
+        // not the session's any more.
+        unawaited(_signedInFor(current.id));
         UserRole role;
         // Known from last time: the app opens at once, with or without a
         // connection, and the role is checked with the server behind it.
@@ -199,7 +210,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         password: password,
       );
       final user = SupabaseService.currentUser;
-      if (user != null) await OfflineCache.saveSession(user, role.name);
+      if (user != null) {
+        await OfflineCache.saveSession(user, role.name);
+        // A sign-in stored for anyone else on this phone goes with theirs.
+        await _signedInFor(user.id);
+      }
       if (role == UserRole.student) unawaited(_refreshOfflineStudentPass());
       state = AuthState(
         user: user,
@@ -213,10 +228,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<void> _signedInFor(String userId) async {
+    try {
+      await biometrics?.signedIn(userId);
+    } catch (_) {
+      // The keystore could not be reached: signing in goes on.
+    }
+  }
+
+  /// Signs in with the refresh token a sign-out put aside, released by the
+  /// phone's biometric check (see BiometricSignIn). Throws what the server
+  /// answers when the token is no longer good; the caller then drops it.
+  Future<void> signInWithStoredSession(String refreshToken) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    try {
+      final restored = await _repo.restoreSession(refreshToken);
+      await OfflineCache.saveSession(restored.user, restored.role.name);
+      if (restored.role == UserRole.student) unawaited(_refreshOfflineStudentPass());
+      state = AuthState(user: restored.user, role: restored.role, isLoading: false, isInitialLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      rethrow;
+    }
+  }
+
   Future<void> deleteStudentAccount() async {
     state = state.copyWith(isLoading: true);
     try {
       await requireOnline(_repo.deleteStudentAccount);
+      // A deleted account has nothing to sign in to again.
+      await biometrics?.disable();
       await VoteReminders.cancelAll();
       await _clearAccountData();
       state = const AuthState();
@@ -231,8 +272,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Best effort and bounded: signing out never waits for the network.
       await beforeSignOut?.call().timeout(const Duration(seconds: 5));
     } catch (_) {}
+    // With Face ID / fingerprint sign-in switched on, the session's refresh
+    // token is put aside and the session is left alive on the server; this
+    // phone forgets it all the same (biometric_vault.dart says what that costs).
+    var kept = false;
+    final userId = state.user?.id;
+    if (biometrics != null && userId != null) {
+      try {
+        kept = await biometrics!.hold(userId, _repo.currentRefreshToken);
+      } catch (_) {}
+    }
     try {
-      await _repo.signOut();
+      kept ? await _repo.signOutKeepingSession() : await _repo.signOut();
     } catch (error) {
       // Offline: the local session is already removed; only the server-side
       // revoke failed, so the student is still signed out on this device.
@@ -270,6 +321,7 @@ final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
   // After signing out this phone must get nothing meant for the account.
   return AuthNotifier(repo,
+      biometrics: ref.watch(biometricVaultProvider),
       beforeSignOut: () => ref.read(pushControllerProvider).detach(),
       refreshStudentPass: () => ref.read(studentQrProvider.future));
 });

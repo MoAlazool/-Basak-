@@ -6,10 +6,12 @@ import '../../../../core/network/network_errors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/ui/ui.dart';
 import '../../../../core/widgets/skeleton.dart';
+import '../../../auth/biometrics/presentation/biometric_setting_row.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../notifications/push/notification_platform.dart';
 import '../../../notifications/push/push_messaging.dart';
 import '../../../notifications/push/push_providers.dart';
+import '../../../rating/rating.dart';
 import '../../home/presentation/student_home_screen.dart';
 import 'help_sheet.dart';
 import 'profile_editor.dart';
@@ -49,14 +51,14 @@ class ProfileScreen extends ConsumerWidget {
     }
   }
 
-  /// «التطبيق»: help, then the phone's own notification setting. One more row
-  /// belongs between the two: signing in with Face ID or a fingerprint (a
-  /// `SettingRow` with a switch as its `trailing`), added with biometrics.
+  /// «التطبيق»: help, signing in with Face ID or a fingerprint (on a phone
+  /// that has one enrolled), then the phone's own notification setting.
   List<SettingRow> _appRows(BuildContext context, WidgetRef ref) {
     final journey = ref.watch(helpJourneyProvider);
     final support = ref.watch(helpSupportProvider);
     final pushReady = ref.watch(pushReadyProvider).valueOrNull == true;
     final permission = pushReady ? ref.watch(pushPermissionProvider).valueOrNull : null;
+    final biometric = biometricSettingRow(context, ref);
     return [
       // Nobody to turn to yet (no subscription, no channels): no row.
       if (journey.isNotEmpty || support.isNotEmpty)
@@ -65,6 +67,7 @@ class ProfileScreen extends ConsumerWidget {
           label: HelpSheet.title,
           onTap: () => HelpSheet.show(context, journey: journey, support: support),
         ),
+      if (biometric != null) biometric,
       if (permission != null)
         SettingRow(
           key: const Key('profile-phone-notifications'),
@@ -73,6 +76,13 @@ class ProfileScreen extends ConsumerWidget {
           external: true,
           onTap: NotificationPlatform.openSystemSettings,
         ),
+      // Always there: the store's page for the app, asked for by the student.
+      SettingRow(
+        key: const Key('profile-rate'),
+        label: 'قيّم التطبيق',
+        external: true,
+        onTap: () => rateFromSettings(context, ref),
+      ),
     ];
   }
 
