@@ -18,7 +18,7 @@ trip, station and university, and who has not confirmed yet), and
 `e2e_notifications.sql` checks who receives each notification (company, line,
 trip), reading, the dashboard counts, access, and supervisor photos.
 `e2e_redesign_foundations.sql` covers what the app redesign added
-(migrations 20261104000001 to 20261108000001): the student's specialisation, a
+(migrations 20261104000002 to 20261108000001): the student's specialisation, a
 line's bus capacity, the app version settings, the term recap and the boarded
 rides count, each as the student, the supervisor, the company admin, the
 platform admin and a signed-out client.

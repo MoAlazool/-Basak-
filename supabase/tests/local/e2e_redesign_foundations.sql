@@ -1,5 +1,5 @@
 -- End-to-end test of the redesign's backend foundations:
---   20261104000001_student_specialisation   (A)
+--   20261104000002_student_specialisation   (A)
 --   20261105000001_line_bus_capacity        (B)
 --   20261106000001_app_versions             (C)
 --   20261107000001_term_recap               (D)

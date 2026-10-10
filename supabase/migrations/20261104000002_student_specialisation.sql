@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Migration: 20261104000001_student_specialisation.sql
+-- Migration: 20261104000002_student_specialisation.sql
 -- Run AFTER 20261103000001. Safe to re-run. Additive: one nullable column, one
 -- new function, and one more key in two dashboard answers.
 --

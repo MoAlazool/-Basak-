@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- Migration: 20261105000001_line_bus_capacity.sql
--- Run AFTER 20261104000001. Safe to re-run. Additive: one nullable column and
+-- Run AFTER 20261104000002. Safe to re-run. Additive: one nullable column and
 -- two new functions. save_line and get_supervisor_dashboard are not touched.
 --
 -- How many riders one bus of a line takes, set by the company in the dashboard
@@ -11,7 +11,7 @@
 -- ==============================================================================
 BEGIN;
 
--- As in 20261104000001: never queue the readers of lines behind this migration.
+-- As in 20261104000002: never queue the readers of lines behind this migration.
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.lines ADD COLUMN IF NOT EXISTS bus_capacity integer;

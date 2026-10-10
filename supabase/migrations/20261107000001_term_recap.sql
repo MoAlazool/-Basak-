@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- Migration: 20261107000001_term_recap.sql
--- Run AFTER 20261104000001 (it reads students.specialisation). Safe to re-run.
+-- Run AFTER 20261104000002 (it reads students.specialisation). Safe to re-run.
 -- Additive: one new function, nothing else.
 --
 -- get_my_term_recap(): everything the student's end-of-term recap is built
