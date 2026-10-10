@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -73,6 +75,22 @@ class _Repo extends AuthRepository {
 
   @override
   Future<void> deleteStudentAccount() async => log.add('delete');
+
+  @override
+  Future<void> revokeSession(String refreshToken) async => log.add('revoke $refreshToken');
+
+  /// Who a password sign-in signs in (null: it is refused).
+  User? passwordUser;
+
+  @override
+  User? get signedInUser => passwordUser;
+
+  @override
+  Future<UserRole> signIn({required String identifier, required String password}) async {
+    if (passwordUser == null) throw const AuthException('Invalid login credentials');
+    log.add('password ${passwordUser!.id}');
+    return UserRole.student;
+  }
 }
 
 class _SignedIn extends AuthNotifier {
@@ -161,7 +179,7 @@ void main() {
       final signIn = BiometricSignIn(device: FakeBiometricDevice(), vault: fake.vault, restore: (_) async {});
       expect(await signIn.enable(saraDraft), BiometricCheck.passed);
 
-      final account = (await fake.vault.account())!;
+      final account = (await fake.vault.account('student-1'))!;
       expect(account.firstName, 'سارة');
       expect(account.maskedPhone, '010 •••• 6789');
       expect(account.kind, BiometricKind.faceId);
@@ -189,12 +207,13 @@ void main() {
       await storeSignIn(fake);
       fake.store.reads.clear();
 
-      final refused = await fake.vault.unlock(FakeBiometricDevice(checks: [BiometricCheck.notRecognised]));
+      final refused =
+          await fake.vault.unlock(FakeBiometricDevice(checks: [BiometricCheck.notRecognised]), 'student-1');
       expect(refused.token, isNull);
-      expect(await fake.vault.hasToken(), isTrue);
-      expect(fake.store.readsOf(BiometricVault.tokenKey), 0, reason: 'not even read');
+      expect(await fake.vault.hasToken('student-1'), isTrue);
+      expect(fake.store.readsOf(BiometricVault.tokenKeyOf('student-1')), 0, reason: 'not even read');
 
-      final passed = await fake.vault.unlock(FakeBiometricDevice());
+      final passed = await fake.vault.unlock(FakeBiometricDevice(), 'student-1');
       expect(passed.token, 'refresh-1');
     });
 
@@ -202,12 +221,13 @@ void main() {
       final fake = FakeVault();
       await storeSignIn(fake);
       fake.install.there = false; // reinstalled: the keychain survived, the app's folder did not
-      expect(await fake.vault.account(), isNull);
+      expect(await fake.vault.account('student-1'), isNull);
+      expect(await fake.vault.accounts(), isEmpty);
       expect(fake.enabled, isFalse);
       expect(fake.token, isNull);
     });
 
-    test('another account signing in with its password drops the one stored', () async {
+    test('signing in again keeps it switched on; another account signing in touches nothing of it', () async {
       final fake = FakeVault();
       await storeSignIn(fake);
       await fake.vault.signedIn('student-1');
@@ -216,8 +236,250 @@ void main() {
 
       await fake.vault.hold('student-1', 'refresh-2');
       await fake.vault.signedIn('student-2');
-      expect(fake.enabled, isFalse);
-      expect(fake.token, isNull);
+      expect(fake.enabledFor('student-1'), isTrue, reason: 'someone else signing in is not a reason to forget');
+      expect(fake.tokenOf('student-1'), 'refresh-2', reason: 'the token of its own sign-out, untouched');
+      expect(fake.enabledFor('student-2'), isFalse, reason: 'signing in switches nothing on');
+    });
+  });
+
+  group('several accounts on one phone', () {
+    BiometricSignIn flow(FakeVault fake, {FakeBiometricDevice? device, List<String>? revoked, Object? refuse}) =>
+        BiometricSignIn(
+          device: device ?? FakeBiometricDevice(),
+          vault: fake.vault,
+          restore: (token) async {
+            if (refuse != null) throw refuse;
+          },
+          revoke: (token) async => revoked?.add(token),
+        );
+
+    test('each has its own entry and its own token, under its own keys, and an index of who was last', () async {
+      final fake = FakeVault();
+      await storeSignIn(fake);
+      await storeSignIn(fake, draft: omarDraft, token: 'refresh-omar');
+
+      expect(fake.index, ['student-2', 'student-1'], reason: 'the most recently used first');
+      expect(fake.store.values.keys, unorderedEquals([
+        BiometricVault.indexKey,
+        BiometricVault.accountKeyOf('student-1'), BiometricVault.tokenKeyOf('student-1'),
+        BiometricVault.accountKeyOf('student-2'), BiometricVault.tokenKeyOf('student-2'),
+      ]));
+      expect(fake.tokenOf('student-1'), 'refresh-1');
+      expect(fake.tokenOf('student-2'), 'refresh-omar');
+      expect((await fake.vault.accounts()).map((a) => a.firstName), ['عمر', 'سارة']);
+      // Nothing but what the screens show and the tokens: no number in full.
+      expect(fake.store.values.values.join(), isNot(contains('01012346789')));
+
+      final entry = await flow(fake).entry();
+      expect(entry.saved.map((s) => s.account.userId), ['student-2', 'student-1']);
+      expect(entry.stored!.account.userId, 'student-2');
+    });
+
+    test('the single entry of an earlier version is moved over, and still signs in', () async {
+      final fake = FakeVault()..install.there = true;
+      // Exactly what the earlier version wrote: one account, one token.
+      final legacy = jsonEncode(const BiometricAccount(
+        userId: 'student-1', role: 'student', firstName: 'سارة', maskedPhone: '010 •••• 6789',
+        kind: BiometricKind.faceId, enrolled: 'face', mark: 'state-1',
+      ).toJson());
+      fake.store.values[BiometricVault.legacyAccountKey] = legacy;
+      fake.store.values[BiometricVault.legacyTokenKey] = 'refresh-old';
+
+      final entry = await flow(fake).entry();
+      expect(entry.stored!.account.firstName, 'سارة');
+      expect(fake.index, ['student-1']);
+      expect(fake.tokenOf('student-1'), 'refresh-old');
+      expect(fake.store.values.containsKey(BiometricVault.legacyAccountKey), isFalse);
+      expect(fake.store.values.containsKey(BiometricVault.legacyTokenKey), isFalse);
+      expect(await flow(fake).isEnabledFor('student-1'), isTrue);
+      expect(await flow(fake).signIn(), BiometricSignInResult.signedIn);
+
+      // Signed in when the app was updated: the entry alone moves, with no token.
+      final signedIn = FakeVault()..install.there = true;
+      signedIn.store.values[BiometricVault.legacyAccountKey] = legacy;
+      expect(await flow(signedIn).isEnabledFor('student-1'), isTrue);
+      expect(signedIn.tokenOf('student-1'), isNull);
+      // Something unreadable is dropped, not kept in the way.
+      final broken = FakeVault()..install.there = true;
+      broken.store.values[BiometricVault.legacyAccountKey] = 'not json';
+      expect(await broken.vault.accounts(), isEmpty);
+      expect(broken.store.values, isEmpty);
+    });
+
+    test('five at most: a sixth sends the least recently used away, and ends its session', () async {
+      final fake = FakeVault();
+      final revoked = <String>[];
+      for (var i = 1; i <= BiometricVault.accountLimit; i++) {
+        await storeSignIn(fake,
+            draft: BiometricAccountDraft(userId: 'user-$i', role: 'student', fullName: 'طالب $i', identifier: '0101111000$i'),
+            token: 'refresh-$i');
+      }
+      expect(fake.index, hasLength(BiometricVault.accountLimit));
+      // A sixth account switches it on while signed in.
+      expect(await flow(fake, revoked: revoked).enable(omarDraft), BiometricCheck.passed);
+      expect(fake.index, ['student-2', 'user-5', 'user-4', 'user-3', 'user-2']);
+      expect(fake.enabledFor('user-1'), isFalse);
+      expect(fake.tokenOf('user-1'), isNull);
+      expect(revoked, ['refresh-1']);
+    });
+
+    test('switching it off, a refused token and a deleted account each remove one entry only', () async {
+      final fake = FakeVault();
+      await storeSignIn(fake);
+      await storeSignIn(fake, draft: omarDraft, token: 'refresh-omar');
+      await storeSignIn(fake, draft: supervisorDraft, offer: FakeBiometricDevice.faceId, token: 'refresh-sup');
+
+      await flow(fake).disable('supervisor-1');
+      expect(fake.index, ['student-2', 'student-1']);
+      expect(fake.tokenOf('supervisor-1'), isNull);
+
+      final refused = flow(fake, refuse: const AuthException('Invalid Refresh Token', statusCode: '400'));
+      expect(await refused.signIn(userId: 'student-1'), BiometricSignInResult.expired);
+      expect(fake.index, ['student-2']);
+      expect(fake.tokenOf('student-2'), 'refresh-omar');
+
+      // No connection is not a refusal: nothing goes.
+      final offline = flow(fake, refuse: Exception('SocketException: Failed host lookup'));
+      expect(await offline.signIn(userId: 'student-2'), BiometricSignInResult.offline);
+      expect(fake.tokenOf('student-2'), 'refresh-omar');
+    });
+
+    test('a face added since one account switched it on drops that account\'s entry, not the newer one\'s',
+        () async {
+      final fake = FakeVault();
+      final revoked = <String>[];
+      await storeSignIn(fake); // switched on under state-1
+      const now = BiometricOffer(kind: BiometricKind.faceId, enrolled: 'face', mark: 'state-2');
+      await storeSignIn(fake, draft: omarDraft, offer: now, token: 'refresh-omar');
+
+      final entry = await flow(fake, device: FakeBiometricDevice(current: now), revoked: revoked).entry();
+      expect(entry.saved.map((s) => s.account.userId), ['student-2']);
+      expect(entry.fallback, isNull, reason: 'there is still a sign-in to offer');
+      expect(fake.enabledFor('student-1'), isFalse);
+      expect(revoked, ['refresh-1']);
+      expect(fake.tokenOf('student-2'), 'refresh-omar');
+    });
+
+    test('whose sign-in the form\'s button uses', () async {
+      final fake = FakeVault();
+      await storeSignIn(fake);
+      final one = (await flow(fake).entry()).saved;
+      expect(BiometricSignIn.pick(one, '')!.account.userId, 'student-1', reason: 'the only one');
+      expect(BiometricSignIn.pick(const [], '010'), isNull);
+
+      await storeSignIn(fake, draft: omarDraft, token: 'refresh-omar');
+      final two = (await flow(fake).entry()).saved;
+      expect(BiometricSignIn.pick(two, ''), isNull, reason: 'several and nothing typed: the person is asked');
+      expect(BiometricSignIn.pick(two, '   '), isNull);
+      expect(BiometricSignIn.pick(two, '01012346789')!.account.userId, 'student-1');
+      expect(BiometricSignIn.pick(two, '+20 101 234 6789')!.account.userId, 'student-1');
+      expect(BiometricSignIn.pick(two, '01155557777')!.account.userId, 'student-2');
+      expect(BiometricSignIn.pick(two, '01299990000')!.account.userId, 'student-2',
+          reason: 'someone else\'s number: the most recently used, as on the returning sign-in');
+    });
+
+    test('a token is released for the account asked for, and for no other', () async {
+      final fake = FakeVault();
+      await storeSignIn(fake);
+      await storeSignIn(fake, draft: omarDraft, token: 'refresh-omar');
+      fake.store.reads.clear();
+      final unlocked = await fake.vault.unlock(FakeBiometricDevice(), 'student-1');
+      expect(unlocked.token, 'refresh-1');
+      expect(fake.store.readsOf(BiometricVault.tokenKeyOf('student-2')), 0);
+    });
+  });
+
+  group('a password sign-in on a phone with stored sign-ins', () {
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues({});
+      OfflineCache.debugUserId = null;
+      OfflineCache.resetSession();
+    });
+
+    test('to the account that has it on: still on, its waiting session ended, and re-armed at the next sign-out',
+        () async {
+      final fake = FakeVault();
+      await storeSignIn(fake); // switched on, then signed out: refresh-1 is waiting
+      final repo = _Repo()..passwordUser = _user;
+      final auth = AuthNotifier(repo, biometrics: fake.vault);
+      addTearDown(auth.dispose);
+
+      await auth.signIn(identifier: '01012346789', password: 'secret');
+      expect(fake.enabledFor('student-1'), isTrue, reason: 'the account screen shows it on');
+      expect(await BiometricSignIn(device: FakeBiometricDevice(), vault: fake.vault, restore: (_) async {})
+          .offerFor('student-1'), isNull, reason: 'and nobody is asked again');
+      expect(fake.tokenOf('student-1'), isNull, reason: 'signed in: the session is Supabase\'s to keep');
+      expect(repo.log, ['password student-1', 'revoke refresh-1'],
+          reason: 'the session of the earlier sign-out is not left alive behind the new one');
+
+      // The next sign-out puts the NEW session's token aside.
+      repo.refreshToken = 'refresh-after-password';
+      await auth.signOut();
+      expect(fake.tokenOf('student-1'), 'refresh-after-password');
+      expect(repo.log.last, 'signOut (this phone only)');
+    });
+
+    test('to a different account: the first one\'s entry and token are exactly as they were', () async {
+      final fake = FakeVault();
+      await storeSignIn(fake);
+      final before = Map.of(fake.store.values);
+      const omar = User(id: 'student-2', appMetadata: {}, userMetadata: {}, aud: '', createdAt: '');
+      final repo = _Repo()..passwordUser = omar;
+      final auth = AuthNotifier(repo, biometrics: fake.vault);
+      addTearDown(auth.dispose);
+
+      await auth.signIn(identifier: '01155557777', password: 'secret');
+      expect(fake.store.values, before);
+      expect(repo.log, ['password student-2'], reason: 'nothing of the first account is revoked');
+
+      // The second account has it off: its sign-out ends its own session, and
+      // still nothing of the first account moves.
+      repo.refreshToken = 'refresh-omar-live';
+      await auth.signOut();
+      expect(repo.log.last, 'signOut (session ended on the server)');
+      expect(fake.store.values, before);
+      expect(fake.tokenOf('student-1'), 'refresh-1');
+    });
+
+    test('two accounts with it on sign out one after the other: each token is its own session\'s', () async {
+      final fake = FakeVault();
+      final enable = BiometricSignIn(device: FakeBiometricDevice(), vault: fake.vault, restore: (_) async {});
+      const omar = User(id: 'student-2', appMetadata: {}, userMetadata: {}, aud: '', createdAt: '');
+
+      final repo = _Repo()..passwordUser = _user;
+      final auth = AuthNotifier(repo, biometrics: fake.vault);
+      addTearDown(auth.dispose);
+      await auth.signIn(identifier: 'a', password: 'p');
+      await enable.enable(saraDraft);
+      repo.refreshToken = 'sara-at-sign-out';
+      await auth.signOut();
+
+      repo.passwordUser = omar;
+      await auth.signIn(identifier: 'b', password: 'p');
+      await enable.enable(omarDraft);
+      repo.refreshToken = 'omar-at-sign-out';
+      await auth.signOut();
+
+      expect(fake.tokenOf('student-1'), 'sara-at-sign-out');
+      expect(fake.tokenOf('student-2'), 'omar-at-sign-out');
+      expect(fake.index, ['student-2', 'student-1']);
+      expect(repo.log.where((line) => line.startsWith('revoke')), isEmpty);
+      expect(repo.log.where((line) => line.startsWith('signOut')),
+          everyElement('signOut (this phone only)'), reason: 'both sessions are left alive, each for its own account');
+    });
+
+    test('deleting one account leaves the other\'s stored sign-in', () async {
+      final fake = FakeVault();
+      await storeSignIn(fake, draft: omarDraft, token: 'refresh-omar');
+      await BiometricSignIn(device: FakeBiometricDevice(), vault: fake.vault, restore: (_) async {})
+          .enable(saraDraft);
+      final repo = _Repo();
+      final auth = _SignedIn(repo, biometrics: fake.vault);
+      addTearDown(auth.dispose);
+      await auth.deleteStudentAccount();
+      expect(fake.enabledFor('student-1'), isFalse);
+      expect(fake.enabledFor('student-2'), isTrue);
+      expect(fake.tokenOf('student-2'), 'refresh-omar');
     });
   });
 
@@ -327,12 +589,6 @@ void main() {
       expect(fake.enabled, isFalse);
     });
 
-    test('«حساب آخر» forgets the stored sign-in and ends its session', () async {
-      await signIn(FakeBiometricDevice()).useAnotherAccount();
-      expect(fake.enabled, isFalse);
-      expect(fake.token, isNull);
-      expect(revoked, ['refresh-1']);
-    });
 
     test('supervisors are told who to turn to', () {
       expect(BiometricFallback.lockedOut.line(BiometricKind.fingerprint, supervisor: true),
@@ -434,7 +690,14 @@ void main() {
       expect(fake.token, 'refresh-live');
       expect(fake.enabled, isTrue);
       // …and what is kept says no more than the returning sign-in shows.
-      expect(fake.store.values.keys, unorderedEquals([BiometricVault.accountKey, BiometricVault.tokenKey, BiometricVault.offeredKey]));
+      expect(
+          fake.store.values.keys,
+          unorderedEquals([
+            BiometricVault.indexKey,
+            BiometricVault.accountKeyOf('student-1'),
+            BiometricVault.tokenKeyOf('student-1'),
+            BiometricVault.offeredKey,
+          ]));
     });
 
     test('with it off, or on for someone else: an ordinary sign-out, nothing kept', () async {

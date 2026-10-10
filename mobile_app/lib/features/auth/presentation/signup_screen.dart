@@ -9,6 +9,7 @@ import 'package:basak_mobile/core/ui/ui.dart';
 import '../../../core/media/picker_errors.dart';
 import '../../../core/widgets/photo_adjust_screen.dart';
 import '../biometrics/biometric_sign_in.dart';
+import '../biometrics/presentation/biometric_quick_sign_in.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 import 'college_picker_sheet.dart';
@@ -20,7 +21,19 @@ import 'university_picker_sheet.dart';
 /// progress. Each step checks its own fields before the next opens; the
 /// account is created once, at the end.
 class SignupScreen extends ConsumerStatefulWidget {
-  const SignupScreen({super.key, required this.onBack, this.pickPhoto});
+  const SignupScreen({
+    super.key,
+    required this.onBack,
+    this.pickPhoto,
+    this.saved = const [],
+    this.onBiometricFallback,
+  });
+
+  /// The sign-ins stored on this phone for Face ID or a fingerprint: with
+  /// any, the square button stands beside «التالي» on the first step, for
+  /// someone who already has an account here.
+  final List<StoredSignIn> saved;
+  final void Function(StoredSignIn stored, BiometricFallback reason)? onBiometricFallback;
 
   /// Leaves the sign-up from its first step.
   final VoidCallback onBack;
@@ -42,6 +55,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _confirmationFocus = FocusNode();
 
   int _step = 0;
+
+  /// The phone's check is up for an account already stored on it.
+  bool _biometricBusy = false;
   String? _universityId;
   String? _university;
   String? _college;
@@ -293,12 +309,37 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         title: step.title,
         subtitle: step.why,
         actions: [
-          BasakButton(
-            key: Key(last ? 'signup-submit' : 'signup-next'),
-            label: last ? 'إنشاء الحساب' : 'التالي',
-            loading: loading,
-            // The photo is the one step with nothing to correct: it waits.
-            onPressed: _step == 2 && _photo == null ? null : _next,
+          Row(
+            children: [
+              Expanded(
+                child: BasakButton(
+                  key: Key(last ? 'signup-submit' : 'signup-next'),
+                  label: last ? 'إنشاء الحساب' : 'التالي',
+                  loading: loading,
+                  // The photo is the one step with nothing to correct: it waits.
+                  onPressed: _biometricBusy || (_step == 2 && _photo == null) ? null : _next,
+                ),
+              ),
+              // An account already on this phone: straight in, from where
+              // the sign-up starts. The later steps are the new account's own.
+              if (_step == 0 && widget.saved.isNotEmpty) ...[
+                const SizedBox(width: BasakSpace.s8),
+                BiometricQuickButton(
+                  key: const Key('signup-biometric'),
+                  saved: widget.saved,
+                  typed: () => _phone.text,
+                  enabled: !loading,
+                  onBusy: (busy) => setState(() {
+                    _biometricBusy = busy;
+                    if (busy) _failure = null;
+                  }),
+                  onNotRecognised: (stored) =>
+                      setState(() => _failure = biometricNotRecognisedLine(supervisor: stored.account.isSupervisor)),
+                  onOffline: () => setState(() => _failure = 'تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مرة أخرى.'),
+                  onFallback: widget.onBiometricFallback,
+                ),
+              ],
+            ],
           ),
         ],
         children: [

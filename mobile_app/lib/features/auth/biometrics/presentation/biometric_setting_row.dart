@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:basak_mobile/core/ui/ui.dart';
 
+import '../../../../core/sync/session.dart';
 import '../biometric_device.dart';
 import '../biometric_sign_in.dart';
 import 'biometric_offer.dart';
@@ -86,7 +87,9 @@ class _ToggleState extends ConsumerState<_Toggle> {
       if (on) {
         await enableBiometricSignIn(context, ref, widget.kind);
       } else {
-        await ref.read(biometricSignInProvider).disable();
+        // Off for the account that is signed in; nobody else's is touched.
+        final userId = ref.read(sessionUserIdProvider);
+        if (userId != null) await ref.read(biometricSignInProvider).disable(userId);
         ref.invalidate(biometricEnabledProvider);
       }
     } finally {

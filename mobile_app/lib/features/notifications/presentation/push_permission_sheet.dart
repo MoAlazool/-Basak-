@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_icons.dart';
 import '../../../core/ui/ui.dart';
+import '../../auth/biometrics/presentation/biometric_offer.dart';
 import '../push/notification_platform.dart';
 import '../push/push_messaging.dart';
 import '../push/push_providers.dart';
@@ -36,6 +37,9 @@ Future<void> offerPushNotifications(BuildContext context, WidgetRef ref) async {
 /// alike): the same offer, made by the app itself. Never when notifications
 /// are already on or were refused.
 Future<void> offerPushNotificationsOnce(BuildContext context, WidgetRef ref) async {
+  // «دخول أسرع؟» is asked first, right after a sign-in; this one waits until
+  // it has been answered, so the two never land on each other.
+  if (!await afterBiometricOffer(context, ref)) return;
   final controller = ref.read(pushControllerProvider);
   final store = ref.read(deviceStoreProvider);
   if (!await controller.start() || await store.pushPrompted()) return;

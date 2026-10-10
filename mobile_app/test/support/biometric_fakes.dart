@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:basak_mobile/features/auth/biometrics/biometric_device.dart';
 import 'package:basak_mobile/features/auth/biometrics/biometric_sign_in.dart';
 import 'package:basak_mobile/features/auth/biometrics/biometric_vault.dart';
@@ -73,8 +75,17 @@ class FakeVault {
   final install = MemoryInstallMarker();
   late final vault = BiometricVault(store: store, install: install);
 
-  String? get token => store.values[BiometricVault.tokenKey];
-  bool get enabled => store.values.containsKey(BiometricVault.accountKey);
+  /// The token waiting for [userId] (by default the one account most tests have).
+  String? tokenOf(String userId) => store.values[BiometricVault.tokenKeyOf(userId)];
+  bool enabledFor(String userId) => store.values.containsKey(BiometricVault.accountKeyOf(userId));
+
+  /// The ids the sign-in is switched on for, the most recently used first.
+  List<String> get index => [
+        for (final id in jsonDecode(store.values[BiometricVault.indexKey] ?? '[]') as List) id as String,
+      ];
+
+  String? get token => index.isEmpty ? null : tokenOf(index.first);
+  bool get enabled => index.isNotEmpty;
 }
 
 const saraDraft = BiometricAccountDraft(
@@ -82,6 +93,13 @@ const saraDraft = BiometricAccountDraft(
   role: 'student',
   fullName: 'سارة أحمد محمود',
   identifier: '01012346789',
+);
+
+const omarDraft = BiometricAccountDraft(
+  userId: 'student-2',
+  role: 'student',
+  fullName: 'عمر خالد',
+  identifier: '01155557777',
 );
 
 const supervisorDraft = BiometricAccountDraft(

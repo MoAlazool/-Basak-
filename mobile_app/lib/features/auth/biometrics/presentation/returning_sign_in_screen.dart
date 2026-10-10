@@ -29,7 +29,7 @@ class ReturningSignInScreen extends ConsumerStatefulWidget {
   /// «الدخول بكلمة المرور».
   final VoidCallback onPassword;
 
-  /// «حساب آخر»: the stored sign-in is already gone when this is called.
+  /// «حساب آخر»: the ordinary sign-in. The stored sign-in stays.
   final VoidCallback onOtherAccount;
 
   /// The stored sign-in cannot be used (changed, expired, locked out): the
@@ -65,7 +65,7 @@ class _ReturningSignInScreenState extends ConsumerState<ReturningSignInScreen> {
       _busy = true;
       _offline = false;
     });
-    final result = await ref.read(biometricSignInProvider).signIn();
+    final result = await ref.read(biometricSignInProvider).signIn(userId: widget.stored.account.userId);
     if (!mounted) return;
     switch (result) {
       case BiometricSignInResult.signedIn:
@@ -92,11 +92,11 @@ class _ReturningSignInScreenState extends ConsumerState<ReturningSignInScreen> {
     }
   }
 
-  Future<void> _otherAccount() async {
+  /// «حساب آخر» only leads to the ordinary sign-in. Nothing stored is
+  /// touched: this account's faster sign-in is still there, from the form's
+  /// own button and the next time the app opens.
+  void _otherAccount() {
     if (_busy) return;
-    setState(() => _busy = true);
-    await ref.read(biometricSignInProvider).useAnotherAccount();
-    if (!mounted) return;
     widget.onOtherAccount();
   }
 

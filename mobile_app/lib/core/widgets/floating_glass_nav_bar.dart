@@ -45,7 +45,8 @@ abstract final class BasakGlass {
 /// the edges. What is behind it shows through, blurred and whitened enough
 /// that the labels read on the ground and on the ink of the card alike.
 ///
-/// The selected tab sits under an ink **lens**. Choosing another tab sends the
+/// The selected tab, icon and label, sits under an ink **lens** the size of
+/// the tab. Choosing another tab sends the
 /// lens there on a spring: it stretches while it travels, lands a little past
 /// and settles, and the icon it passes over brightens and grows as it would
 /// under a drop of glass. Dragging along the bar carries the lens with the
@@ -148,9 +149,11 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
   bool _scrubbing = false;
   int _scrubTab = 0;
 
-  static const double _lensWidth = 52;
-  static const double _lensHeight = 32;
-  static const double _labelLine = 16;
+  /// The lens covers the whole tab, icon and label, as one capsule: this far
+  /// in from the bar's top and bottom, and this far from its neighbours.
+  static const double _lensInset = 6;
+  static const double _lensGap = 2;
+  static const double _iconBox = 28;
 
   /// How far the lens stretches at full speed, and what it gives up in height.
   static const double _stretch = 18;
@@ -271,10 +274,10 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
   Widget _content(BuildContext context, BoxConstraints box, double t) {
     final items = widget.items;
     final slot = box.maxWidth / items.length;
-    // The icons sit at the top of a column that is centred in the bar; the
-    // label under them is what folds away.
-    final label = (1 - t) * (BasakSpace.s4 + MediaQuery.textScalerOf(context).scale(_labelLine));
-    final top = (box.maxHeight - _lensHeight - label) / 2;
+    // The lens is as tall as the bar allows and as wide as its tab, so the
+    // selected tab is wholly under it at either height of the bar.
+    final lensWidth = slot - _lensGap * 2;
+    final lensHeight = box.maxHeight - _lensInset * 2;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onHorizontalDragStart: (details) {
@@ -292,11 +295,11 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
             builder: (context, child) {
               // Longer and flatter the faster it goes; itself again at rest.
               final speed = _lens.isAnimating ? (_lens.velocity.abs() / 9).clamp(0.0, 1.0) : 0.0;
-              final width = _lensWidth + _stretch * speed;
-              final height = _lensHeight - _squeeze * speed;
+              final width = lensWidth + _stretch * speed;
+              final height = lensHeight - _squeeze * speed;
               return PositionedDirectional(
                 start: slot * _lens.value + (slot - width) / 2,
-                top: top + (_lensHeight - height) / 2,
+                top: _lensInset + (lensHeight - height) / 2,
                 width: width,
                 height: height,
                 child: child!,
@@ -334,7 +337,7 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
             children: [
               // Under the lens the icon turns white and grows, as through glass.
               SizedBox(
-                height: _lensHeight,
+                height: _iconBox,
                 child: Transform.scale(
                   scale: lerpDouble(.92, 1, under),
                   child: Icon(
@@ -353,14 +356,15 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
                     child: Opacity(
                       opacity: (1 - t * 2).clamp(0.0, 1.0),
                       child: Padding(
-                        padding: const EdgeInsetsDirectional.only(top: BasakSpace.s4),
+                        padding: const EdgeInsetsDirectional.only(top: BasakSpace.s2),
                         child: ExcludeSemantics(
                           child: Text(
                             item.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: context.text.tab.copyWith(
-                              color: Color.lerp(colors.ink2, colors.ink, under),
+                              // White on the lens, like its icon.
+                              color: Color.lerp(colors.ink2, colors.onInk, under),
                               fontWeight: under > .5 ? FontWeight.w600 : FontWeight.w400,
                             ),
                           ),

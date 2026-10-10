@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/theme/app_theme.dart';
+import 'package:basak_mobile/core/widgets/floating_glass_nav_bar.dart';
 import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
 import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
 import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
@@ -159,10 +160,11 @@ void main() {
           home: Scaffold(
             extendBody: true,
             body: const StudentQrScreen(),
-            bottomNavigationBar: Container(
-              height: 64,
-              margin: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
+            // The real bar, on the card's tab, so the page is seen as it is used.
+            bottomNavigationBar: FloatingGlassNavBar(
+              currentIndex: 2,
+              onTabSelected: (_) {},
+              items: FloatingGlassNavBar.studentNavItems,
             ),
           ),
         ),

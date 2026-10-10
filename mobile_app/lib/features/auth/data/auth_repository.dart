@@ -332,6 +332,9 @@ class AuthRepository {
     await _client.auth.signOut();
   }
 
+  /// Who the client is signed in as, right after a sign-in.
+  User? get signedInUser => SupabaseService.currentUser;
+
   /// The signed-in session's refresh token: what signing out puts aside when
   /// signing in with Face ID or a fingerprint is switched on.
   String? get currentRefreshToken {
