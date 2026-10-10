@@ -93,8 +93,9 @@ class FloatingGlassNavBar extends StatefulWidget {
       // Sent before the drag moves the content, so a scroll down that starts
       // at the top still reports the top position: no position check here.
       case ScrollDirection.reverse:
-        // Content shorter than the screen has nothing to make room for.
-        return metrics.maxScrollExtent > metrics.minScrollExtent ? true : null;
+        // On a page too short to scroll as well: the pull itself folds the
+        // labels, and they are back when it comes to rest at the top.
+        return true;
       case ScrollDirection.forward:
         return false;
       case ScrollDirection.idle:
@@ -343,7 +344,8 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
                   child: Icon(
                     under > .5 ? item.activeIcon : item.icon,
                     size: 22,
-                    color: Color.lerp(colors.ink2, colors.onInk, under),
+                    // Ink, not grey: the glass is clear and what is behind it varies.
+                    color: Color.lerp(colors.ink, colors.onInk, under),
                   ),
                 ),
               ),
@@ -364,7 +366,7 @@ class _FloatingGlassNavBarState extends State<FloatingGlassNavBar>
                             overflow: TextOverflow.ellipsis,
                             style: context.text.tab.copyWith(
                               // White on the lens, like its icon.
-                              color: Color.lerp(colors.ink2, colors.onInk, under),
+                              color: Color.lerp(colors.ink, colors.onInk, under),
                               fontWeight: under > .5 ? FontWeight.w600 : FontWeight.w400,
                             ),
                           ),

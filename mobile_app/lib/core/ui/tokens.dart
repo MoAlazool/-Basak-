@@ -345,25 +345,27 @@ abstract final class BasakShadow {
   ];
 }
 
-/// Basak's glass: the tab bar and the lens on it. A white veil over a blur,
-/// strong enough that ink text reads on it over the ground and over the ink
-/// of the card (`ink2` is 5.2 : 1 at the least, over ink); the lens is the
-/// brand's ink, lit from above. Nothing else in the app is see-through.
+/// Basak's glass: the tab bar and the lens on it. Clear glass: a strong blur
+/// of what is behind it under a thin white veil, with a lit rim; no colour of
+/// its own. Ink text reads on it over the light ground and over the ink of the
+/// card page (ink on the veil over ink is 4.6 : 1 at the least). The lens is
+/// the brand's ink, lit from above. Nothing else in the app is see-through.
 abstract final class BasakGlassStyle {
-  static const double blur = 18;
+  static const double blur = 30;
 
-  static const veilTop = Color(0xE0FFFFFF); // white at 88%
-  static const veilBottom = Color(0xEBFFFFFF); // white at 92%, where the labels are
+  static const veilTop = Color(0x85FFFFFF); // white at 52%
+  static const veilBottom = Color(0x9EFFFFFF); // white at 62%, where the labels are
   static const edgeLit = Color(0xF2FFFFFF);
-  static const edgeMid = Color(0x66FFFFFF);
+  static const edgeMid = Color(0x59FFFFFF);
   static const edgeShade = Color(0x1F17384A); // ink at 12%
 
   static const lensTop = BasakPalette.inkRaised;
   static const lensBottom = BasakPalette.ink;
-  static const lensSheen = Color(0x38FFFFFF); // white at 22%
+  static const lensSheen = Color(0x2EFFFFFF); // white at 18%
   static const lensSheenEnd = Color(0x00FFFFFF);
-  static const lensRim = Color(0x73A8D8F0); // sky at 45%
-  static const lensRimEnd = Color(0x0AA8D8F0);
+  // The rim is light, not a colour: glass on glass.
+  static const lensRim = Color(0x66FFFFFF); // white at 40%
+  static const lensRimEnd = Color(0x0AFFFFFF);
   static const lensShadow = [
     BoxShadow(color: Color(0x4D17384A), offset: Offset(0, 4), blurRadius: 10, spreadRadius: -2),
   ];
