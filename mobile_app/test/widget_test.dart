@@ -188,7 +188,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '01012345678');
     await tester.tap(find.text('لديّ رمز بالفعل'));
     await tester.pumpAndSettle();
-    expect(find.text('تعيين كلمة المرور'), findsOneWidget);
+    expect(find.text('تأكيد الرمز'), findsOneWidget);
     tester.state<NavigatorState>(find.byType(Navigator).last).pop();
     await tester.pumpAndSettle();
 

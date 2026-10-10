@@ -85,6 +85,9 @@ class AuthRepository {
   static const phoneAlreadyRegisteredMessage =
       'رقم الهاتف مسجل بالفعل. سجّل الدخول به، أو استخدم نسيت كلمة المرور.';
 
+  /// A number the platform blocked (the server's own words, blocked_phone_message()).
+  static const phoneBlockedMessage = 'هذا الرقم موقوف ولا يمكن التسجيل به. للاستفسار تواصل مع إدارة باصك.';
+
   /// What is saved for a student who names no college (older accounts).
   static const unknownCollege = 'غير محدد';
 
@@ -168,6 +171,12 @@ class AuthRepository {
       throw Exception('يرجى إدخال رقم هاتف مصري صحيح مكون من 11 رقماً.');
     }
     final authEmail = phoneToAuthEmail(cleanPhone);
+
+    // A blocked number is refused by the server whatever happens here; asking
+    // first says why, instead of a failed sign-up. Unknown (offline, an older
+    // server): the sign-up itself decides.
+    final allowed = await phoneCanRegister(cleanPhone);
+    if (allowed == false) throw Exception(phoneBlockedMessage);
 
     // Create the sign-in account. The phone is its login, so a number that is
     // already registered is refused here by the server, whatever password is typed.
@@ -374,6 +383,19 @@ class AuthRepository {
       await auth.signOut().timeout(const Duration(seconds: 10));
     } finally {
       auth.dispose();
+    }
+  }
+
+  /// Whether [phone] may be registered (false: the platform blocked it), or
+  /// null when that cannot be asked. No sign-in needed.
+  Future<bool?> phoneCanRegister(String phone) async {
+    try {
+      final allowed = await _client
+          .rpc(SupabaseRpcs.phoneCanRegister, params: {'p_phone': phone})
+          .timeout(const Duration(seconds: 10));
+      return allowed is bool ? allowed : null;
+    } catch (_) {
+      return null;
     }
   }
 

@@ -59,6 +59,9 @@ class LoginScreen extends ConsumerStatefulWidget {
   /// What a refused sign-in says, under the password field.
   static const wrongCredentialsMessage = 'رقم الهاتف أو كلمة المرور غير صحيحة.';
 
+  /// What an account blocked by the platform is told when it tries to sign in.
+  static const blockedMessage = 'تم إيقاف هذا الحساب من إدارة باصك. للاستفسار تواصل مع إدارة باصك.';
+
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
@@ -165,6 +168,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   String _message(Object error) {
     final message = error.toString().toLowerCase();
+    // Auth refuses an account the platform blocked (block_student sets banned_until).
+    if (message.contains('user_banned') || message.contains('user is banned')) {
+      return LoginScreen.blockedMessage;
+    }
     if (message.contains('invalid_credentials') ||
         message.contains('invalid login credentials') ||
         message.contains('email or password') ||
