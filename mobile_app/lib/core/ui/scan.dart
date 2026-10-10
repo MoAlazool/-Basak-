@@ -314,15 +314,19 @@ class PersonFact {
   const PersonFact(this.label, this.value, {this.ltr = false, this.tone});
 }
 
-/// Who a scan found, inside its result sheet: the first letter of the name in
-/// a circle (the scan carries no photo), the name, one line under it, then
-/// the facts the supervisor may need to explain the result.
+/// Who a scan found, inside its result sheet: their photo (or the first letter
+/// of the name in a circle when there is none), the name, one line under it,
+/// then the facts the supervisor may need to explain the result.
 class PersonFacts extends StatelessWidget {
   final String name;
   final String? caption;
   final List<PersonFact> facts;
 
-  const PersonFacts({super.key, required this.name, this.caption, this.facts = const []});
+  /// The person's photo, drawn large enough to compare with a face; without
+  /// one, the first letter of the name.
+  final ImageProvider? photo;
+
+  const PersonFacts({super.key, required this.name, this.caption, this.facts = const [], this.photo});
 
   @override
   Widget build(BuildContext context) {
@@ -339,7 +343,7 @@ class PersonFacts extends StatelessWidget {
             padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s12),
             child: Row(
               children: [
-                PhotoRing(name: name),
+                PhotoRing(key: const Key('person-photo'), name: name, image: photo, size: photo == null ? 44 : 84),
                 const SizedBox(width: BasakSpace.s12),
                 Expanded(
                   child: Column(
