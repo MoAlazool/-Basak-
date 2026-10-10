@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/media/signed_photo.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/avatar_image.dart';
 import '../../../../core/widgets/basak_ui.dart' show BasakUi;
 import '../../../student/home/presentation/supervisor_contact_sheet.dart';
 import '../../models/supervisor_models.dart';
@@ -171,14 +174,20 @@ abstract final class ScanResultSheet {
             ResultHeader(tone: words.tone, icon: words.icon, title: words.title, message: words.message),
             if (student != null) ...[
               const SizedBox(height: BasakSpace.s16),
-              PersonFacts(
-                name: student.fullName,
-                caption: words.caption,
-                facts: [
-                  if (result.blocked) const PersonFact('الحالة', 'محظور من إدارة باصك', tone: BasakTone.danger),
-                  ...words.facts,
-                ],
-              ),
+              // The photo, to tell whether the card is the holder's own.
+              Consumer(builder: (context, ref, _) {
+                final photo = studentPhoto(result.photoPath);
+                final url = photo == null ? null : ref.watch(signedPhotoProvider(photo)).valueOrNull;
+                return PersonFacts(
+                  name: student.fullName,
+                  caption: words.caption,
+                  photo: url == null ? null : avatarImage(url),
+                  facts: [
+                    if (result.blocked) const PersonFact('الحالة', 'محظور من إدارة باصك', tone: BasakTone.danger),
+                    ...words.facts,
+                  ],
+                );
+              }),
             ],
             const SizedBox(height: BasakSpace.s2),
           ],

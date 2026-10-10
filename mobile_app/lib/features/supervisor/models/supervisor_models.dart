@@ -486,6 +486,10 @@ class CheckInResult {
   /// for it; the supervisor is told (older servers never say so).
   final bool blocked;
 
+  /// The student's photo in 'student-avatars', when the scan shows their
+  /// details: the supervisor compares it with the face in front of them.
+  final String? photoPath;
+
   CheckInResult({
     required this.outcome,
     this.message,
@@ -496,6 +500,7 @@ class CheckInResult {
     this.hasRideVote = false,
     this.student,
     this.blocked = false,
+    this.photoPath,
   });
 
   factory CheckInResult.fromJson(Map<String, dynamic> json) => CheckInResult(
@@ -512,6 +517,7 @@ class CheckInResult {
             ? ScannedStudentDetails.fromJson(Map<String, dynamic>.from(json['student'] as Map))
             : null,
         blocked: json['blocked'] == true,
+        photoPath: json['photo'] is String && (json['photo'] as String).trim().isNotEmpty ? json['photo'] as String : null,
       );
 }
 

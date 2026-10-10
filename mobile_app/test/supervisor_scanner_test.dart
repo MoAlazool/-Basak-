@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:basak_mobile/core/media/signed_photo.dart';
 import 'package:basak_mobile/core/storage/offline_cache.dart';
 import 'package:basak_mobile/core/sync/session.dart';
 import 'package:basak_mobile/core/theme/app_theme.dart';
@@ -16,6 +17,9 @@ import 'package:basak_mobile/features/supervisor/qr_scanner/models/scanned_stude
 import 'package:basak_mobile/features/supervisor/qr_scanner/presentation/scan_result_sheet.dart';
 import 'package:basak_mobile/features/supervisor/qr_scanner/presentation/scan_session.dart';
 import 'package:basak_mobile/features/supervisor/qr_scanner/presentation/scanner_view.dart';
+import 'package:basak_mobile/core/widgets/avatar_image.dart';
+
+import 'support/perf_fakes.dart' show onePixel;
 
 /// The server's answer to a scan, decided by the test. Everything else of the
 /// repository is never reached from the scanner.
@@ -65,7 +69,8 @@ ScannedStudentDetails _student(String name, {String? status = 'active', bool cac
 
 const _vote = RideVote(isRiding: true, isReturning: true, departureTime: '07:00:00', returnTime: '15:30:00');
 
-CheckInResult _result(CheckInOutcome outcome, {ScannedStudentDetails? student, DateTime? at, bool blocked = false}) =>
+CheckInResult _result(CheckInOutcome outcome,
+        {ScannedStudentDetails? student, DateTime? at, bool blocked = false, String? photo}) =>
     CheckInResult(
       outcome: outcome,
       direction: 'departure',
@@ -74,6 +79,7 @@ CheckInResult _result(CheckInOutcome outcome, {ScannedStudentDetails? student, D
       hasRideVote: true,
       student: student,
       blocked: blocked,
+      photoPath: photo,
     );
 
 void main() {
@@ -102,6 +108,7 @@ void main() {
         overrides: [
           sessionUserIdProvider.overrideWithValue('sup'),
           supervisorRepoProvider.overrideWithValue(repo),
+          signedPhotoProvider.overrideWith((ref, photo) async => 'https://storage.test/${photo.bucket}/${photo.path}'),
         ],
         child: MaterialApp(
           theme: AppTheme.lightTheme,
@@ -216,6 +223,33 @@ void main() {
     expect(CheckInResult.fromJson({'result': 'checked_in', 'blocked': true}).blocked, isTrue);
     expect(CheckInResult.fromJson({'result': 'checked_in', 'blocked': false}).blocked, isFalse);
     expect(CheckInResult.fromJson({'result': 'checked_in'}).blocked, isFalse);
+  });
+
+  testWidgets("the student's photo is shown large, to compare with the face in front of the supervisor", (tester) async {
+    debugAvatarImage = (_) => MemoryImage(onePixel);
+    addTearDown(() => debugAvatarImage = null);
+    repo.answer = _result(CheckInOutcome.checkedIn,
+        student: _student('سارة أحمد محمود'), at: DateTime(2026, 10, 11, 7, 23), photo: 'student-1/avatar.jpg');
+    await tester.pumpWidget(app(tab));
+    await scan(tester);
+    final ring = tester.widget<PhotoRing>(find.byKey(const Key('person-photo')));
+    expect(ring.image, isNotNull);
+    expect(ring.size, 84);
+  });
+
+  testWidgets('without a photo, the first letter of the name as before', (tester) async {
+    repo.answer = _result(CheckInOutcome.checkedIn, student: _student('سارة أحمد محمود'), at: DateTime(2026, 10, 11, 7, 23));
+    await tester.pumpWidget(app(tab));
+    await scan(tester);
+    final ring = tester.widget<PhotoRing>(find.byKey(const Key('person-photo')));
+    expect(ring.image, isNull);
+    expect(ring.size, 44);
+  });
+
+  test('the server gives the photo path only with the details', () {
+    expect(CheckInResult.fromJson({'result': 'checked_in', 'photo': 's/avatar.jpg'}).photoPath, 's/avatar.jpg');
+    expect(CheckInResult.fromJson({'result': 'checked_in', 'photo': null}).photoPath, isNull);
+    expect(CheckInResult.fromJson({'result': 'checked_in'}).photoPath, isNull);
   });
 
   testWidgets('already on board: a notice, not an error', (tester) async {
