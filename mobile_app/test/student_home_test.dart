@@ -15,6 +15,7 @@ import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
 import 'package:basak_mobile/features/notifications/data/notifications_repository.dart';
 import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
 import 'package:basak_mobile/features/student/daily_ride/models/vote_settings.dart';
+import 'package:basak_mobile/features/student/home/data/line_supervisors.dart';
 import 'package:basak_mobile/features/student/home/presentation/ride_card.dart';
 import 'package:basak_mobile/features/student/home/presentation/ride_sheet.dart';
 import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
@@ -119,6 +120,7 @@ Widget _home({
   VoidCallback? toSubscription,
   VoidCallback? toCard,
   double textScale = 1,
+  List<LineSupervisor> supervisors = const [],
 }) =>
     ProviderScope(
       overrides: [
@@ -130,6 +132,7 @@ Widget _home({
         invitesGatewayProvider.overrideWithValue(invites ?? _Invites(const [])),
         studentProfileSummaryProvider.overrideWith((ref, id) async => {'university': 'جامعة المنصورة الجديدة'}),
         notificationsRepoProvider.overrideWithValue(FakeNotificationsRepo()),
+        lineSupervisorsProvider.overrideWith((ref) async => supervisors),
       ],
       child: MaterialApp(
         builder: (context, child) => MediaQuery(
@@ -405,6 +408,25 @@ void main() {
   });
 
   group('Home', () {
+    testWidgets("every supervisor of the student's line is shown, the primary contact first", (tester) async {
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_home(sub: _sub('active'), supervisors: const [
+        LineSupervisor(lineId: 'l', name: 'محمود السيد', phone: '01011223344'),
+        LineSupervisor(lineId: 'l', name: 'أحمد علي', phone: '01055667788'),
+        LineSupervisor(lineId: 'another line', name: 'سامي حسن', phone: '01099887766'),
+      ]));
+      await _settle(tester);
+
+      expect(find.text('محمود السيد'), findsOneWidget);
+      expect(find.text('أحمد علي'), findsOneWidget);
+      expect(find.text('سامي حسن'), findsNothing, reason: 'a supervisor of another line');
+      expect(find.byKey(const Key('supervisor-card')), findsOneWidget);
+      expect(find.byKey(const Key('supervisor-card-1')), findsOneWidget);
+      expect(tester.getTopLeft(find.text('محمود السيد')).dy, lessThan(tester.getTopLeft(find.text('أحمد علي')).dy));
+    });
+
     testWidgets('an active subscription: the pass, the question, the supervisor; yes goes through the sheet',
         (tester) async {
       tester.view.physicalSize = const Size(390, 1100);

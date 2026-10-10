@@ -22,6 +22,7 @@ import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../invites/invites.dart';
+import '../data/line_supervisors.dart';
 import '../../recap/recap_copy.dart';
 import '../../recap/recap_repository.dart';
 import '../../recap/recap_screen.dart';
@@ -206,6 +207,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   Future<void> _handleRefresh() async {
     ref.invalidate(currentSubscriptionProvider);
+    ref.invalidate(lineSupervisorsProvider);
     final user = ref.read(authStateProvider).user;
     if (user != null) {
       ref.invalidate(studentProfileSummaryProvider(user.id));
@@ -418,7 +420,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           SheetLink(label: 'أو اختر اشتراكك بنفسك', onTap: widget.onNavigateToSubscription),
         if (sub != null && !sub.isExpired)
           sub.isActive ? _ride(sub, vote) : const RideLockedCard(),
-        if (sub != null && (sub.supervisorPhone ?? '').isNotEmpty) _supervisor(sub),
+        if (sub != null) ..._supervisors(sub),
       ];
     } else if (subAsync.hasError) {
       final offline = isNetworkFailure(subAsync.error!);
@@ -555,21 +557,41 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     );
   }
 
-  /// The bus supervisor: one row, a call and a WhatsApp chat one tap away.
+  /// Every supervisor of the student's line, the primary contact first. Until
+  /// they are known, or when they cannot be read (offline, an older server),
+  /// the line's primary contact as the subscription carries it.
+  List<Widget> _supervisors(SubscriptionModel sub) {
+    final all = ref.watch(lineSupervisorsProvider).valueOrNull?.where((s) => s.lineId == sub.lineId).toList();
+    final shown = all != null && all.isNotEmpty
+        ? all
+        : [
+            if ((sub.supervisorPhone ?? '').isNotEmpty)
+              LineSupervisor(
+                  lineId: sub.lineId,
+                  name: sub.supervisorName ?? '',
+                  phone: sub.supervisorPhone!,
+                  photoPath: sub.supervisorPhotoPath),
+          ];
+    return [for (var i = 0; i < shown.length; i++) _supervisor(shown[i], sub.lineName, i)];
+  }
+
+  /// A bus supervisor: one row, a call and a WhatsApp chat one tap away.
   /// Tapping the row opens the sheet with the rest (save, copy).
-  Widget _supervisor(SubscriptionModel sub) {
-    final photoUrl = sub.supervisorPhotoPath == null
+  Widget _supervisor(LineSupervisor supervisor, String? lineName, int index) {
+    final photoUrl = supervisor.photoPath == null
         ? null
-        : ref.watch(signedPhotoProvider((bucket: 'supervisor-avatars', path: sub.supervisorPhotoPath!))).valueOrNull;
+        : ref.watch(signedPhotoProvider((bucket: 'supervisor-avatars', path: supervisor.photoPath!))).valueOrNull;
     final photo = photoUrl == null ? null : avatarImage(photoUrl);
-    final name = sub.supervisorName ?? 'مشرف الباص';
-    final phone = sub.supervisorPhone ?? '';
+    final name = supervisor.name.isEmpty ? 'مشرف الباص' : supervisor.name;
+    final phone = supervisor.phone;
     final colors = context.colors;
     final text = context.text;
+    // The first keeps the plain keys; the others are numbered.
+    Key key(String id) => Key(index == 0 ? id : '$id-$index');
     return BasakPressable(
-      key: const Key('supervisor-card'),
+      key: key('supervisor-card'),
       onTap: () =>
-          SupervisorContactSheet.show(context, name: name, phone: phone, lineName: sub.lineName, photo: photo),
+          SupervisorContactSheet.show(context, name: name, phone: phone, lineName: lineName, photo: photo),
       child: BasakCard(
         padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s14),
         child: Row(
@@ -591,7 +613,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             ),
             const SizedBox(width: BasakSpace.s8),
             BasakIconButton(
-              key: const Key('supervisor-row-call'),
+              key: key('supervisor-row-call'),
               icon: LucideIcons.phone,
               label: 'اتصال بالمشرف',
               onCard: true,
@@ -599,7 +621,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
             ),
             const SizedBox(width: BasakSpace.s6),
             BasakIconButton(
-              key: const Key('supervisor-row-whatsapp'),
+              key: key('supervisor-row-whatsapp'),
               icon: LucideIcons.messageCircle,
               label: 'واتساب المشرف',
               onCard: true,
