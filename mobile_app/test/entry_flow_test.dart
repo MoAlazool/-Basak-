@@ -599,9 +599,9 @@ void main() {
     late FakeEntryRepository repo;
     Object? result;
 
-    Future<void> open(WidgetTester tester, {String phone = ''}) async {
+    Future<void> open(WidgetTester tester, {String phone = '', String? whatsapp}) async {
       _phone(tester);
-      repo = FakeEntryRepository();
+      repo = FakeEntryRepository()..supportWhatsAppNumber = whatsapp;
       result = 'unset';
       await tester.pumpWidget(entryApp(
         Builder(
@@ -665,6 +665,26 @@ void main() {
       expect(repo.resets.single, (phone: '01012345678', code: '482716', newPassword: 'NewPass12'));
       expect(result, '01012345678');
       expect(find.text('تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.'), findsOneWidget);
+    });
+
+    testWidgets('without a platform WhatsApp number the code step has no WhatsApp button', (tester) async {
+      await open(tester, phone: '01012345678');
+      await _tap(tester, 'forgot-have-code');
+      expect(find.text('أدخل الرمز'), findsOneWidget);
+      expect(find.byKey(const Key('forgot-whatsapp')), findsNothing);
+    });
+
+    testWidgets('with a platform WhatsApp number the code step offers it', (tester) async {
+      await open(tester, phone: '01012345678', whatsapp: '201000000000');
+      expect(find.byKey(const Key('forgot-whatsapp')), findsNothing, reason: 'the phone step has no code to ask for');
+      await _tap(tester, 'forgot-have-code');
+      expect(find.widgetWithText(BasakButton, 'اطلب الرمز على واتساب'), findsOneWidget);
+    });
+
+    test('the WhatsApp chat starts with the request and the phone, when it is a valid one', () {
+      expect(ForgotPasswordScreen.whatsappMessage('٠١٠١٢٣٤٥٦٧٨'),
+          'مرحباً، نسيت كلمة المرور في تطبيق باصك وأحتاج رمز الاستعادة. رقم هاتفي المسجّل: 01012345678');
+      expect(ForgotPasswordScreen.whatsappMessage('0101'), 'مرحباً، نسيت كلمة المرور في تطبيق باصك وأحتاج رمز الاستعادة.');
     });
 
     testWidgets('what the server refuses is shown, and the request can be sent again', (tester) async {

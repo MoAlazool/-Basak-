@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import 'package:basak_mobile/core/theme/app_icons.dart';
 import 'package:basak_mobile/core/ui/ui.dart';
 
 import '../data/auth_repository.dart';
@@ -14,10 +16,21 @@ import 'password_strength.dart';
 /// 2. The company admin verifies the student by phone and gives them a
 ///    6-digit one-time code (valid 30 minutes, 5 tries).
 /// 3. The student enters the code and a new password, then signs in with it.
+/// Until codes come by SMS, the code step also offers a chat with the
+/// platform's WhatsApp (set on the dashboard; no number, no button).
 /// Pops with the phone number once the password has been changed.
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key, this.initialPhone = ''});
   final String initialPhone;
+
+  /// What the WhatsApp chat starts with: the request and, when it is a valid
+  /// number, the phone the account was made with.
+  static String whatsappMessage(String phone) {
+    final clean = AuthRepository.normalizeEgyptianPhone(phone);
+    final valid = RegExp(r'^01[0125][0-9]{8}$').hasMatch(clean);
+    return 'مرحباً، نسيت كلمة المرور في تطبيق باصك وأحتاج رمز الاستعادة.'
+        '${valid ? ' رقم هاتفي المسجّل: $clean' : ''}';
+  }
 
   @override
   ConsumerState<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
@@ -39,6 +52,17 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   /// What the server answered, when it is no single field's fault.
   String? _failure;
+
+  /// The platform's WhatsApp for the code; null: no button.
+  String? _whatsapp;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(authRepositoryProvider).supportWhatsApp().then((number) {
+      if (mounted) setState(() => _whatsapp = number);
+    });
+  }
 
   @override
   void dispose() {
@@ -110,6 +134,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (mounted) setState(() => _failure = _clean(error));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Opens the chat in WhatsApp when it is installed, otherwise its web page.
+  Future<void> _openWhatsApp() async {
+    final number = _whatsapp;
+    if (number == null) return;
+    final text = Uri.encodeComponent(ForgotPasswordScreen.whatsappMessage(_phone.text));
+    var opened = false;
+    try {
+      opened = await launchUrl(Uri.parse('https://wa.me/$number?text=$text'), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (!opened && mounted) {
+      BasakToast.show(context, 'تعذر فتح واتساب على هذا الجهاز.', kind: BasakToastKind.failure);
     }
   }
 
@@ -185,6 +223,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       title: 'أدخل الرمز',
       subtitle: 'ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.',
       actions: [
+        if (_whatsapp != null)
+          BasakButton(
+            key: const Key('forgot-whatsapp'),
+            label: 'اطلب الرمز على واتساب',
+            variant: BasakButtonVariant.tonal,
+            icon: LucideIcons.messageCircle,
+            onPressed: _busy ? null : _openWhatsApp,
+          ),
         BasakButton(
           key: const Key('forgot-reset-submit'),
           label: 'تعيين كلمة المرور',

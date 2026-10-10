@@ -67,6 +67,12 @@ class FakeEntryRepository extends AuthRepository {
     throw signInError;
   }
 
+  /// The platform's WhatsApp for the reset code; null: none set.
+  String? supportWhatsAppNumber;
+
+  @override
+  Future<String?> supportWhatsApp() async => supportWhatsAppNumber;
+
   @override
   Future<void> requestPasswordReset(String phone) async => resetRequests.add(phone);
 
