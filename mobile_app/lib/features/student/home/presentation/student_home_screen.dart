@@ -557,21 +557,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     );
   }
 
-  /// Every supervisor of the student's line, the primary contact first. Until
-  /// they are known, or when they cannot be read (offline, an older server),
-  /// the line's primary contact as the subscription carries it.
+  /// Every supervisor of the student's line, the primary contact first.
   List<Widget> _supervisors(SubscriptionModel sub) {
-    final all = ref.watch(lineSupervisorsProvider).valueOrNull?.where((s) => s.lineId == sub.lineId).toList();
-    final shown = all != null && all.isNotEmpty
-        ? all
-        : [
-            if ((sub.supervisorPhone ?? '').isNotEmpty)
-              LineSupervisor(
-                  lineId: sub.lineId,
-                  name: sub.supervisorName ?? '',
-                  phone: sub.supervisorPhone!,
-                  photoPath: sub.supervisorPhotoPath),
-          ];
+    final shown = LineSupervisor.ofLine(sub, ref.watch(lineSupervisorsProvider).valueOrNull);
     return [for (var i = 0; i < shown.length; i++) _supervisor(shown[i], sub.lineName, i)];
   }
 

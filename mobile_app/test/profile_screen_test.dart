@@ -18,6 +18,8 @@ import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
 import 'package:basak_mobile/features/notifications/data/notifications_repository.dart';
 import 'package:basak_mobile/features/notifications/push/push_messaging.dart';
 import 'package:basak_mobile/features/notifications/push/push_providers.dart';
+import 'package:basak_mobile/features/student/home/data/line_supervisors.dart';
+import 'package:basak_mobile/features/student/home/presentation/notifications_screen.dart';
 import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
 import 'package:basak_mobile/features/student/home/presentation/supervisor_contact_sheet.dart';
 import 'package:basak_mobile/features/student/profile/presentation/help_sheet.dart';
@@ -79,6 +81,7 @@ void main() {
     bool supervised = true,
     PushMessaging? push,
     List<HelpEntry>? support,
+    List<LineSupervisor> supervisors = const [],
     Future<Map<String, dynamic>?> Function()? profile,
     Size size = const Size(390, 1100),
   }) async {
@@ -95,6 +98,7 @@ void main() {
         notificationsRepoProvider.overrideWithValue(FakeNotificationsRepo()),
         if (push != null) pushMessagingProvider.overrideWithValue(push),
         if (support != null) helpSupportProvider.overrideWithValue(support),
+        lineSupervisorsProvider.overrideWith((ref) async => supervisors),
       ],
       child: MaterialApp(
         theme: AppTheme.lightTheme,
@@ -190,6 +194,35 @@ void main() {
     expect(find.text('عن رحلتك واشتراكك'), findsNothing);
     expect(find.text('010 1122 3344'), findsOneWidget);
     expect(find.byType(SupervisorContactSheet), findsOneWidget);
+  });
+
+  testWidgets('help: every supervisor of the line, the primary contact first', (tester) async {
+    await open(tester, supervisors: const [
+      LineSupervisor(lineId: 'l', name: 'محمود السيد', phone: '01011223344'),
+      LineSupervisor(lineId: 'l', name: 'أحمد علي', phone: '01055667788'),
+      LineSupervisor(lineId: 'other', name: 'سامي حسن', phone: '01099887766'),
+    ]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-help')));
+    await tester.pumpAndSettle();
+    expect(find.text('محمود السيد'), findsOneWidget);
+    expect(find.text('أحمد علي'), findsOneWidget);
+    expect(find.text('سامي حسن'), findsNothing, reason: 'a supervisor of another line');
+    expect(tester.getTopLeft(find.text('محمود السيد')).dy, lessThan(tester.getTopLeft(find.text('أحمد علي')).dy));
+
+    await tester.tap(find.text('أحمد علي'));
+    await tester.pumpAndSettle();
+    expect(find.text('010 5566 7788'), findsOneWidget, reason: "the contact sheet of the one tapped");
+  });
+
+  test("a supervisor's message is answered on that supervisor's number, else the line's primary contact", () {
+    const line = [
+      LineSupervisor(lineId: 'l', name: 'محمود السيد', phone: '01011223344'),
+      LineSupervisor(lineId: 'l', name: 'أحمد علي', phone: '01055667788'),
+    ];
+    expect(NotificationsScreen.supervisorPhone(line, ' أحمد علي '), '01055667788');
+    expect(NotificationsScreen.supervisorPhone(line, 'مشرف آخر'), '01011223344');
+    expect(NotificationsScreen.supervisorPhone(const [], 'أحمد علي'), '');
   });
 
   testWidgets('help: injected support entries make the second group, and each runs its own action', (tester) async {
