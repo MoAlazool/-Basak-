@@ -140,6 +140,10 @@ class ScanResultWords {
 abstract final class ScanResultSheet {
   static const next = 'مسح التالي';
 
+  /// The banner over a blocked student's result.
+  static const blockedTitle = 'هذا الطالب محظور';
+  static const blockedMessage = 'أوقفت إدارة باصك حسابه. بياناته ونتيجة المسح أدناه، والقرار لك.';
+
   static Future<void> show(
     BuildContext context,
     CheckInResult result, {
@@ -148,20 +152,33 @@ abstract final class ScanResultSheet {
   }) {
     final words = ScanResultWords.of(result, tripLabel: tripLabel);
     final student = result.student;
+    // A blocked student waits for the supervisor, even after a boarding.
+    final closes = closesItself && !result.blocked;
     return BasakSheet.show<void>(
       context,
       builder: (context) => Semantics(
         container: true,
         liveRegion: true,
-        label: 'نتيجة المسح: ${words.title}',
+        label: 'نتيجة المسح: ${result.blocked ? '$blockedTitle، ' : ''}${words.title}',
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (result.blocked) ...[
+              const BlockedStudentBanner(),
+              const SizedBox(height: BasakSpace.s16),
+            ],
             ResultHeader(tone: words.tone, icon: words.icon, title: words.title, message: words.message),
             if (student != null) ...[
               const SizedBox(height: BasakSpace.s16),
-              PersonFacts(name: student.fullName, caption: words.caption, facts: words.facts),
+              PersonFacts(
+                name: student.fullName,
+                caption: words.caption,
+                facts: [
+                  if (result.blocked) const PersonFact('الحالة', 'محظور من إدارة باصك', tone: BasakTone.danger),
+                  ...words.facts,
+                ],
+              ),
             ],
             const SizedBox(height: BasakSpace.s2),
           ],
@@ -179,13 +196,53 @@ abstract final class ScanResultSheet {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             BasakButton(key: const Key('scan-next'), label: next, onPressed: close),
-            if (closesItself) ...[
+            if (closes) ...[
               const SizedBox(height: BasakSpace.s10),
               AutoReturnBar(onDone: close),
             ],
           ],
         );
       },
+    );
+  }
+}
+
+/// Over a blocked student's scan result, before anything else: the student is
+/// blocked. The rest of the sheet (the outcome, who it is) is as for anyone.
+class BlockedStudentBanner extends StatelessWidget {
+  const BlockedStudentBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final text = context.text;
+    final danger = BasakTone.danger.foreground(colors);
+    return Container(
+      key: const Key('scan-blocked'),
+      padding: const EdgeInsetsDirectional.all(BasakSpace.s14),
+      decoration: BoxDecoration(
+        color: BasakTone.danger.tint(colors),
+        borderRadius: BorderRadius.circular(BasakRadius.control),
+        border: Border.all(color: danger.withValues(alpha: .35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(LucideIcons.ban, size: 22, color: danger),
+          const SizedBox(width: BasakSpace.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(ScanResultSheet.blockedTitle, style: text.body.copyWith(fontWeight: FontWeight.w600, color: danger)),
+                const SizedBox(height: BasakSpace.s2),
+                Text(ScanResultSheet.blockedMessage, style: text.bodySmall.copyWith(color: colors.ink2)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

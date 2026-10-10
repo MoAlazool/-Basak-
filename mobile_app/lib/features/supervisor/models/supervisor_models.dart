@@ -482,6 +482,10 @@ class CheckInResult {
   final bool hasRideVote;
   final ScannedStudentDetails? student;
 
+  /// The platform or a company blocked this student. The scan is not refused
+  /// for it; the supervisor is told (older servers never say so).
+  final bool blocked;
+
   CheckInResult({
     required this.outcome,
     this.message,
@@ -491,6 +495,7 @@ class CheckInResult {
     this.rideVote,
     this.hasRideVote = false,
     this.student,
+    this.blocked = false,
   });
 
   factory CheckInResult.fromJson(Map<String, dynamic> json) => CheckInResult(
@@ -506,6 +511,7 @@ class CheckInResult {
         student: json['student'] is Map
             ? ScannedStudentDetails.fromJson(Map<String, dynamic>.from(json['student'] as Map))
             : null,
+        blocked: json['blocked'] == true,
       );
 }
 

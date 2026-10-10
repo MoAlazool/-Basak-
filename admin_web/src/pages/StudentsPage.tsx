@@ -57,9 +57,10 @@ const lineServesUniversity = (line: LineOption, universityId: string | undefined
 
 export const StudentsPage: React.FC = () => {
   const admin = useAdminScope();
-  // Blocking is the platform admin's: only they read who is blocked.
-  const isBlocked = blockedLookup(useBlockedPhones(admin.role === 'super_admin').data);
   const company = useCompany();
+  // Blocks of the company's students. The platform admin blocks as the platform, a company admin as the company.
+  const blockOf = blockedLookup(useBlockedPhones(company.id).data);
+  const blockAs = admin.role === 'super_admin' ? null : company.id;
   const selectedCompanyId = company.id;
   const [departureTripId, setDepartureTripId] = useState('');
   const [returnTripId, setReturnTripId] = useState('');
@@ -536,7 +537,7 @@ export const StudentsPage: React.FC = () => {
                       <td className="p-4 font-bold text-slate-800">
                         {s.profile_image_url && <StudentAvatar url={avatarUrls[s.profile_image_url]} name={s.full_name} />}
                         {s.full_name}
-                        {isBlocked(s) && <BlockedBadge />}
+                        {blockOf(s) && <BlockedBadge entry={blockOf(s)!} />}
                       </td>
                       <td className="p-4 text-slate-600 font-mono text-xs">
                         <span className="inline-flex items-center gap-1.5">
@@ -612,7 +613,7 @@ export const StudentsPage: React.FC = () => {
                         >
                           <UserMinus className="h-4 w-4" />
                         </button>
-                        {admin.role === 'super_admin' && <BlockStudentButton student={s} blocked={isBlocked(s)} className="mr-3" />}
+                        <BlockStudentButton student={s} entry={blockOf(s)} companyId={blockAs} className="mr-3" />
                         {admin.role === 'super_admin' && (
                           <button
                             onClick={() => void handleDeleteStudent(s.id, s.full_name)}

@@ -49,8 +49,8 @@ export const AllStudentsPage: React.FC = () => {
   const client = useQueryClient();
   const guard = useGuard();
   // Only the platform admin has this page, and blocking is theirs.
-  const blocked = useBlockedPhones(true);
-  const isBlocked = blockedLookup(blocked.data);
+  const blocked = useBlockedPhones(null);
+  const blockOf = blockedLookup(blocked.data);
   const variant = !!(filters.search || filters.companyId || filters.membership || pageIndex);
   const page = usePageData(keys.platform('students', { ...filters, pageIndex }), () =>
     unwrap<{ total: number; rows: PlatformStudent[] }>(supabase.rpc('platform_students', {
@@ -154,7 +154,7 @@ export const AllStudentsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {rows.map((student) => (
                   <tr key={student.id} className="hover:bg-slate-50/70">
-                    <td className="p-3 font-bold text-slate-800">{student.full_name}{isBlocked(student) && <BlockedBadge />}</td>
+                    <td className="p-3 font-bold text-slate-800">{student.full_name}{blockOf(student) && <BlockedBadge entry={blockOf(student)!} />}</td>
                     <td className="p-3 font-mono text-xs text-slate-600" dir="ltr">{student.phone}</td>
                     <td className="p-3 text-slate-600">{student.university}</td>
                     <td className="p-3">
@@ -171,7 +171,7 @@ export const AllStudentsPage: React.FC = () => {
                     </td>
                     <td className="p-3">{student.active_subscriptions.toLocaleString('ar-EG')}</td>
                     <td className="p-3 text-xs text-slate-400">{new Date(student.created_at).toLocaleDateString('ar-EG')}</td>
-                    <td className="p-3 text-left"><BlockStudentButton student={student} blocked={isBlocked(student)} /></td>
+                    <td className="p-3 text-left"><BlockStudentButton student={student} entry={blockOf(student)} companyId={null} /></td>
                   </tr>
                 ))}
               </tbody>
