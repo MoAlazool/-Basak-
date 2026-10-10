@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/supabase_config.dart';
+import 'secure_session_storage.dart';
 import 'session_keeping_client.dart';
 
 class SupabaseService {
@@ -24,6 +25,10 @@ class SupabaseService {
         anonKey: SupabaseConfig.supabaseAnonKey,
         httpClient: _http,
         debug: kDebugMode,
+        // The session's tokens in the Keychain / Keystore, not plain preferences.
+        authOptions: FlutterAuthClientOptions(
+          localStorage: SecureSessionStorage(key: SecureSessionStorage.keyFor(SupabaseConfig.supabaseUrl)),
+        ),
       );
     } catch (e) {
       debugPrint('Error initializing Supabase: $e');

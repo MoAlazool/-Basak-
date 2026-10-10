@@ -37,6 +37,8 @@ dependencies:
 
   # Local Storage
   flutter_secure_storage: ^9.2.2
+  # Only to move a session saved by an older version (see secure_session_storage.dart).
+  shared_preferences: ^2.5.3
 
   # Utilities
   url_launcher: ^6.3.0
