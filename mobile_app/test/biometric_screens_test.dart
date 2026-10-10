@@ -79,6 +79,30 @@ class _Phone {
       );
 }
 
+/// Something else the app asks at its start: it takes its turn after «دخول أسرع؟».
+class _AsksAfter extends ConsumerStatefulWidget {
+  const _AsksAfter({required this.onTurn});
+
+  final VoidCallback onTurn;
+
+  @override
+  ConsumerState<_AsksAfter> createState() => _AsksAfterState();
+}
+
+class _AsksAfterState extends ConsumerState<_AsksAfter> {
+  @override
+  void initState() {
+    super.initState();
+    // As the shells do: three seconds after they come up.
+    Future<void>.delayed(const Duration(seconds: 3), () async {
+      if (mounted && await afterBiometricOffer(context, ref)) widget.onTurn();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Text('الرئيسية');
+}
+
 void _size(WidgetTester tester, [Size size = const Size(390, 844)]) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -369,18 +393,140 @@ void main() {
       });
     });
 
-    testWidgets('«حساب آخر» forgets the stored sign-in and opens the welcome screen', (tester) async {
+    testWidgets('«حساب آخر» opens the form and forgets nothing: the button is there, now and after a restart',
+        (tester) async {
       final phone = _Phone();
       await storeSignIn(phone.fake);
       await _entry(tester, phone);
       await _tap(tester, 'returning-other-account');
-      expect(find.byType(WelcomeScreen), findsOneWidget);
-      expect(phone.fake.enabled, isFalse);
-      expect(phone.fake.token, isNull);
-      expect(phone.revoked, ['refresh-1']);
 
-      await _tap(tester, 'welcome-signin');
-      expect(find.byKey(const Key('login-biometric')), findsNothing);
+      expect(find.byKey(const ValueKey('login')), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      expect(phone.fake.enabled, isTrue);
+      expect(phone.fake.token, 'refresh-1');
+      expect(phone.revoked, isEmpty, reason: 'its session is not ended either');
+      expect(find.byKey(const Key('login-biometric')), findsOneWidget);
+
+      // The app is closed and opened again: the faster sign-in is still offered.
+      await tester.pumpWidget(const SizedBox());
+      await _entry(tester, phone);
+      expect(find.byType(ReturningSignInScreen), findsOneWidget);
+      expect(find.text('أهلاً بعودتك، سارة'), findsOneWidget);
+
+      // And from the form, straight in.
+      await _tap(tester, 'returning-other-account');
+      await _tapToSignIn(tester, 'login-biometric');
+      expect(phone.device.prompts, 1);
+      expect(phone.restored, ['refresh-1']);
+    });
+
+    testWidgets('the sign-up shows the button too, on its first step, and signs in from there', (tester) async {
+      final phone = _Phone();
+      await storeSignIn(phone.fake);
+      await _entry(tester, phone);
+      await _tap(tester, 'returning-other-account');
+      await _tap(tester, 'login-signup');
+      expect(find.byKey(const ValueKey('signup')), findsOneWidget);
+      final button = find.byKey(const Key('signup-biometric'));
+      expect(button, findsOneWidget);
+      expect(find.descendant(of: button, matching: find.byIcon(LucideIcons.scanFace)), findsOneWidget);
+      expect(tester.getCenter(button).dx, lessThan(tester.getCenter(find.byKey(const Key('signup-next'))).dx));
+
+      await _tapToSignIn(tester, 'signup-biometric');
+      expect(phone.device.prompts, 1);
+      expect(phone.restored, ['refresh-1']);
+    });
+
+    testWidgets('a phone with nothing stored has no such button on the sign-up', (tester) async {
+      final phone = _Phone();
+      await _entry(tester, phone);
+      await _tap(tester, 'welcome-signup');
+      expect(find.byKey(const ValueKey('signup')), findsOneWidget);
+      expect(find.byKey(const Key('signup-biometric')), findsNothing);
+    });
+
+    group('two accounts stored on one phone', () {
+      Future<_Phone> two(WidgetTester tester) async {
+        final phone = _Phone();
+        await storeSignIn(phone.fake); // سارة, 010 •••• 6789
+        await storeSignIn(phone.fake, draft: omarDraft, token: 'refresh-omar'); // عمر, the more recent
+        await _entry(tester, phone);
+        return phone;
+      }
+
+      testWidgets('the returning sign-in is the most recent one\'s; the other is one tap further', (tester) async {
+        final phone = await two(tester);
+        expect(find.text('أهلاً بعودتك، عمر'), findsOneWidget);
+        await _tapToSignIn(tester, 'returning-submit');
+        expect(phone.restored, ['refresh-omar']);
+        expect(phone.fake.tokenOf('student-1'), 'refresh-1', reason: 'the other account keeps its own');
+      });
+
+      testWidgets('nothing typed: the form asks whose, with names and hidden numbers, then the phone', (tester) async {
+        final phone = await two(tester);
+        await _tap(tester, 'returning-other-account');
+        await _tap(tester, 'login-biometric');
+        expect(find.text('اختر الحساب'), findsOneWidget);
+        expect(find.text('عمر'), findsOneWidget);
+        expect(find.text('سارة'), findsOneWidget);
+        expect(find.text('010 •••• 6789'), findsOneWidget);
+        expect(find.text('011 •••• 7777'), findsOneWidget);
+        expect(phone.device.prompts, 0, reason: 'the phone is asked after the choice');
+
+        await tester.tap(find.byKey(const Key('biometric-account-student-1')));
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(phone.device.prompts, 1);
+        expect(phone.restored, ['refresh-1']);
+        expect(phone.fake.tokenOf('student-2'), 'refresh-omar');
+      });
+
+      testWidgets('closing the choice signs nobody in', (tester) async {
+        final phone = await two(tester);
+        await _tap(tester, 'returning-other-account');
+        await _tap(tester, 'login-biometric');
+        await tester.tapAt(const Offset(20, 20));
+        await tester.pumpAndSettle();
+        expect(find.text('اختر الحساب'), findsNothing);
+        expect(phone.device.prompts, 0);
+        expect(phone.restored, isEmpty);
+      });
+
+      testWidgets('a number typed in the form says whose: no question, that account', (tester) async {
+        final phone = await two(tester);
+        await _tap(tester, 'returning-other-account');
+        await tester.enterText(
+            find.descendant(of: find.byKey(const Key('login-identifier')), matching: find.byType(EditableText)),
+            '01012346789');
+        await tester.pump();
+        await _tapToSignIn(tester, 'login-biometric');
+        expect(find.text('اختر الحساب'), findsNothing);
+        expect(phone.restored, ['refresh-1']);
+      });
+
+      testWidgets('one account\'s session was ended: only its entry goes, and the button stays for the other',
+          (tester) async {
+        final phone = await two(tester)
+          ..restoreError = const AuthException('Invalid Refresh Token', statusCode: '400');
+        await _tap(tester, 'returning-other-account');
+        await _tap(tester, 'login-biometric');
+        await tester.tap(find.byKey(const Key('biometric-account-student-1')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('انتهت جلستك على هذا الهاتف. ادخل بكلمة المرور مرة واحدة لتفعيله من جديد.'),
+            findsOneWidget);
+        expect(phone.fake.enabledFor('student-1'), isFalse);
+        expect(phone.fake.enabledFor('student-2'), isTrue);
+        expect(phone.fake.tokenOf('student-2'), 'refresh-omar');
+        expect(find.byKey(const Key('login-biometric')), findsOneWidget);
+
+        // One account left: no question any more.
+        phone.restoreError = null;
+        await _tapToSignIn(tester, 'login-biometric');
+        expect(find.text('اختر الحساب'), findsNothing);
+        expect(phone.restored.last, 'refresh-omar');
+      });
     });
 
     testWidgets('a supervisor gets the same screen, their own sign-in behind it, and who to turn to',
@@ -399,9 +545,10 @@ void main() {
       expect(find.byKey(const ValueKey('supervisor-login')), findsOneWidget);
       expect(find.text('دخول المشرف'), findsOneWidget);
       expect(find.byKey(const Key('login-biometric')), findsOneWidget);
-      // The student's sign-in on the same phone has no such button.
+      // The student's sign-in on the same phone has the button too: it is
+      // the phone's stored sign-in, whoever it belongs to.
       await _tap(tester, 'login-students');
-      expect(find.byKey(const Key('login-biometric')), findsNothing);
+      expect(find.byKey(const Key('login-biometric')), findsOneWidget);
     });
 
     testWidgets('nothing clips on a small phone at the largest text, in either state', (tester) async {
@@ -471,7 +618,7 @@ void main() {
       await _tap(tester, 'biometric-offer-enable');
       expect(phone.device.prompts, 1);
       expect(phone.device.renewals, 1);
-      expect((await phone.fake.vault.account())?.userId, 'student-1');
+      expect((await phone.fake.vault.account('student-1'))?.userId, 'student-1');
       expect(find.text('تم تفعيل الدخول بـ Face ID.'), findsOneWidget);
       expect(find.text('دخول أسرع بـ Face ID؟'), findsNothing);
       await tester.pump(const Duration(seconds: 4));
@@ -499,6 +646,56 @@ void main() {
       expect(phone.fake.enabled, isFalse);
       expect(find.text('لم يتم تفعيل الدخول بـ Face ID. حاول مرة أخرى.'), findsOneWidget);
       await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('it is asked at once, as soon as the app is up, and before anything else the app asks',
+        (tester) async {
+      _size(tester);
+      final phone = _Phone()..signedIn = true;
+      var pushAsked = false;
+      await tester.pumpWidget(phone.app(BiometricOfferHost(
+        child: Scaffold(
+          body: Consumer(
+            builder: (context, ref, _) => _AsksAfter(onTurn: () => pushAsked = true),
+          ),
+        ),
+      )));
+      final container = ProviderScope.containerOf(tester.element(find.byType(BiometricOfferHost)));
+      // A sign-in with a password just happened.
+      container.read(biometricOfferPendingProvider.notifier).state = true;
+      await tester.pump();
+      expect(BiometricOfferHost.delay, lessThan(const Duration(seconds: 1)));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('دخول أسرع بـ Face ID؟'), findsOneWidget, reason: 'well inside the first second');
+
+      // The notifications explainer's turn would have come three seconds in.
+      await tester.pump(const Duration(seconds: 5));
+      expect(pushAsked, isFalse, reason: 'it waits behind this question');
+      expect(find.text('دخول أسرع بـ Face ID؟'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('biometric-offer-later')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      expect(pushAsked, isTrue, reason: 'and comes once this one is answered');
+      expect(phone.fake.enabled, isFalse);
+    });
+
+    testWidgets('with nothing to ask (no biometrics on the phone) nothing else is kept waiting', (tester) async {
+      _size(tester);
+      final phone = _Phone(offer: null)..signedIn = true;
+      var pushAsked = false;
+      await tester.pumpWidget(phone.app(BiometricOfferHost(
+        child: Scaffold(body: _AsksAfter(onTurn: () => pushAsked = true)),
+      )));
+      ProviderScope.containerOf(tester.element(find.byType(BiometricOfferHost)))
+          .read(biometricOfferPendingProvider.notifier)
+          .state = true;
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(BasakSheetFrame), findsNothing);
+      expect(pushAsked, isTrue);
     });
 
     testWidgets('asked once per account on a shared phone, whoever was asked last', (tester) async {
@@ -599,6 +796,52 @@ void main() {
       expect(phone.fake.enabled, isFalse);
       expect(phone.device.prompts, 1, reason: 'switching off asks nothing');
       expect(tester.widget<BasakSwitch>(inCard).value, isFalse);
+    });
+
+    testWidgets('on for this account already (a password sign-in after a sign-out): shown as on, and not asked',
+        (tester) async {
+      _size(tester);
+      final phone = _Phone()..signedIn = true;
+      // Switched on earlier, signed out, and now signed in again with the password.
+      await storeSignIn(phone.fake);
+      await phone.fake.vault.supersede('student-1');
+      await tester.pumpWidget(phone.app(BiometricOfferHost(child: rows())));
+      ProviderScope.containerOf(tester.element(find.byType(BiometricOfferHost)))
+          .read(biometricOfferPendingProvider.notifier)
+          .state = true;
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(tester.widgetList<BasakSwitch>(find.byType(BasakSwitch)).every((s) => s.value), isTrue);
+      expect(find.byType(BasakSheetFrame), findsNothing, reason: 'nothing to ask: it is on');
+      expect(phone.device.prompts, 0);
+    });
+
+    testWidgets('someone else has it on, on this phone: this account\'s switch is its own', (tester) async {
+      _size(tester);
+      final phone = _Phone()..signedIn = true; // سارة is signed in
+      await storeSignIn(phone.fake, draft: omarDraft, token: 'refresh-omar');
+      await tester.pumpWidget(phone.app(rows()));
+      await tester.pumpAndSettle();
+      final inCard = find.byKey(const Key('biometric-switch'));
+      expect(tester.widget<BasakSwitch>(inCard).value, isFalse);
+
+      // On for her, beside him…
+      await tester.tap(inCard);
+      await tester.pumpAndSettle();
+      expect(tester.widget<BasakSwitch>(inCard).value, isTrue);
+      expect(phone.fake.index, ['student-1', 'student-2']);
+      await tester.pump(const Duration(seconds: 4));
+
+      // …and off for her alone.
+      await tester.tap(inCard);
+      await tester.pumpAndSettle();
+      expect(tester.widget<BasakSwitch>(inCard).value, isFalse);
+      expect(phone.fake.enabledFor('student-1'), isFalse);
+      expect(phone.fake.enabledFor('student-2'), isTrue);
+      expect(phone.fake.tokenOf('student-2'), 'refresh-omar');
+      expect(phone.revoked, isEmpty, reason: 'nobody\'s session is ended by a switch');
     });
 
     testWidgets('the phone did not confirm: it stays off', (tester) async {

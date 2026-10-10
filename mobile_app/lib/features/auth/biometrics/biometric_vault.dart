@@ -1,17 +1,25 @@
 // What signing in with Face ID or a fingerprint keeps on the phone, and what
 // that costs.
 //
-// WHAT IS KEPT
-//   * `basak.biometric.account`: that the sign-in is switched on, for whom,
-//     and the little the returning sign-in shows before anyone has proved
-//     anything: a first name, the phone number with its middle hidden, where
-//     the photo is, the role. Never the password, never the full number.
-//   * `basak.biometric.token`: the refresh token of the Supabase session,
-//     and ONLY between a sign-out and the next sign-in. While the account is
-//     signed in the session lives where Supabase keeps it and this entry does
-//     not exist.
+// WHAT IS KEPT (all of it in the phone's keychain / keystore)
+//   Per account that switched the sign-in on, under its own keys:
+//   * `basak.biometric.account.<user id>`: that it is switched on, and the
+//     little the sign-in screens show before anyone has proved anything: a
+//     first name, the phone number with its middle hidden, where the photo
+//     is, the role. Never the password, never the full number.
+//   * `basak.biometric.token.<user id>`: the refresh token of that account's
+//     Supabase session, and ONLY between its sign-out and its next sign-in.
+//     While the account is signed in the session lives where Supabase keeps
+//     it and this entry does not exist.
+//   And once for the phone:
+//   * `basak.biometric.index`: the ids of those accounts, the most recently
+//     used first. At most [BiometricVault.accountLimit]; the oldest goes.
 //   * `basak.biometric.offered`: the ids of the accounts already asked
 //     «دخول أسرع؟» on this phone (the last few), so none is asked twice.
+//
+//   Before accounts were kept side by side there was one `basak.biometric.account`
+//   and one `basak.biometric.token`. They are moved into the layout above the
+//   first time the vault is read, and nobody is asked anything.
 //
 // THE TRADE-OFF
 //   A refresh token is only good while its session is alive on the server,
@@ -23,6 +31,11 @@
 //   session, and its refresh token moves here. Without that there would be
 //   nothing to sign in again with, short of keeping the password.
 //
+//   With several accounts saved, each has a session of its own left alive,
+//   and each token is the one that was valid at that account's sign-out.
+//   Nothing another account does can spend it: tokens are per session, and a
+//   sign-out (of any scope) ends sessions of the account signing out only.
+//
 //   What "signed out" still promises: nobody who opens the app sees or loads
 //   anything of the account. What it no longer promises: that the session is
 //   dead on the server. Whoever can pass this phone's biometric check gets
@@ -30,19 +43,22 @@
 //   keychain / keystore until then. With the switch off, signing out ends the
 //   session on the server as it always did.
 //
-//   The token is released by one method only, [BiometricVault.unlock], which
-//   runs the phone's check itself and reads the entry after it passed. The
-//   check is the app's, not the keystore's: flutter_secure_storage 9 cannot
-//   bind an entry to biometrics, so a phone that is rooted or whose backup of
-//   the app's sandbox is opened is protected by the keystore's encryption
-//   alone. On iPhone the entry is `unlocked_this_device` (not in backups, not
-//   synced, unreadable while the phone is locked).
+//   A token is released by one method only, [BiometricVault.unlock], which
+//   runs the phone's check itself and reads the entry after it passed. (The
+//   two places that end a session on the server read it to hand it straight
+//   to the server, and keep nothing.) The check is the app's, not the
+//   keystore's: flutter_secure_storage 9 cannot bind an entry to biometrics,
+//   so a phone that is rooted or whose backup of the app's sandbox is opened
+//   is protected by the keystore's encryption alone. On iPhone the entries
+//   are `unlocked_this_device` (not in backups, not synced, unreadable while
+//   the phone is locked).
 //
-// WHEN IT IS DROPPED
-//   «حساب آخر», deleting the account, switching it off, another account
-//   signing in on this phone, a token the server refuses (revoked, expired),
-//   a change of the phone's enrolled faces or fingers, and a reinstall (the
-//   iPhone keychain outlives the app; the marker file does not).
+// WHEN AN ACCOUNT'S ENTRIES ARE DROPPED (the others stay)
+//   Switching it off in the account, deleting the account, a token the server
+//   refuses (revoked, expired), a change of the phone's enrolled faces or
+//   fingers since it was switched on, a sixth account being saved, and a
+//   reinstall (the iPhone keychain outlives the app; the marker file does
+//   not). «حساب آخر» and another account signing in drop nothing.
 import 'dart:convert';
 import 'dart:io';
 
@@ -188,7 +204,7 @@ class BiometricAccount {
   }
 }
 
-/// The three entries described at the top of this file.
+/// The entries described at the top of this file.
 class BiometricVault {
   BiometricVault({SecretStore store = const SecureSecretStore(), InstallMarker? install = const FileInstallMarker()})
       : _store = store,
@@ -198,24 +214,76 @@ class BiometricVault {
   final InstallMarker? _install;
 
   static const _prefix = 'basak.biometric.';
-  static const accountKey = '${_prefix}account';
-  static const tokenKey = '${_prefix}token';
+  static const indexKey = '${_prefix}index';
   static const offeredKey = '${_prefix}offered';
 
-  /// Who the sign-in is switched on for, or null. A keystore that cannot be
-  /// read, or entries left by an earlier installation, count as "nobody".
-  Future<BiometricAccount?> account() async {
-    try {
-      final raw = await _store.read(accountKey);
-      if (raw == null) return null;
-      final account = BiometricAccount.fromJson(jsonDecode(raw));
-      if (account == null || !await _sameInstall()) {
-        await disable();
-        return null;
+  /// The one account and its token, as they were kept before accounts were
+  /// saved side by side. Read once more, to move them.
+  static const legacyAccountKey = '${_prefix}account';
+  static const legacyTokenKey = '${_prefix}token';
+
+  static String accountKeyOf(String userId) => '$legacyAccountKey.$userId';
+  static String tokenKeyOf(String userId) => '$legacyTokenKey.$userId';
+
+  /// How many accounts can have the sign-in switched on, on one phone.
+  static const accountLimit = 5;
+
+  bool _moved = false;
+
+  /// Before anything is read: entries left by an earlier installation go
+  /// (asked every time: the marker is one small file), and, once per run, the
+  /// old single entry moves into the per-account layout.
+  Future<void> _ready() async {
+    if (!await _sameInstall()) {
+      for (final id in await _readIndex()) {
+        await _drop(id);
       }
-      return account;
+      for (final key in const [indexKey, legacyAccountKey, legacyTokenKey]) {
+        await _store.delete(key);
+      }
+      return;
+    }
+    if (_moved) return;
+    _moved = true;
+    final raw = await _store.read(legacyAccountKey);
+    if (raw == null) return;
+    final old = _decode(raw);
+    if (old != null) {
+      final token = await _store.read(legacyTokenKey);
+      await _store.write(accountKeyOf(old.userId), jsonEncode(old.toJson()));
+      if (token != null && token.isNotEmpty) await _store.write(tokenKeyOf(old.userId), token);
+      await _writeIndex([old.userId, ...(await _readIndex()).where((id) => id != old.userId)]);
+    }
+    await _store.delete(legacyAccountKey);
+    await _store.delete(legacyTokenKey);
+  }
+
+  static BiometricAccount? _decode(String raw) {
+    try {
+      return BiometricAccount.fromJson(jsonDecode(raw));
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<List<String>> _readIndex() async {
+    final raw = await _store.read(indexKey);
+    if (raw == null) return [];
+    try {
+      return [for (final id in jsonDecode(raw) as List) if (id is String && id.isNotEmpty) id];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _writeIndex(List<String> ids) =>
+      ids.isEmpty ? _store.delete(indexKey) : _store.write(indexKey, jsonEncode(ids));
+
+  Future<void> _drop(String userId) async {
+    for (final key in [tokenKeyOf(userId), accountKeyOf(userId)]) {
+      try {
+        await _store.delete(key);
+      } catch (_) {}
     }
   }
 
@@ -227,33 +295,105 @@ class BiometricVault {
     }
   }
 
-  /// Switches the sign-in on for [account]. No token is kept yet: the account
-  /// is signed in.
-  Future<void> enable(BiometricAccount account) async {
+  /// Everyone the sign-in is switched on for, the most recently used first.
+  /// A keystore that cannot be read counts as "nobody".
+  Future<List<BiometricAccount>> accounts() async {
     try {
-      await _install?.create();
-    } catch (_) {}
-    await _store.delete(tokenKey);
-    await _store.write(accountKey, jsonEncode(account.toJson()));
-  }
-
-  /// Switches it off and forgets the stored sign-in.
-  Future<void> disable() async {
-    for (final key in const [tokenKey, accountKey]) {
-      try {
-        await _store.delete(key);
-      } catch (_) {}
+      await _ready();
+      final found = <BiometricAccount>[];
+      for (final id in await _readIndex()) {
+        final raw = await _store.read(accountKeyOf(id));
+        final account = raw == null ? null : _decode(raw);
+        if (account != null && account.userId == id) found.add(account);
+      }
+      return found;
+    } catch (_) {
+      return const [];
     }
   }
 
-  /// A password sign-in as [userId]: a sign-in stored for anyone else on this
-  /// phone goes, and so does a token that is no longer the session's.
-  Future<void> signedIn(String userId) async {
-    final current = await account();
-    if (current != null && current.userId != userId) return disable();
+  /// [userId]'s entry, or null when the sign-in is not switched on for them.
+  Future<BiometricAccount?> account(String userId) async {
     try {
-      await _store.delete(tokenKey);
+      await _ready();
+      if (!(await _readIndex()).contains(userId)) return null;
+      final raw = await _store.read(accountKeyOf(userId));
+      final account = raw == null ? null : _decode(raw);
+      return account?.userId == userId ? account : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Switches the sign-in on for [account], beside whoever has it already. No
+  /// token is kept yet: the account is signed in. Answers with the tokens of
+  /// the accounts that had to make room (see [accountLimit]), for their
+  /// sessions to be ended on the server.
+  Future<List<String>> enable(BiometricAccount account) async {
+    try {
+      await _install?.create();
     } catch (_) {}
+    await _ready();
+    await _store.delete(tokenKeyOf(account.userId));
+    await _store.write(accountKeyOf(account.userId), jsonEncode(account.toJson()));
+    final ids = [account.userId, ...(await _readIndex()).where((id) => id != account.userId)];
+    final orphaned = <String>[];
+    while (ids.length > accountLimit) {
+      final oldest = ids.removeLast();
+      try {
+        final token = await _store.read(tokenKeyOf(oldest));
+        if (token != null && token.isNotEmpty) orphaned.add(token);
+      } catch (_) {}
+      await _drop(oldest);
+    }
+    await _writeIndex(ids);
+    return orphaned;
+  }
+
+  /// Switches it off for [userId] and forgets their stored sign-in. Nobody
+  /// else's is touched.
+  Future<void> disable(String userId) async {
+    try {
+      await _ready();
+      await _drop(userId);
+      await _writeIndex((await _readIndex()).where((id) => id != userId).toList());
+    } catch (_) {}
+  }
+
+  /// [userId] is signed in: a token put aside for them is no longer the
+  /// session's and goes; their entry stays (the sign-in is still switched
+  /// on) and they become the most recently used. Other accounts keep
+  /// everything.
+  Future<void> signedIn(String userId) async {
+    try {
+      await _ready();
+      await _store.delete(tokenKeyOf(userId));
+      final ids = await _readIndex();
+      if (ids.contains(userId) && ids.first != userId) {
+        await _writeIndex([userId, ...ids.where((id) => id != userId)]);
+      }
+    } catch (_) {}
+  }
+
+  /// [userId] signed in with their password while an earlier sign-out's token
+  /// was still waiting: that older session is handed to [revoke] to be ended
+  /// on the server, and then this is [signedIn].
+  Future<void> supersede(String userId, {Future<void> Function(String token)? revoke}) async {
+    String? stale;
+    if (revoke != null) {
+      try {
+        await _ready();
+        stale = await _store.read(tokenKeyOf(userId));
+      } catch (_) {}
+    }
+    await signedIn(userId);
+    if (stale != null && stale.isNotEmpty) {
+      try {
+        await revoke!(stale);
+      } catch (_) {
+        // Best effort: without its token the session cannot be used anyway.
+      }
+    }
   }
 
   /// Signing out: keeps [refreshToken] for the next sign-in when the sign-in
@@ -261,47 +401,48 @@ class BiometricVault {
   /// then be left alive on the server.
   Future<bool> hold(String userId, String? refreshToken) async {
     if (refreshToken == null || refreshToken.isEmpty) return false;
-    final current = await account();
-    if (current == null || current.userId != userId) return false;
+    if (await account(userId) == null) return false;
     try {
-      await _store.write(tokenKey, refreshToken);
+      await _store.write(tokenKeyOf(userId), refreshToken);
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  /// Whether a sign-in is waiting (asked without reading it).
-  Future<bool> hasToken() async {
+  /// Whether a sign-in is waiting for [userId] (asked without reading it).
+  Future<bool> hasToken(String userId) async {
     try {
-      return await _store.has(tokenKey);
+      await _ready();
+      return await _store.has(tokenKeyOf(userId));
     } catch (_) {
       return false;
     }
   }
 
-  /// The only way the token leaves the vault: [device] shows the phone's
-  /// prompt, and the entry is read after the check passed.
-  Future<({BiometricCheck check, String? token})> unlock(BiometricDevice device) async {
+  /// The only way a token leaves the vault to be signed in with: [device]
+  /// shows the phone's prompt, and [userId]'s entry is read after the check
+  /// passed.
+  Future<({BiometricCheck check, String? token})> unlock(BiometricDevice device, String userId) async {
     final check = await device.check();
     if (check != BiometricCheck.passed) return (check: check, token: null);
     try {
-      return (check: check, token: await _store.read(tokenKey));
+      return (check: check, token: await _store.read(tokenKeyOf(userId)));
     } catch (_) {
       return (check: check, token: null);
     }
   }
 
-  /// Forgets the stored sign-in for good. [revoke] is handed the token once,
-  /// to end its session on the server; it is not kept anywhere after.
-  Future<void> forget({Future<void> Function(String token)? revoke}) async {
+  /// Forgets [userId]'s stored sign-in for good. [revoke] is handed the token
+  /// once, to end its session on the server; it is not kept anywhere after.
+  Future<void> forget(String userId, {Future<void> Function(String token)? revoke}) async {
     String? token;
     if (revoke != null) {
       try {
-        token = await _store.read(tokenKey);
+        token = await _store.read(tokenKeyOf(userId));
       } catch (_) {}
     }
-    await disable();
+    await disable(userId);
     if (token != null && token.isNotEmpty) {
       try {
         await revoke!(token);

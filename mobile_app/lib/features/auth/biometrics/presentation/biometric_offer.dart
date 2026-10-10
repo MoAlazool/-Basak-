@@ -75,18 +75,31 @@ Future<bool?> showBiometricOfferSheet(BuildContext context, BiometricKind kind) 
       ),
     );
 
-/// Sits around the app of a signed-in account and, once after the first
-/// sign-in with a password, asks «دخول أسرع؟». Never on a phone with no
-/// biometrics enrolled, never twice for the same account, and never on top of
-/// another sheet: it waits until the screen under it is the one on show.
+/// Waits until «دخول أسرع؟» has been asked and answered (or was never due),
+/// for whatever else the app asks at its start. False when the screen that
+/// wanted to ask is gone meanwhile.
+Future<bool> afterBiometricOffer(BuildContext context, WidgetRef ref) async {
+  for (var waits = 0; waits < 240 && context.mounted && biometricOfferComesFirst(ref); waits++) {
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+  return context.mounted;
+}
+
+/// Sits around the app of a signed-in account and, as soon as the app is up
+/// after a sign-in with a password or a new account, asks «دخول أسرع؟». Never
+/// on a phone with no biometrics enrolled, never twice for the same account,
+/// never for an account that has it on already, and never on top of another
+/// sheet: it waits until the screen under it is the one on show. It is the
+/// first thing the app asks: the notifications explainer waits behind it
+/// (`biometricOfferComesFirst`).
 class BiometricOfferHost extends ConsumerStatefulWidget {
   const BiometricOfferHost({super.key, required this.child});
 
   final Widget child;
 
-  /// After the home screen has settled, and after the notifications offer
-  /// that may open three seconds in.
-  static const delay = Duration(seconds: 4);
+  /// One beat after the app's first frame, so the sheet rises over a drawn
+  /// screen and not over the last frame of the sign-in.
+  static const delay = Duration(milliseconds: 350);
 
   @override
   ConsumerState<BiometricOfferHost> createState() => _BiometricOfferHostState();
@@ -118,20 +131,33 @@ class _BiometricOfferHostState extends ConsumerState<BiometricOfferHost> {
     if (!mounted || !ref.read(biometricOfferPendingProvider)) return;
     // Something else is being answered: wait for it, for a while.
     if (ModalRoute.of(context)?.isCurrent != true) {
-      if (++_waits <= 30) _timer = Timer(const Duration(seconds: 2), _offer);
+      if (++_waits <= 60) {
+        _timer = Timer(const Duration(seconds: 1), _offer);
+      } else {
+        // Given up for this run: nothing else is kept waiting for it.
+        ref.read(biometricOfferPendingProvider.notifier).state = false;
+      }
       return;
     }
+    // Still "first" while it is being decided and shown: whatever else the
+    // app wants to ask waits until this is answered.
+    final open = ref.read(biometricOfferOpenProvider.notifier);
+    open.state = true;
     ref.read(biometricOfferPendingProvider.notifier).state = false;
-    final userId = ref.read(sessionUserIdProvider);
-    if (userId == null) return;
-    final signIn = ref.read(biometricSignInProvider);
-    final offer = await signIn.offerFor(userId);
-    if (offer == null || !mounted) return;
-    // Asked once, whatever the answer; the switch in the account stays.
-    await signIn.markOffered(userId);
-    if (!mounted) return;
-    if (await showBiometricOfferSheet(context, offer.kind) != true || !mounted) return;
-    await enableBiometricSignIn(context, ref, offer.kind);
+    try {
+      final userId = ref.read(sessionUserIdProvider);
+      if (userId == null) return;
+      final signIn = ref.read(biometricSignInProvider);
+      final offer = await signIn.offerFor(userId);
+      if (offer == null || !mounted) return;
+      // Asked once, whatever the answer; the switch in the account stays.
+      await signIn.markOffered(userId);
+      if (!mounted) return;
+      if (await showBiometricOfferSheet(context, offer.kind) != true || !mounted) return;
+      await enableBiometricSignIn(context, ref, offer.kind);
+    } finally {
+      open.state = false;
+    }
   }
 
   @override

@@ -33,8 +33,12 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
           ? _Entry.signIn
           : _Entry.welcome;
 
-  /// The sign-in stored on this phone, while it can still be used.
-  StoredSignIn? _stored;
+  /// The sign-ins stored on this phone that can still be used, the most
+  /// recently used first. The first is the one the returning sign-in shows;
+  /// all of them are behind the square button of the forms.
+  List<StoredSignIn> _saved = const [];
+
+  StoredSignIn? get _stored => _saved.isEmpty ? null : _saved.first;
 
   /// Why the ordinary sign-in is shown instead of the returning one.
   String? _notice;
@@ -58,7 +62,7 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
 
   /// What the phone has stored decides the first screen, once.
   void _open(BiometricEntry entry) {
-    _stored = entry.stored;
+    _saved = entry.saved;
     if (_moved) return;
     if (entry.stored != null) {
       _view = _Entry.returning;
@@ -82,17 +86,26 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
     _notice = reason.line(stored.kind, supervisor: supervisor);
     // Locked out is the phone's doing and passes, so the button stays; the
     // others have already dropped the stored sign-in, and the button with it.
+    // Only that account's: whoever else is stored keeps their button.
     if (reason != BiometricFallback.lockedOut) {
-      _stored = null;
+      _saved = [
+        for (final other in _saved)
+          if (other.account.userId != stored.account.userId) other,
+      ];
       ref.invalidate(biometricEntryProvider);
     }
-    _go(supervisor ? _Entry.supervisor : _Entry.signIn);
+    // Said on the form the person is on, or on the form of whose it was.
+    if (_view == _Entry.signIn || _view == _Entry.supervisor) {
+      setState(() {});
+    } else {
+      _go(supervisor ? _Entry.supervisor : _Entry.signIn);
+    }
   }
 
   _Entry get _storedSignIn => (_stored?.account.isSupervisor ?? false) ? _Entry.supervisor : _Entry.signIn;
 
   /// Back from a sign-in: the returning sign-in when there is one.
-  _Entry get _home => _stored == null ? _Entry.welcome : _Entry.returning;
+  _Entry get _home => _saved.isEmpty ? _Entry.welcome : _Entry.returning;
 
   @override
   Widget build(BuildContext context) {
@@ -123,19 +136,17 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
               key: const ValueKey('returning'),
               stored: stored,
               onPassword: () => _go(_storedSignIn),
-              onOtherAccount: () {
-                _stored = null;
-                ref.invalidate(biometricEntryProvider);
-                _go(_Entry.welcome);
-              },
+              // Someone else's turn: the ordinary sign-in. Nothing stored is
+              // dropped, and the form keeps the button for it.
+              onOtherAccount: () => _go(_Entry.signIn),
               onFallback: (reason) => _fallBack(stored, reason),
             ),
           _Entry.returning => const SizedBox.shrink(),
           _Entry.signIn => LoginScreen(
               key: const ValueKey('login'),
               notice: _notice,
-              biometric: stored != null && !stored.account.isSupervisor ? stored.kind : null,
-              onBiometricFallback: stored == null ? null : (reason) => _fallBack(stored, reason),
+              saved: _saved,
+              onBiometricFallback: _fallBack,
               onBack: () => _go(_home),
               onSignup: () => _go(_Entry.signUp),
               onOtherRole: () => _go(_Entry.supervisor),
@@ -144,15 +155,17 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
               key: const ValueKey('supervisor-login'),
               supervisor: true,
               notice: _notice,
-              biometric: stored != null && stored.account.isSupervisor ? stored.kind : null,
-              onBiometricFallback: stored == null ? null : (reason) => _fallBack(stored, reason),
+              saved: _saved,
+              onBiometricFallback: _fallBack,
               onBack: () => _go(_home),
               onSignup: () => _go(_Entry.signUp),
               onOtherRole: () => _go(_Entry.signIn),
             ),
           _Entry.signUp => SignupScreen(
               key: const ValueKey('signup'),
-              onBack: () => _go(_Entry.welcome),
+              saved: _saved,
+              onBiometricFallback: _fallBack,
+              onBack: () => _go(_home),
             ),
         },
       ),

@@ -64,19 +64,23 @@ class StoredSignIn {
 }
 
 /// What a phone nobody is signed in on opens with: the returning sign-in
-/// ([stored]), or the ordinary one, with a line when a stored sign-in was
-/// just dropped ([fallback]).
+/// ([stored], the most recently used of [saved]), or the ordinary one, with a
+/// line when the stored sign-ins were just dropped ([fallback]).
 class BiometricEntry {
-  final StoredSignIn? stored;
+  /// Every sign-in waiting on this phone that it can still use, the most
+  /// recently used first.
+  final List<StoredSignIn> saved;
   final BiometricFallback? fallback;
 
   /// Whose words the [fallback] line is said in.
   final BiometricKind? fallbackKind;
   final bool fallbackSupervisor;
 
-  const BiometricEntry({this.stored, this.fallback, this.fallbackKind, this.fallbackSupervisor = false});
+  const BiometricEntry({this.saved = const [], this.fallback, this.fallbackKind, this.fallbackSupervisor = false});
 
   static const none = BiometricEntry();
+
+  StoredSignIn? get stored => saved.isEmpty ? null : saved.first;
 
   String? get fallbackLine => fallback?.line(fallbackKind ?? BiometricKind.fingerprintOrFace, supervisor: fallbackSupervisor);
 }
@@ -120,31 +124,77 @@ class BiometricSignIn {
   /// Ends a stored session on the server when it is thrown away.
   final Future<void> Function(String refreshToken)? revoke;
 
-  /// What a signed-out phone opens with.
+  /// What a signed-out phone opens with. A sign-in switched on before the
+  /// phone's faces or fingers changed is dropped here, and only that one.
   Future<BiometricEntry> entry() async {
-    final account = await vault.account();
-    if (account == null || !await vault.hasToken()) return BiometricEntry.none;
+    final waiting = [
+      for (final account in await vault.accounts())
+        if (await vault.hasToken(account.userId)) account,
+    ];
+    if (waiting.isEmpty) return BiometricEntry.none;
     final offer = await device.offer();
-    if (offer == null || !offer.sameAs(enrolled: account.enrolled, mark: account.mark)) {
-      await vault.forget(revoke: revoke);
+    final saved = <StoredSignIn>[];
+    BiometricAccount? dropped;
+    for (final account in waiting) {
+      if (offer != null && offer.sameAs(enrolled: account.enrolled, mark: account.mark)) {
+        saved.add(StoredSignIn(account, offer));
+      } else {
+        await vault.forget(account.userId, revoke: revoke);
+        dropped ??= account;
+      }
+    }
+    // Said only when nothing is left to sign in with: the form is then all
+    // there is, and it says why.
+    if (saved.isEmpty && dropped != null) {
       return BiometricEntry(
         fallback: BiometricFallback.changed,
-        fallbackKind: offer?.kind ?? account.kind,
-        fallbackSupervisor: account.isSupervisor,
+        fallbackKind: offer?.kind ?? dropped.kind,
+        fallbackSupervisor: dropped.isSupervisor,
       );
     }
-    return BiometricEntry(stored: StoredSignIn(account, offer));
+    return BiometricEntry(saved: saved);
   }
 
-  /// The phone's prompt, then the stored sign-in.
-  Future<BiometricSignInResult> signIn() async {
-    final account = await vault.account();
+  /// Which of [saved] the form's button signs in, when it can tell without
+  /// asking: the only one, or the one whose number is typed in the form.
+  /// Null: several and nothing typed that says which (the screen then asks).
+  static StoredSignIn? pick(List<StoredSignIn> saved, String typed) {
+    if (saved.isEmpty) return null;
+    if (saved.length == 1) return saved.single;
+    final identifier = typed.trim();
+    if (identifier.isEmpty) return null;
+    // Only the masked form of a number is kept, so that is what is compared.
+    final masked = BiometricAccount.mask(identifier);
+    for (final stored in saved) {
+      if (stored.account.maskedPhone == masked) return stored;
+    }
+    // Something else was typed: the most recently used, as on the returning sign-in.
+    return saved.first;
+  }
+
+  /// The phone's prompt, then the stored sign-in of [userId] (null: the most
+  /// recently used one that is waiting). Whatever goes wrong touches that
+  /// account's entry alone.
+  Future<BiometricSignInResult> signIn({String? userId}) async {
+    BiometricAccount? account;
+    if (userId != null) {
+      account = await vault.account(userId);
+    } else {
+      for (final candidate in await vault.accounts()) {
+        if (await vault.hasToken(candidate.userId)) {
+          account = candidate;
+          break;
+        }
+      }
+    }
+    if (account == null) return BiometricSignInResult.expired;
+    final id = account.userId;
     final offer = await device.offer();
-    if (account == null || offer == null || !offer.sameAs(enrolled: account.enrolled, mark: account.mark)) {
-      await vault.forget(revoke: revoke);
+    if (offer == null || !offer.sameAs(enrolled: account.enrolled, mark: account.mark)) {
+      await vault.forget(id, revoke: revoke);
       return BiometricSignInResult.changed;
     }
-    final unlocked = await vault.unlock(device);
+    final unlocked = await vault.unlock(device, id);
     switch (unlocked.check) {
       case BiometricCheck.passed:
         break;
@@ -155,12 +205,12 @@ class BiometricSignIn {
       case BiometricCheck.lockedOut:
         return BiometricSignInResult.lockedOut;
       case BiometricCheck.unavailable:
-        await vault.forget(revoke: revoke);
+        await vault.forget(id, revoke: revoke);
         return BiometricSignInResult.changed;
     }
     final token = unlocked.token;
     if (token == null || token.isEmpty) {
-      await vault.disable();
+      await vault.disable(id);
       return BiometricSignInResult.expired;
     }
     try {
@@ -169,11 +219,11 @@ class BiometricSignIn {
       // No answer from the server: the token is as good as it was.
       if (isNetworkFailure(error)) return BiometricSignInResult.offline;
       // Refused: revoked, expired, the account is gone.
-      await vault.disable();
+      await vault.disable(id);
       return BiometricSignInResult.expired;
     }
     // The session has it now (and has already replaced it with a newer one).
-    await vault.signedIn(account.userId);
+    await vault.signedIn(id);
     return BiometricSignInResult.signedIn;
   }
 
@@ -185,7 +235,7 @@ class BiometricSignIn {
     if (check != BiometricCheck.passed) return check;
     final offer = await device.offer(renew: true);
     if (offer == null) return BiometricCheck.unavailable;
-    await vault.enable(BiometricAccount(
+    final orphaned = await vault.enable(BiometricAccount(
       userId: account.userId,
       role: account.role,
       firstName: BiometricAccount.firstNameOf(account.fullName),
@@ -196,16 +246,21 @@ class BiometricSignIn {
       mark: offer.mark,
     ));
     await vault.markOffered(account.userId);
+    // An account that had to make room is signed out for good.
+    for (final token in orphaned) {
+      try {
+        await revoke?.call(token);
+      } catch (_) {}
+    }
     return BiometricCheck.passed;
   }
 
-  Future<void> disable() => vault.disable();
+  /// Switches it off for [userId]: their entry goes, nobody else's.
+  Future<void> disable(String userId) => vault.disable(userId);
 
-  /// «حساب آخر»: the stored sign-in goes, and its session with it.
-  Future<void> useAnotherAccount() => vault.forget(revoke: revoke);
-
-  /// Whether it is switched on for [userId].
-  Future<bool> isEnabledFor(String userId) async => (await vault.account())?.userId == userId;
+  /// Whether it is switched on for [userId] on this phone: signed in or not,
+  /// and whoever else has it on.
+  Future<bool> isEnabledFor(String userId) async => await vault.account(userId) != null;
 
   /// Whether to ask [userId] «دخول أسرع؟» now: the phone offers something, it
   /// is not on already, and they were not asked before.
@@ -282,9 +337,18 @@ final biometricEntryReadyProvider = FutureProvider<void>((ref) async {
       .timeout(const Duration(milliseconds: 400), onTimeout: () => BiometricEntry.none);
 });
 
-/// Set by a sign-in with a password: the app, once it is up, asks «دخول
-/// أسرع؟» (see BiometricOfferHost).
+/// Set by a sign-in with a password or a new account: the app, as soon as it
+/// is up, asks «دخول أسرع؟» (see BiometricOfferHost).
 final biometricOfferPendingProvider = StateProvider<bool>((ref) => false);
+
+/// The question is on screen, or about to be. Whatever else the app wants to
+/// ask at its start (the notifications explainer) waits while this or
+/// [biometricOfferPendingProvider] is set: this question goes first.
+final biometricOfferOpenProvider = StateProvider<bool>((ref) => false);
+
+/// Whether another of the app's first questions must wait for this one.
+bool biometricOfferComesFirst(WidgetRef ref) =>
+    ref.read(biometricOfferPendingProvider) || ref.read(biometricOfferOpenProvider);
 
 /// The signed-in account as the returning sign-in will show it, from what the
 /// account's own screens load anyway (the profile, the supervisor's dashboard

@@ -7,8 +7,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:basak_mobile/core/ui/ui.dart';
 
-import '../biometrics/biometric_device.dart';
 import '../biometrics/biometric_sign_in.dart';
+import '../biometrics/presentation/biometric_quick_sign_in.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
@@ -24,7 +24,7 @@ class LoginScreen extends ConsumerStatefulWidget {
     this.onOtherRole,
     this.supervisor = false,
     this.notice,
-    this.biometric,
+    this.saved = const [],
     this.onBiometricFallback,
   });
 
@@ -43,15 +43,15 @@ class LoginScreen extends ConsumerStatefulWidget {
   /// time (the phone's biometrics changed, the stored sign-in expired).
   final String? notice;
 
-  /// What the phone offers for the sign-in stored on it: the square button
-  /// beside «دخول». Null: no button. A tap asks the phone and signs in from
-  /// here, with nothing to type.
-  final BiometricKind? biometric;
+  /// The sign-ins stored on this phone for Face ID or a fingerprint, whoever
+  /// they belong to: with any, the square button stands beside «دخول». A tap
+  /// asks the phone and signs in from here, with nothing to type.
+  final List<StoredSignIn> saved;
 
-  /// The stored sign-in cannot be used (the phone's biometrics changed, the
-  /// session ended, the phone locked its check): the line to say, and whether
-  /// the button may stay.
-  final void Function(BiometricFallback reason)? onBiometricFallback;
+  /// One of them cannot be used (the phone's biometrics changed, its session
+  /// ended, the phone locked its check): the line to say, and whether its
+  /// entry is gone.
+  final void Function(StoredSignIn stored, BiometricFallback reason)? onBiometricFallback;
 
   /// Said beside the fields when the server could not be reached.
   static const offlineMessage = 'تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مرة أخرى.';
@@ -79,8 +79,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// The phone's check is up, or its sign-in is on its way to the server.
   bool _biometricBusy = false;
 
-  /// The phone did not recognise its owner: said above the buttons, amber.
+  /// The phone did not recognise its owner: said above the buttons, amber,
+  /// in the words of whose sign-in it was.
   bool _notRecognised = false;
+  bool _notRecognisedSupervisor = false;
 
   bool get _supervisor => widget.supervisor;
 
@@ -158,43 +160,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _failure = message;
         }
       });
-    }
-  }
-
-  /// The square button: the phone's own check, then straight into the app.
-  /// What can go wrong is said here, on the form that is the way round it.
-  Future<void> _biometricSignIn() async {
-    if (_biometricBusy) return;
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _biometricBusy = true;
-      _notRecognised = false;
-      _failure = null;
-    });
-    final result = await ref.read(biometricSignInProvider).signIn();
-    if (!mounted) return;
-    switch (result) {
-      case BiometricSignInResult.signedIn:
-        return; // the app replaces the whole entry
-      case BiometricSignInResult.notRecognised:
-        HapticFeedback.mediumImpact();
-        setState(() {
-          _biometricBusy = false;
-          _notRecognised = true;
-        });
-      case BiometricSignInResult.offline:
-        setState(() {
-          _biometricBusy = false;
-          _failure = LoginScreen.offlineMessage;
-        });
-      case BiometricSignInResult.usePassword:
-        setState(() => _biometricBusy = false);
-        _passwordFocus.requestFocus();
-      case BiometricSignInResult.lockedOut:
-      case BiometricSignInResult.changed:
-      case BiometricSignInResult.expired:
-        setState(() => _biometricBusy = false);
-        widget.onBiometricFallback?.call(result.fallback!);
     }
   }
 
@@ -358,11 +323,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ],
           ),
         if (_failure != null) InlineError(message: _failure!),
-        if (_notRecognised && widget.biometric != null)
+        if (_notRecognised && widget.saved.isNotEmpty)
           Semantics(
             liveRegion: true,
             child: InfoNote(
-              biometricNotRecognisedLine(supervisor: _supervisor),
+              biometricNotRecognisedLine(supervisor: _notRecognisedSupervisor),
               key: const Key('login-biometric-line'),
             ),
           ),
@@ -376,16 +341,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: _biometricBusy ? null : _submit,
               ),
             ),
-            // Only where a sign-in is stored on this phone for this kind of
-            // account. After «دخول» in reading order: at its left in Arabic.
-            if (widget.biometric != null) ...[
+            // Wherever a sign-in is stored on this phone. After «دخول» in
+            // reading order: at its left in Arabic.
+            if (widget.saved.isNotEmpty) ...[
               const SizedBox(width: BasakSpace.s8),
-              GroundSquareButton(
+              BiometricQuickButton(
                 key: const Key('login-biometric'),
-                icon: widget.biometric!.icon,
-                label: widget.biometric!.signInLabel,
-                loading: _biometricBusy,
-                onPressed: loading ? null : _biometricSignIn,
+                saved: widget.saved,
+                typed: () => _phone.text,
+                enabled: !loading || _biometricBusy,
+                onBusy: (busy) => setState(() {
+                  _biometricBusy = busy;
+                  if (busy) {
+                    _notRecognised = false;
+                    _failure = null;
+                  }
+                }),
+                onNotRecognised: (stored) => setState(() {
+                  _notRecognised = true;
+                  _notRecognisedSupervisor = stored.account.isSupervisor;
+                }),
+                onOffline: () => setState(() => _failure = LoginScreen.offlineMessage),
+                onUsePassword: _passwordFocus.requestFocus,
+                onFallback: widget.onBiometricFallback,
               ),
             ],
           ],

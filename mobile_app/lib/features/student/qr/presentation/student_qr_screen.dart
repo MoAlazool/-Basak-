@@ -305,8 +305,13 @@ class _CardFace extends StatefulWidget {
   /// The height of the card's lines of text, which grows with the text size.
   static const textHeight = 200.0;
 
-  /// The code is drawn this large when there is room, never larger.
+  /// The code is drawn this large when there is room, never larger: it is the
+  /// card that grows with the phone, not the code.
   static const qrLargest = 232.0;
+
+  /// The card is never taller than this many times its width: a pass, like
+  /// the ones in the phone's wallet, not a column.
+  static const tallest = 1.65;
 
   @override
   State<_CardFace> createState() => _CardFaceState();
@@ -402,9 +407,19 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
         SizedBox(height: _lerp(BasakSpace.s4, BasakSpace.s12, room)),
         _Title(compact: compact, worksOffline: true),
         SizedBox(height: gap),
-        // The card hugs its content at the top; what the QR does not use
-        // stays between the card and the buttons.
-        Expanded(child: Align(alignment: AlignmentDirectional.topCenter, child: card)),
+        // The card takes the page down to the buttons over the tab bar, up to
+        // a pass's proportions; on a very tall phone what is left stays above it.
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, box) => Align(
+              alignment: AlignmentDirectional.bottomCenter,
+              child: SizedBox(
+                height: math.min(box.maxHeight, box.maxWidth * _CardFace.tallest),
+                child: card,
+              ),
+            ),
+          ),
+        ),
         SizedBox(height: gap),
         // Two buttons of one height and one width: the card's other side, and
         // the phone's wallet.
@@ -478,7 +493,7 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
         padding: EdgeInsetsDirectional.only(top: pad, bottom: math.max(BasakSpace.s8, pad - BasakSpace.s6)),
         decoration: _paper(colors),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             inset(Padding(
@@ -503,7 +518,9 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
             )),
             SizedBox(height: gap),
             // The one flexible part: it takes what the rest leaves.
-            Flexible(child: _Qr(value: pass.qrValue!, frame: compact ? BasakSpace.s6 : BasakSpace.s10)),
+            // The one flexible part: the code at its own size, in the middle of
+            // what the rest leaves.
+            Expanded(child: Center(child: _Qr(value: pass.qrValue!, frame: compact ? BasakSpace.s6 : BasakSpace.s10))),
             SizedBox(height: gap),
             // One line whatever the text size: it shrinks before it would wrap or cut.
             inset(FittedBox(

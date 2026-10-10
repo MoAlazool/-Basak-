@@ -209,11 +209,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
         identifier: identifier,
         password: password,
       );
-      final user = SupabaseService.currentUser;
+      final user = _repo.signedInUser;
       if (user != null) {
         await OfflineCache.saveSession(user, role.name);
-        // A sign-in stored for anyone else on this phone goes with theirs.
-        await _signedInFor(user.id);
+        // Signing in with Face ID or a fingerprint stays switched on for this
+        // account if it was; a session an earlier sign-out left waiting is
+        // ended on the server. Nobody else's stored sign-in is touched.
+        try {
+          await biometrics?.supersede(user.id, revoke: _repo.revokeSession);
+        } catch (_) {
+          // The keystore could not be reached: signing in goes on.
+        }
       }
       if (role == UserRole.student) unawaited(_refreshOfflineStudentPass());
       state = AuthState(
@@ -255,9 +261,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> deleteStudentAccount() async {
     state = state.copyWith(isLoading: true);
     try {
+      final deleted = state.user?.id;
       await requireOnline(_repo.deleteStudentAccount);
-      // A deleted account has nothing to sign in to again.
-      await biometrics?.disable();
+      // A deleted account has nothing to sign in to again; the others on this
+      // phone keep theirs.
+      if (deleted != null) await biometrics?.disable(deleted);
       await VoteReminders.cancelAll();
       await _clearAccountData();
       state = const AuthState();

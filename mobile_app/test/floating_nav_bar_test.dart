@@ -170,7 +170,7 @@ void main() {
     double centre(int index) => tester.getCenter(find.byIcon(items[index].icon)).dx;
 
     expect(pill().center.dx, moreOrLessEquals(centre(0), epsilon: .5));
-    expect(pill().size, const Size(52, 32));
+    expect(pill().size, _restingLens(tester));
 
     await tester.tap(find.text(items[2].label));
     await tester.pump();
@@ -180,12 +180,31 @@ void main() {
     expect(pill().center.dx, greaterThan(centre(2)));
     await tester.pumpAndSettle();
     expect(pill().center.dx, moreOrLessEquals(centre(2), epsilon: .5));
-    expect(pill().center.dy, moreOrLessEquals(tester.getCenter(find.byIcon(items[2].icon)).dy, epsilon: .5));
+    // The lens is the whole tab's, so its icon is inside it rather than at its centre.
+    expect(pill().contains(tester.getCenter(find.byIcon(items[2].icon))), isTrue);
 
     // Collapsed, it stays behind the same icon.
     await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
     await tester.pumpAndSettle();
-    expect(pill().center, within(distance: .5, from: tester.getCenter(find.byIcon(items[2].icon))));
+    // Over the whole tab now, so centred on it across the bar and around its icon.
+    expect(pill().center.dx, moreOrLessEquals(centre(2), epsilon: .5));
+    expect(pill().contains(tester.getCenter(find.byIcon(items[2].icon))), isTrue);
+  });
+
+  testWidgets('the lens covers the whole selected tab, its icon and its label, as one capsule',
+      (tester) async {
+    await tester.pumpWidget(_app());
+    final items = FloatingGlassNavBar.supervisorNavItems;
+    final lens = tester.getRect(find.byKey(const Key('nav-indicator')));
+    final icon = tester.getRect(find.byIcon(items[0].icon));
+    final label = tester.getRect(find.text(items[0].label));
+    expect(lens.contains(icon.topLeft) && lens.contains(icon.bottomRight), isTrue, reason: 'the icon is under it');
+    expect(lens.contains(label.topLeft) && lens.contains(label.bottomRight), isTrue, reason: 'the label is under it');
+    // Not the next tab's.
+    expect(lens.overlaps(tester.getRect(find.byIcon(items[1].icon))), isFalse);
+    // The label on the lens is white, like the icon.
+    expect(tester.widget<Text>(find.text(items[0].label)).style!.color, BasakPalette.surface);
+    expect(tester.widget<Text>(find.text(items[1].label)).style!.color, isNot(BasakPalette.surface));
   });
 
   group('the glass and its lens', () {
@@ -213,11 +232,11 @@ void main() {
         widest = widest < lens(tester).width ? lens(tester).width : widest;
         furthest = furthest > lens(tester).center.dx ? lens(tester).center.dx : furthest;
       }
-      expect(widest, greaterThan(56), reason: 'longer while it travels');
+      expect(widest, greaterThan(_restingLens(tester).width + 4), reason: 'longer while it travels');
       // RTL: the fourth tab is the leftmost; the spring carries the lens a touch beyond it.
       expect(furthest, lessThan(centre(tester, 3)));
       await tester.pumpAndSettle();
-      expect(lens(tester).size, const Size(52, 32));
+      expect(lens(tester).size, _restingLens(tester));
       expect(lens(tester).center.dx, moreOrLessEquals(centre(tester, 3), epsilon: .5));
     });
 
@@ -265,7 +284,7 @@ void main() {
       await tester.tap(find.text(items[2].label));
       await tester.pump();
       expect(lens(tester).center.dx, moreOrLessEquals(centre(tester, 2), epsilon: .5));
-      expect(lens(tester).size, const Size(52, 32));
+      expect(lens(tester).size, _restingLens(tester));
       expect(_selected(tester), 2);
     });
 
@@ -373,4 +392,10 @@ void main() {
     expect(FloatingGlassNavBar.collapseOnScroll(at(0, ScrollDirection.reverse)), isTrue);
     expect(FloatingGlassNavBar.collapseOnScroll(at(400, ScrollDirection.forward)), isFalse);
   });
+}
+
+/// The lens at rest: as wide as a tab less a hair, as tall as the bar less its inset.
+Size _restingLens(WidgetTester tester) {
+  final bar = tester.getSize(find.byKey(const Key('nav-pill')));
+  return Size((bar.width - 16) / 4 - 4, bar.height - 12);
 }
