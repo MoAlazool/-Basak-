@@ -249,7 +249,7 @@ void main() {
           .transform
           .entry(0, 0);
       expect(icon(0).color, BasakPalette.surface);
-      expect(icon(1).color, BasakPalette.ink2);
+      expect(icon(1).color, BasakPalette.ink);
       expect(scale(0), 1);
       expect(scale(1), lessThan(1));
 
@@ -257,11 +257,11 @@ void main() {
       await tester.tap(find.text(items[1].label));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
-      expect(icon(0).color, isNot(anyOf(BasakPalette.surface, BasakPalette.ink2)));
-      expect(icon(1).color, isNot(anyOf(BasakPalette.surface, BasakPalette.ink2)));
+      expect(icon(0).color, isNot(anyOf(BasakPalette.surface, BasakPalette.ink)));
+      expect(icon(1).color, isNot(anyOf(BasakPalette.surface, BasakPalette.ink)));
       await tester.pumpAndSettle();
       expect(icon(1).color, BasakPalette.surface);
-      expect(icon(0).color, BasakPalette.ink2);
+      expect(icon(0).color, BasakPalette.ink);
     });
 
     testWidgets('a tab change clicks', (tester) async {
@@ -356,7 +356,7 @@ void main() {
     });
   });
 
-  testWidgets('horizontal scrolls and pages too short to scroll leave the bar alone',
+  testWidgets('horizontal scrolls leave the bar alone; a page too short to scroll has its labels back at rest',
       (tester) async {
     await tester.pumpWidget(_app());
     await tester.drag(find.byKey(const Key('strip')), const Offset(300, 0));
@@ -364,9 +364,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('الرحلات'), findsOneWidget);
 
+    // A short page: the pull folds the labels while it lasts, and at rest they are back.
     await tester.pumpWidget(_app(rows: 1));
-    await tester.drag(find.byKey(const Key('body')), const Offset(0, -200));
+    final pull = await tester.startGesture(tester.getCenter(find.byKey(const Key('body'))));
+    await pull.moveBy(const Offset(0, -40));
+    await pull.moveBy(const Offset(0, -160));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_bar(tester).height, lessThan(FloatingGlassNavBar.height));
+    await pull.up();
     await tester.pumpAndSettle();
+    expect(_bar(tester).height, FloatingGlassNavBar.height);
     expect(find.text('الرحلات'), findsOneWidget);
   });
 

@@ -305,13 +305,14 @@ class _CardFace extends StatefulWidget {
   /// The height of the card's lines of text, which grows with the text size.
   static const textHeight = 200.0;
 
-  /// The code is drawn this large when there is room, never larger: it is the
-  /// card that grows with the phone, not the code.
+  /// The code's size on the card as it is drawn (see [drawnWidth]).
   static const qrLargest = 232.0;
 
-  /// The card is never taller than this many times its width: a pass, like
-  /// the ones in the phone's wallet, not a column.
-  static const tallest = 1.65;
+  /// The card is laid out once at this width, the board's, and then scaled as
+  /// a whole to the phone: the card, its code and its text keep their
+  /// proportions on every screen. Never enlarged beyond [largestScale].
+  static const drawnWidth = 362.0;
+  static const largestScale = 1.3;
 
   @override
   State<_CardFace> createState() => _CardFaceState();
@@ -379,9 +380,13 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
   Widget build(BuildContext context) {
     final colors = context.colors;
     final standing = CardStanding.of(pass);
+    // The card is always drawn as on the board and scaled to the phone, so its
+    // own gaps are the roomy ones; only the page around it tightens.
+    const room = 1.0;
+    const compact = false;
     // 0: a 360 × 640 phone. 1: the board.
-    final room = ((widget.height - _CardFace.tight) / (_CardFace.roomy - _CardFace.tight)).clamp(0.0, 1.0);
-    final compact = room < .5;
+    final pageRoom = ((widget.height - _CardFace.tight) / (_CardFace.roomy - _CardFace.tight)).clamp(0.0, 1.0);
+    final pageGap = _lerp(BasakSpace.s8, BasakSpace.s14, pageRoom);
     final gap = _lerp(BasakSpace.s8, BasakSpace.s14, room);
     final pad = _lerp(BasakSpace.s12, BasakSpace.card, room);
     // A Wallet card is offered for a subscription that is valid today.
@@ -404,23 +409,28 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(height: _lerp(BasakSpace.s4, BasakSpace.s12, room)),
-        _Title(compact: compact, worksOffline: true),
-        SizedBox(height: gap),
-        // The card takes the page down to the buttons over the tab bar, up to
-        // a pass's proportions; on a very tall phone what is left stays above it.
+        SizedBox(height: _lerp(BasakSpace.s4, BasakSpace.s12, pageRoom)),
+        _Title(compact: pageRoom < .5, worksOffline: true),
+        SizedBox(height: pageGap),
+        // The card as drawn, scaled as one piece to the room there is: wider
+        // on a large phone, smaller on a small one, never cut. What a tall
+        // phone leaves is shared above and below it.
         Expanded(
           child: LayoutBuilder(
-            builder: (context, box) => Align(
-              alignment: AlignmentDirectional.bottomCenter,
+            builder: (context, box) => Center(
+              // The room the card may take; the card is fitted into it whole.
               child: SizedBox(
-                height: math.min(box.maxHeight, box.maxWidth * _CardFace.tallest),
-                child: card,
+                width: math.min(box.maxWidth, _CardFace.drawnWidth * _CardFace.largestScale),
+                height: box.maxHeight,
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(width: _CardFace.drawnWidth, child: card),
+                ),
               ),
             ),
           ),
         ),
-        SizedBox(height: gap),
+        SizedBox(height: pageGap),
         // Two buttons of one height and one width: the card's other side, and
         // the phone's wallet.
         Row(
@@ -441,7 +451,7 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
             ],
           ],
         ),
-        SizedBox(height: _lerp(BasakSpace.s8, BasakSpace.s14, room)),
+        SizedBox(height: _lerp(BasakSpace.s8, BasakSpace.s14, pageRoom)),
       ],
     );
   }
@@ -493,7 +503,7 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
         padding: EdgeInsetsDirectional.only(top: pad, bottom: math.max(BasakSpace.s8, pad - BasakSpace.s6)),
         decoration: _paper(colors),
         child: Column(
-          mainAxisSize: MainAxisSize.max,
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             inset(Padding(
@@ -518,9 +528,11 @@ class _CardFaceState extends State<_CardFace> with SingleTickerProviderStateMixi
             )),
             SizedBox(height: gap),
             // The one flexible part: it takes what the rest leaves.
-            // The one flexible part: the code at its own size, in the middle of
-            // what the rest leaves.
-            Expanded(child: Center(child: _Qr(value: pass.qrValue!, frame: compact ? BasakSpace.s6 : BasakSpace.s10))),
+            // The code at its own size; the whole card is scaled, not the code alone.
+            SizedBox(
+              height: _CardFace.qrLargest + 2 * (BasakSpace.s10 + 1),
+              child: _Qr(value: pass.qrValue!, frame: BasakSpace.s10),
+            ),
             SizedBox(height: gap),
             // One line whatever the text size: it shrinks before it would wrap or cut.
             inset(FittedBox(
