@@ -1,3 +1,5 @@
+import '../../../../core/media/company_brand.dart';
+
 /// get_subscription_catalog(): what the signed-in student can subscribe to.
 /// Lines are described by structure (line, the student's own university,
 /// stations and the trips that stop at each), and every option on sale comes
@@ -29,11 +31,15 @@ class SaleCompany {
   final String name;
   final List<SaleLine> lines;
 
-  const SaleCompany({required this.id, required this.name, this.lines = const []});
+  /// Its logo and emblem ([CompanyBrand.none] from a server that sends neither).
+  final CompanyBrand brand;
+
+  const SaleCompany({required this.id, required this.name, this.lines = const [], this.brand = CompanyBrand.none});
 
   factory SaleCompany.fromJson(Map<String, dynamic> json) => SaleCompany(
         id: json['id'] as String,
         name: json['name'] as String? ?? '',
+        brand: CompanyBrand.fromJson(json),
         lines: (json['lines'] as List<dynamic>? ?? const [])
             .map((l) => SaleLine.fromJson(
                 Map<String, dynamic>.from(l as Map), json['id'] as String))

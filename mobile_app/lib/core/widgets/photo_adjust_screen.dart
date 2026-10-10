@@ -267,7 +267,7 @@ class _PhotoAdjustScreenState extends State<PhotoAdjustScreen> {
                                     constraints: const BoxConstraints(maxWidth: 280),
                                     child: Text('حرّك الصورة وكبّرها بإصبعين حتى يظهر وجهك داخل الدائرة.',
                                         textAlign: TextAlign.center,
-                                        style: text.bodySmall.copyWith(color: colors.hairline)),
+                                        style: text.bodySmall.copyWith(color: colors.onInk2)),
                                   ),
                                 ],
                               );

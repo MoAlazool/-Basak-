@@ -26,7 +26,8 @@ const AFFECTS: Record<string, string[]> = {
   company_terms: ['settings', 'switches', 'periods'],
   wallet_card_settings: ['walletCard'],
   password_reset_requests: ['resetRequests'],
-  companies: ['company', 'overview', 'settings', 'switches', 'vote'],
+  // 'walletCard': the card's design page shows the company's logo, which is also set from the identity card.
+  companies: ['company', 'overview', 'settings', 'switches', 'vote', 'walletCard'],
   company_invites: ['invites', 'students'],
   student_correction_requests: ['corrections', 'students'],
   notifications: ['notifications'],

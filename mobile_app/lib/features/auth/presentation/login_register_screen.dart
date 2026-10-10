@@ -39,9 +39,6 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
   /// Why the ordinary sign-in is shown instead of the returning one.
   String? _notice;
 
-  /// The returning sign-in was opened from the square button: ask at once.
-  bool _startNow = false;
-
   /// Someone has already chosen where to go: what the phone has stored no
   /// longer decides the first screen.
   bool _moved = false;
@@ -71,13 +68,26 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
     }
   }
 
-  void _go(_Entry view, {bool startNow = false}) => setState(() {
+  void _go(_Entry view) => setState(() {
         _moved = true;
-        _startNow = startNow;
         // The line belongs to the screen it was said on.
         if (view == _Entry.welcome || view == _Entry.signUp) _notice = null;
         _view = view;
       });
+
+  /// The stored sign-in cannot be used: the ordinary sign-in, with the
+  /// reason's line above its fields.
+  void _fallBack(StoredSignIn stored, BiometricFallback reason) {
+    final supervisor = stored.account.isSupervisor;
+    _notice = reason.line(stored.kind, supervisor: supervisor);
+    // Locked out is the phone's doing and passes, so the button stays; the
+    // others have already dropped the stored sign-in, and the button with it.
+    if (reason != BiometricFallback.lockedOut) {
+      _stored = null;
+      ref.invalidate(biometricEntryProvider);
+    }
+    _go(supervisor ? _Entry.supervisor : _Entry.signIn);
+  }
 
   _Entry get _storedSignIn => (_stored?.account.isSupervisor ?? false) ? _Entry.supervisor : _Entry.signIn;
 
@@ -112,31 +122,20 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
           _Entry.returning when stored != null => ReturningSignInScreen(
               key: const ValueKey('returning'),
               stored: stored,
-              startNow: _startNow,
               onPassword: () => _go(_storedSignIn),
               onOtherAccount: () {
                 _stored = null;
                 ref.invalidate(biometricEntryProvider);
                 _go(_Entry.welcome);
               },
-              onFallback: (reason) {
-                final supervisor = stored.account.isSupervisor;
-                _notice = reason.line(stored.kind, supervisor: supervisor);
-                // Locked out is the phone's doing and passes; the others
-                // have already dropped the stored sign-in.
-                if (reason != BiometricFallback.lockedOut) {
-                  _stored = null;
-                  ref.invalidate(biometricEntryProvider);
-                }
-                _go(supervisor ? _Entry.supervisor : _Entry.signIn);
-              },
+              onFallback: (reason) => _fallBack(stored, reason),
             ),
           _Entry.returning => const SizedBox.shrink(),
           _Entry.signIn => LoginScreen(
               key: const ValueKey('login'),
               notice: _notice,
               biometric: stored != null && !stored.account.isSupervisor ? stored.kind : null,
-              onBiometric: () => _go(_Entry.returning, startNow: true),
+              onBiometricFallback: stored == null ? null : (reason) => _fallBack(stored, reason),
               onBack: () => _go(_home),
               onSignup: () => _go(_Entry.signUp),
               onOtherRole: () => _go(_Entry.supervisor),
@@ -146,7 +145,7 @@ class _LoginRegisterScreenState extends ConsumerState<LoginRegisterScreen> {
               supervisor: true,
               notice: _notice,
               biometric: stored != null && stored.account.isSupervisor ? stored.kind : null,
-              onBiometric: () => _go(_Entry.returning, startNow: true),
+              onBiometricFallback: stored == null ? null : (reason) => _fallBack(stored, reason),
               onBack: () => _go(_home),
               onSignup: () => _go(_Entry.signUp),
               onOtherRole: () => _go(_Entry.signIn),

@@ -87,6 +87,15 @@ class FakeSupervisorServer implements SupervisorGateway {
     return {'profile_image_url': '$supervisorId/photo.jpg'};
   }
 
+  /// The company's row as the server answers; null: a server without it.
+  Map<String, dynamic>? company = {'id': 'company-1', 'name': 'النورس للنقل', 'logo_path': null, 'emblem_path': null};
+
+  @override
+  Future<Map<String, dynamic>?> companyRow(String companyId) async {
+    log.hit('companies.brand');
+    return company;
+  }
+
 }
 
 class FakeSupervisorAuth extends AuthNotifier {

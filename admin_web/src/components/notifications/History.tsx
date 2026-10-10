@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Bell, Building2, Bus, CalendarClock, Cog, Eye, PencilLine, RefreshCw, Search, Trash2, Users, XCircle } from 'lucide-react';
+import { Bell, Bus, CalendarClock, Cog, Eye, PencilLine, RefreshCw, Search, Trash2, Users, XCircle } from 'lucide-react';
 import { Refreshing, SkeletonRows } from '../Skeleton';
 import {
   PLATFORM_ANNOUNCEMENT, STATUS_FILTERS, percent, pushStatParts, senderLabel, statusClass, statusLabel, typeLabel, type HistoryRow,
@@ -10,6 +10,8 @@ import type { HistoryActions, HistoryState } from '../../lib/notificationsData';
 import { useGuard } from '../../lib/guard';
 import { EditScheduledDialog } from './EditScheduledDialog';
 import { NotificationDetails } from './NotificationDetails';
+import { CompanyMark } from '../CompanyMark';
+import type { CompanyBrand } from '../../lib/branding';
 import { ConfirmDialog } from './parts';
 
 const SENDER_STYLE: Record<string, { icon: typeof Bell; className: string; chip: string }> = {
@@ -27,9 +29,11 @@ interface RowProps {
   onEdit?: () => void;
   onCancel: () => void;
   onDelete: () => void;
+  /** The sending company's marks, where the history spans companies. */
+  brand?: CompanyBrand;
 }
 
-const Row: React.FC<RowProps> = ({ row, onDetails, onEdit, onCancel, onDelete }) => {
+const Row: React.FC<RowProps> = ({ row, onDetails, onEdit, onCancel, onDelete, brand }) => {
   const style = SENDER_STYLE[row.sender_role] ?? SENDER_STYLE.admin;
   const Icon = row.status === 'scheduled' ? CalendarClock : style.icon;
   // What the system sends by itself is shown as it happened, with nothing to edit.
@@ -50,7 +54,7 @@ const Row: React.FC<RowProps> = ({ row, onDetails, onEdit, onCancel, onDelete })
           {row.status !== 'sent' && <span className={`${chipClass} ${statusClass(row.status)}`}>{statusLabel(row.status)}</span>}
           <span className={`${chipClass} bg-indigo-50 text-indigo-700`}>{typeLabel(row.type, row.category)}</span>
           {row.company_name && (
-            <span className={`${chipClass} flex items-center gap-1 bg-sky-50 text-sky-700`}><Building2 className="h-3 w-3" />{row.company_name}</span>
+            <span className={`${chipClass} flex items-center gap-1.5 bg-sky-50 text-sky-700`}><CompanyMark name={row.company_name} brand={brand} size="xs" />{row.company_name}</span>
           )}
           <span className={`${chipClass} ${style.chip}`}>{senderLabel(row.sender_role, row.sender_name, row.type)}</span>
           {row.audience && (
@@ -112,6 +116,8 @@ interface Props {
   actions: HistoryActions;
   /** More filters, beside the status ones. */
   filters?: React.ReactNode;
+  /** Every company's marks by id: the platform's history shows who sent each notification. */
+  brands?: Record<string, CompanyBrand>;
 }
 
 type Open = { kind: 'details' | 'edit' | 'cancel' | 'delete'; row: HistoryRow };
@@ -120,7 +126,7 @@ type Open = { kind: 'details' | 'edit' | 'cancel' | 'delete'; row: HistoryRow };
  * What was sent, what waits for its time, and what was cancelled or failed,
  * a page at a time. The numbers are the server's; a live change refreshes them.
  */
-export const History: React.FC<Props> = ({ companyId, filter, onFilter, history, actions, filters }) => {
+export const History: React.FC<Props> = ({ companyId, filter, onFilter, history, actions, filters, brands }) => {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Open | null>(null);
   const [error, setError] = useState('');
@@ -198,7 +204,7 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history,
       ) : (
         <ul className="divide-y divide-slate-100">
           {shown.map((row) => (
-            <Row key={row.id} row={row}
+            <Row key={row.id} row={row} brand={row.company_id ? brands?.[row.company_id] : undefined}
               onDetails={() => setOpen({ kind: 'details', row })}
               // A platform announcement is one of many, written for every company: it is not reworded for one.
               onEdit={companyId && row.type !== PLATFORM_ANNOUNCEMENT ? () => setOpen({ kind: 'edit', row }) : undefined}

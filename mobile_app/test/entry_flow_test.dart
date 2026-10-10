@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 import 'package:basak_mobile/core/ui/ui.dart';
 import 'package:basak_mobile/core/widgets/photo_adjust_screen.dart';
+import 'package:basak_mobile/features/auth/biometrics/biometric_sign_in.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/auth/data/colleges.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
@@ -54,6 +57,23 @@ class _SignedIn extends AuthNotifier {
     state = AuthState(
         user: const User(id: 'a1', appMetadata: {}, userMetadata: {}, aud: '', createdAt: ''), role: role);
   }
+}
+
+/// An account that is made: the server said yes.
+class _Registers extends AuthNotifier {
+  _Registers(super.repo);
+
+  @override
+  Future<void> registerStudent({
+    required String phone,
+    required String fullName,
+    required String university,
+    required String college,
+    required String password,
+    String? specialisation,
+    Uint8List? profileImageBytes,
+    String? profileImageExtension,
+  }) async {}
 }
 
 void main() {
@@ -293,6 +313,42 @@ void main() {
       // Any other failure stays on the last step, in one line.
       expect(find.text('كلمة مرور'), findsOneWidget);
       expect(find.text('تعذر إنشاء الحساب الآن.'), findsOneWidget);
+    });
+
+    testWidgets('a new account is offered the faster sign-in, as a password sign-in is', (tester) async {
+      _phone(tester);
+      repo = FakeEntryRepository();
+      await tester.pumpWidget(entryApp(
+        SignupScreen(onBack: () {}, pickPhoto: (context, source) async => onePixel),
+        repo,
+        auth: _Registers.new,
+      ));
+      await tester.pump();
+      final container = ProviderScope.containerOf(tester.element(find.byType(SignupScreen)));
+      await fillDetails(tester);
+      await pickUniversity(tester);
+      await pickCollege(tester, 'الهندسة');
+      await _tap(tester, 'signup-next');
+      await _tap(tester, 'signup-photo-gallery');
+      await _tap(tester, 'signup-next');
+      await fillPassword(tester);
+      expect(container.read(biometricOfferPendingProvider), isFalse);
+      await _tap(tester, 'signup-submit');
+      expect(container.read(biometricOfferPendingProvider), isTrue);
+    });
+
+    testWidgets('an account that could not be made is offered nothing', (tester) async {
+      await open(tester);
+      final container = ProviderScope.containerOf(tester.element(find.byType(SignupScreen)));
+      await fillDetails(tester);
+      await pickUniversity(tester);
+      await pickCollege(tester, 'الهندسة');
+      await _tap(tester, 'signup-next');
+      await _tap(tester, 'signup-photo-gallery');
+      await _tap(tester, 'signup-next');
+      await fillPassword(tester);
+      await _tap(tester, 'signup-submit');
+      expect(container.read(biometricOfferPendingProvider), isFalse);
     });
 
     testWidgets('«كلية أخرى» takes a name of the student\'s own, and the specialisation travels when typed',

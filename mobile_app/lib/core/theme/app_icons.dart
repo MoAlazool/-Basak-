@@ -81,6 +81,7 @@ abstract final class LucideIcons {
   static const IconData receipt = IconData(58323, fontFamily: 'Lucide');
   static const IconData receiptText = IconData(58796, fontFamily: 'Lucide');
   static const IconData refreshCw = IconData(57669, fontFamily: 'Lucide');
+  static const IconData rotate3d = IconData(58090, fontFamily: 'Lucide');
   static const IconData route = IconData(58686, fontFamily: 'Lucide');
   static const IconData scan = IconData(57943, fontFamily: 'Lucide');
   static const IconData scanFace = IconData(58225, fontFamily: 'Lucide');

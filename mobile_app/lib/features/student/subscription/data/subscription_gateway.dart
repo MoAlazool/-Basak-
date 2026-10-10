@@ -47,7 +47,7 @@ class SupabaseSubscriptionGateway implements SubscriptionGateway {
   static const _select = '''
           id, student_id, line_id, company_id, station_id, type, status, start_date, end_date, price, created_at,
           departure_time, return_time, period_code, academic_year, period_label, period_phase,
-          lines(name, companies(name), supervisors(full_name, phone, profile_image_url),
+          lines(name, companies(id, name, logo_path, emblem_path), supervisors(full_name, phone, profile_image_url),
             line_trips(direction, is_active, start_time)),
           student:students(university),
           stations(name, departure_times, return_times,
@@ -56,33 +56,54 @@ class SupabaseSubscriptionGateway implements SubscriptionGateway {
           return_trip:return_trip_id(start_time)
         ''';
 
+  /// The same read for a database that does not have the branding columns
+  /// yet: the company by its name alone, as before.
+  static final _selectWithoutBrand =
+      _select.replaceFirst('companies(id, name, logo_path, emblem_path)', 'companies(name)');
+
+  /// Runs [read] with the branding columns; where the database does not know
+  /// them (an unknown column: nothing was read or written), runs it again
+  /// without. A subscription is never held back for a logo.
+  static Future<T> _branded<T>(Future<T> Function(String select) read) async {
+    try {
+      return await read(_select);
+    } on PostgrestException catch (error) {
+      if (!isUnknownColumn(error.code, error.message)) rethrow;
+      return read(_selectWithoutBrand);
+    }
+  }
+
+  /// Postgres' 42703 (PostgREST passes it on), or its words.
+  static bool isUnknownColumn(String? code, String message) =>
+      code == '42703' || (message.contains('column') && message.contains('does not exist'));
+
   @override
   String? get userId => _client.auth.currentUser?.id;
 
   @override
   Future<List<dynamic>> subscriptions(String userId) {
     PerfTrace.count('subscriptions.all');
-    return _client
+    return _branded((select) => _client
         .from(SupabaseTables.subscriptions)
-        .select(_select)
+        .select(select)
         .eq('student_id', userId)
         .order('start_date', ascending: false, nullsFirst: false)
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false));
   }
 
   @override
   Future<Map<String, dynamic>?> currentSubscription(String userId, String today) {
     PerfTrace.count('subscriptions.current');
-    return _client
+    return _branded((select) => _client
         .from(SupabaseTables.subscriptions)
-        .select(_select)
+        .select(select)
         .eq('student_id', userId)
         .inFilter('status', ['pending_payment', 'pending_review', 'active', 'rejected'])
         .or('end_date.is.null,end_date.gte.$today')
         .order('start_date', ascending: true)
         .order('created_at', ascending: false)
         .limit(1)
-        .maybeSingle();
+        .maybeSingle());
   }
 
   @override
@@ -107,7 +128,7 @@ class SupabaseSubscriptionGateway implements SubscriptionGateway {
   @override
   Future<Map<String, dynamic>> insertSubscription(Map<String, dynamic> row) {
     PerfTrace.count('subscriptions.insert');
-    return _client.from(SupabaseTables.subscriptions).insert(row).select(_select).single();
+    return _branded((select) => _client.from(SupabaseTables.subscriptions).insert(row).select(select).single());
   }
 
   @override

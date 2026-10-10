@@ -87,7 +87,7 @@ class BasakPage extends StatelessWidget {
     }
 
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: ColoredBox(
         color: colors.ground,
         child: Column(

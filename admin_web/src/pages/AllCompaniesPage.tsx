@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Building2, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
+import { CompanyMark } from '../components/CompanyMark';
 import { Topbar } from '../components/Topbar';
 import { SkeletonCards } from '../components/Skeleton';
 import { count, egp } from '../components/StatsRow';
@@ -86,7 +87,7 @@ export const AllCompaniesPage: React.FC = () => {
               onMouseEnter={() => void prefetchCompanyOverview(row.company.id)} onFocus={() => void prefetchCompanyOverview(row.company.id)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-10 w-10 flex-shrink-0 rounded-xl bg-[#D6EEF9] text-[#3E8FBF] flex items-center justify-center"><Building2 className="h-5 w-5" /></div>
+                  <CompanyMark name={row.company.name} brand={row.company} />
                   <div className="min-w-0">
                     <h2 className="truncate text-[15px] font-extrabold text-[#1F2937]">{row.company.name}</h2>
                     <p className="text-[11.5px] text-[#5B6B7A]">منذ {new Date(row.company.created_at).toLocaleDateString('ar-EG')}</p>
@@ -226,7 +227,7 @@ const CreateCompanyWizard: React.FC<{ onClose: () => void; onCreated: () => void
                 'يظهر للطلاب على بطاقة المحفظة. يمكن تغييره لاحقاً من مساحة الشركة.')}
               {field('اسم جهة التواصل (اختياري)', <input value={company.contactLabel} onChange={(e) => setCompany({ ...company, contactLabel: e.target.value })} className={input} placeholder="مثال: خدمة العملاء" />)}
               <p className="rounded-xl bg-slate-50 p-3 text-[11.5px] leading-6 text-slate-500">
-                تُنشأ للشركة نسختها الخاصة من مواعيد الفصول الدراسية وتصميم بطاقة المحفظة. الشعار والألوان تُضبط من مساحة الشركة بعد الإنشاء.
+                تُنشأ للشركة نسختها الخاصة من مواعيد الفصول الدراسية وتصميم بطاقة المحفظة. الشعار والرمز يُرفعان من «إعدادات الشركة» في مساحتها بعد الإنشاء، والألوان من «بطاقة المحفظة».
               </p>
             </>
           )}

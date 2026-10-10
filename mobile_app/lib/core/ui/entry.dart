@@ -166,7 +166,7 @@ class EntryPage extends StatelessWidget {
     ];
 
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: Scaffold(
         backgroundColor: colors.ground,
         body: SafeArea(

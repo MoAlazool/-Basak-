@@ -290,7 +290,7 @@ class InviteCard extends StatelessWidget {
                   ),
                   if (price != null) ...[
                     const SizedBox(width: BasakSpace.s12),
-                    Text(formatMoney(price.toDouble()), style: text.headline),
+                    MoneyText(formatMoney(price.toDouble()), style: text.headline, unitSize: 12),
                   ],
                 ],
               ),

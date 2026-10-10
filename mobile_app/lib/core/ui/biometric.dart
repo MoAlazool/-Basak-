@@ -51,13 +51,23 @@ class GroundSquareButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
 
-  const GroundSquareButton({super.key, required this.icon, required this.label, required this.onPressed});
+  /// The phone is being asked, or the server is: a spinner in place of the
+  /// glyph, and taps wait.
+  final bool loading;
+
+  const GroundSquareButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     return BasakPressable(
-      onTap: onPressed,
+      onTap: loading ? null : onPressed,
       semanticLabel: label,
       child: Container(
         width: 54,
@@ -67,7 +77,13 @@ class GroundSquareButton extends StatelessWidget {
           borderRadius: BasakRadius.all(BasakRadius.control),
           boxShadow: BasakShadow.card,
         ),
-        child: Icon(icon, size: 24, color: onPressed == null ? colors.disabled : colors.teal),
+        alignment: Alignment.center,
+        child: loading
+            ? SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.25, color: colors.teal),
+              )
+            : Icon(icon, size: 26, color: onPressed == null ? colors.disabled : colors.teal),
       ),
     );
   }

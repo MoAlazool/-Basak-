@@ -63,37 +63,46 @@ class _AddToWalletButtonState extends ConsumerState<AddToWalletButton> {
       return const SizedBox.shrink();
     }
     final colors = context.colors;
+    final text = context.text;
     final apple = platform == WalletPlatform.apple;
-    // Each store's official button: Apple's is drawn by PassKit, Google's is
-    // the black pill its brand rules describe.
+    // One height and one shape beside «التفاصيل». Apple's is its own
+    // button, drawn by PassKit (outlined, for the ink ground); Google's is
+    // the black pill its brand rules describe, with its own words.
     final shape = BasakRadius.all(apple ? BasakRadius.tile : BasakRadius.full);
     return Semantics(
       button: true,
+      enabled: !_busy,
       label: apple ? 'إضافة إلى Apple Wallet' : 'إضافة إلى Google Wallet',
       child: SizedBox(
-        width: double.infinity,
-        height: 52,
+        height: BasakSpace.tapTarget,
         child: Stack(fit: StackFit.expand, children: [
           if (apple)
-            // Apple's own "Add to Apple Wallet" button, drawn by PassKit in the
-            // phone's language. Taps are handled by the layer above it.
+            // Apple's own "Add to Apple Wallet" button, in the phone's
+            // language. Taps are handled by the layer above it.
             const IgnorePointer(
               child: UiKitView(viewType: 'basak/add_pass_button'),
             )
           else
-            DecoratedBox(
-              decoration: BoxDecoration(color: colors.walletBlack, borderRadius: shape),
-              // Beside "كل التفاصيل" on a narrow phone the label shrinks to fit.
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s8),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(LucideIcons.wallet, color: colors.onInk, size: 20),
-                    const SizedBox(width: BasakSpace.s10),
-                    Text('إضافة إلى Google Wallet',
-                        style: context.text.bodySmall.copyWith(color: colors.onInk, fontWeight: FontWeight.w600)),
-                  ]),
+            ExcludeSemantics(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.walletBlack,
+                  borderRadius: shape,
+                  // A rim, so the black reads as a button on the ink ground.
+                  border: Border.all(color: colors.inkOutline),
+                ),
+                // On a narrow phone the words shrink to fit; they are never cut.
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s12),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(LucideIcons.wallet, color: colors.onInk, size: 18),
+                      const SizedBox(width: BasakSpace.s8),
+                      Text('إضافة إلى Google Wallet',
+                          style: text.label.copyWith(color: colors.onInk, fontWeight: FontWeight.w500)),
+                    ]),
+                  ),
                 ),
               ),
             ),
@@ -106,8 +115,8 @@ class _AddToWalletButtonState extends ConsumerState<AddToWalletButton> {
               child: _busy
                   ? Center(
                       child: SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: colors.onInk),
                       ),
                     )

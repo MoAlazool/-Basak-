@@ -116,7 +116,7 @@ class _ReturningSignInScreenState extends ConsumerState<ReturningSignInScreen> {
     final amber = _failed || _offline;
 
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: Scaffold(
         backgroundColor: colors.ground,
         body: SafeArea(

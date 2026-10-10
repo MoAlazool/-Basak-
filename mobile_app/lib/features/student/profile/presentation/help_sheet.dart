@@ -36,7 +36,7 @@ final helpJourneyProvider = Provider<List<HelpEntry>>((ref) {
   final sub = ref.watch(currentSubscriptionProvider).valueOrNull;
   final phone = sub?.supervisorPhone?.trim() ?? '';
   if (sub == null || phone.isEmpty) return const [];
-  final name = (sub.supervisorName ?? '').trim().isEmpty ? 'مشرف الخط' : sub.supervisorName!.trim();
+  final name = (sub.supervisorName ?? '').trim().isEmpty ? 'مشرف الباص' : sub.supervisorName!.trim();
   return [
     HelpEntry(
       icon: LucideIcons.userRound,

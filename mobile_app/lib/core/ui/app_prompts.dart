@@ -158,7 +158,7 @@ class BlockingNotice extends StatelessWidget {
     final colors = context.colors;
     final text = context.text;
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: BasakSpace.maxContentWidth),

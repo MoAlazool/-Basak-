@@ -170,7 +170,7 @@ class SupervisorSuspendedScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: context.colors.ground,
       body: MediaQuery.withClampedTextScaling(
-        maxScaleFactor: 1.3,
+        maxScaleFactor: basakMaxTextScale,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: BasakSpace.maxContentWidth),

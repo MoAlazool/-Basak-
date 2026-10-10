@@ -10,7 +10,8 @@
 //     and ONLY between a sign-out and the next sign-in. While the account is
 //     signed in the session lives where Supabase keeps it and this entry does
 //     not exist.
-//   * `basak.biometric.offered`: who was already asked «دخول أسرع؟».
+//   * `basak.biometric.offered`: the ids of the accounts already asked
+//     «دخول أسرع؟» on this phone (the last few), so none is asked twice.
 //
 // THE TRADE-OFF
 //   A refresh token is only good while its session is alive on the server,
@@ -310,18 +311,31 @@ class BiometricVault {
     }
   }
 
+  /// How many accounts' answers are remembered on one phone.
+  static const offeredLimit = 8;
+
+  /// The ids of the accounts already asked, oldest first. (An entry written
+  /// by an earlier version is one id, which reads as a list of one.)
+  Future<List<String>> _offered() async =>
+      (await _store.read(offeredKey) ?? '').split(',').where((id) => id.isNotEmpty).toList();
+
   /// Whether [userId] was already asked «دخول أسرع؟» on this phone.
   Future<bool> wasOffered(String userId) async {
     try {
-      return await _store.read(offeredKey) == userId;
+      return (await _offered()).contains(userId);
     } catch (_) {
       return true; // a keystore that cannot be read is not asked to keep more
     }
   }
 
+  /// Remembers that [userId] was asked, beside the others asked on this
+  /// phone: two people sharing it are each asked once.
   Future<void> markOffered(String userId) async {
     try {
-      await _store.write(offeredKey, userId);
+      final asked = (await _offered())..remove(userId);
+      asked.add(userId);
+      final kept = asked.length > offeredLimit ? asked.sublist(asked.length - offeredLimit) : asked;
+      await _store.write(offeredKey, kept.join(','));
     } catch (_) {}
   }
 }

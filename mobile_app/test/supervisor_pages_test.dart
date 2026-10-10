@@ -19,6 +19,7 @@ import 'package:basak_mobile/features/supervisor/profile/presentation/supervisor
 import 'package:basak_mobile/features/supervisor/supervisor_copy.dart';
 
 import 'support/notification_fakes.dart';
+import 'support/perf_fakes.dart' show onePixel;
 import 'support/supervisor_boards.dart';
 import 'support/supervisor_pages.dart';
 
@@ -155,6 +156,26 @@ void main() {
           more: [pushMessagingProvider.overrideWithValue(FakePushMessaging(granted: push))]);
       await tester.pumpAndSettle();
     }
+
+    testWidgets('the company\'s mark sits beside its name once it has one, and not before', (tester) async {
+      await account(tester, BoardWorld());
+      expect(find.text('النورس للنقل'), findsOneWidget);
+      expect(find.byKey(const Key('supervisor-company-logo')), findsNothing);
+
+      debugCompanyLogoImage = (url) => MemoryImage(onePixel);
+      addTearDown(() => debugCompanyLogoImage = null);
+      await pumpBoard(tester, BoardWorld(), const SupervisorProfileScreen(), tab: 3, size: const Size(390, 950), more: [
+        pushMessagingProvider.overrideWithValue(FakePushMessaging(granted: PushPermission.granted)),
+        supervisorCompanyBrandProvider.overrideWith((ref, companyId) async {
+          expect(companyId, 'company-1');
+          return const CompanyBrand(emblemPath: '0b6f3c1e-8a2d-4e5f-9c7b-1d2e3f4a5b6c/emblem/2');
+        }),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('supervisor-company-logo')), findsOneWidget);
+      expect(find.text('النورس للنقل'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('who they are, where they work, the app, and what the company manages', (tester) async {
       await account(tester, BoardWorld());

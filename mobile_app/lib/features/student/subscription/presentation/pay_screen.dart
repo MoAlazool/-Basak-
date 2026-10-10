@@ -83,11 +83,6 @@ class _PayScreenState extends ConsumerState<PayScreen> {
   void _toast(String message, {BasakToastKind kind = BasakToastKind.success}) =>
       BasakToast.show(context, message, kind: kind);
 
-  void _copy(String value) {
-    Clipboard.setData(ClipboardData(text: value));
-    _toast('تم النسخ');
-  }
-
   void _stay() => _toast('ابقَ في هذه الصفحة حتى يكتمل الإرسال.', kind: BasakToastKind.info);
 
   Future<void> _pick(ImageSource source) async {
@@ -330,14 +325,13 @@ class _PayScreenState extends ConsumerState<PayScreen> {
             children: [
               MoneyText(money, key: const Key('amount-value'), style: text.amount, unitSize: 16),
               if (!_sending) ...[
-                BasakButton(
+                // The button says it copied; nothing comes up from the bottom.
+                CopyButton(
                   key: const Key('amount-copy'),
                   label: 'نسخ المبلغ',
-                  icon: LucideIcons.copy,
+                  value: sub.price.toStringAsFixed(0),
                   variant: BasakButtonVariant.surface,
-                  size: BasakButtonSize.small,
                   expand: false,
-                  onPressed: () => _copy(sub.price.toStringAsFixed(0)),
                 ),
               ],
             ],
@@ -640,10 +634,9 @@ class _PayScreenState extends ConsumerState<PayScreen> {
                           _ => 'رقم الحساب',
                         },
                         value: selected.payTo,
-                        onCopy: () => _copy(selected.payTo),
                       ),
                     if (selected.type == 'bank' && (selected.iban ?? '').trim().isNotEmpty)
-                      CopyField(label: 'IBAN', value: selected.iban!.trim(), onCopy: () => _copy(selected.iban!.trim())),
+                      CopyField(label: 'IBAN', value: selected.iban!.trim()),
                   ],
                 ),
               ),

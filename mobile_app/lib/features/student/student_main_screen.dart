@@ -130,7 +130,8 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
         onNavigateHome: () => _selectTab(0),
         onNavigateToCard: () => _selectTab(2),
       ),
-      const StudentQrScreen(),
+      // Left on its back, the card turns to its face when another tab is opened.
+      StudentQrScreen(visible: _currentIndex == 2),
       const ProfileScreen(),
     ];
 

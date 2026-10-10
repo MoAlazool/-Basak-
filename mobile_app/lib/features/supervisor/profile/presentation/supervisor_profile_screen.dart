@@ -41,10 +41,18 @@ class SupervisorProfileScreen extends ConsumerWidget {
 
   /// «العمل»: the company, the lines (the sheet that chooses one, when there
   /// is a choice) and the month's summary.
-  List<SettingRow> _workRows(BuildContext context, SupervisorDashboard data) {
+  List<SettingRow> _workRows(BuildContext context, SupervisorDashboard data, CompanyBrand brand) {
     final now = DateTime.now();
+    final company = data.profile.companyName;
     return [
-      SettingRow(label: 'الشركة', value: data.profile.companyName ?? 'غير محددة'),
+      SettingRow(
+        label: 'الشركة',
+        value: company ?? 'غير محددة',
+        // Its mark beside its name, once the company has one.
+        mark: company == null || !brand.hasMark
+            ? null
+            : CompanyLogo(key: const Key('supervisor-company-logo'), name: company, brand: brand, size: 28),
+      ),
       SettingRow(
         key: const Key('supervisor-lines'),
         label: 'الخطوط',
@@ -92,6 +100,12 @@ class SupervisorProfileScreen extends ConsumerWidget {
     final dashboard = ref.watch(supervisorDashboardProvider);
     final data = dashboard.valueOrNull;
     final photoUrl = ref.watch(supervisorPhotoUrlProvider).valueOrNull;
+    // The company's mark: one small read, kept for the session, and only for
+    // a supervisor who has a company.
+    final companyId = data?.profile.companyId;
+    final brand = companyId == null || companyId.isEmpty
+        ? CompanyBrand.none
+        : ref.watch(supervisorCompanyBrandProvider(companyId)).valueOrNull ?? CompanyBrand.none;
     final version = ref.watch(appVersionProvider).valueOrNull;
     final text = context.text;
     final colors = context.colors;
@@ -121,7 +135,7 @@ class SupervisorProfileScreen extends ConsumerWidget {
               label: data.profile.isActive ? null : 'موقوف',
             ),
           ),
-          GroupSection(title: 'العمل', child: SettingRows(rows: _workRows(context, data))),
+          GroupSection(title: 'العمل', child: SettingRows(rows: _workRows(context, data, brand))),
         ] else if (dashboard.hasError)
           BasakCard(
             child: InlineError(

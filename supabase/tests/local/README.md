@@ -22,6 +22,10 @@ trip), reading, the dashboard counts, access, and supervisor photos.
 line's bus capacity, the app version settings, the term recap and the boarded
 rides count, each as the student, the supervisor, the company admin, the
 platform admin and a signed-out client.
+`e2e_company_branding.sql` covers the company's logo and emblem (migration
+20261109000001): who may add, list, overwrite and delete files of the artwork
+bucket, `set_company_branding`, the logo of an issued receipt outliving its
+replacement, and that every answer naming a company carries both paths.
 
 ## 2. HTTP (GoTrue + PostgREST + Edge Functions, through supabase-js)
 

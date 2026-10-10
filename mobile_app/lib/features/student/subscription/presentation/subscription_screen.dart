@@ -442,7 +442,12 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 : '${sub.periodName} · ${starts.day} ${BasakUi.arabicMonths[starts.month - 1]}',
             from: sub.boardingTitle,
             to: _withoutTitle(sub.destination) ?? line,
-            footer: PassStub(line: line, company: company, onShowCard: widget.onNavigateToCard, onInk: false),
+            footer: PassStub(
+                line: line,
+                company: company,
+                brand: sub.companyBrand,
+                onShowCard: widget.onNavigateToCard,
+                onInk: false),
           ),
           if (receipt != null) InfoRows(rows: [receipt]),
         ];

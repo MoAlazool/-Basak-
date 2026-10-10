@@ -486,9 +486,10 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
     final Widget footer = switch (status) {
       BasakStatus.active =>
-        PassStub(line: line, company: company, onShowCard: widget.onNavigateToQr),
+        PassStub(line: line, company: company, brand: sub.companyBrand, onShowCard: widget.onNavigateToQr),
       BasakStatus.upcoming =>
-        PassStub(line: line, company: company, onShowCard: widget.onNavigateToQr, onInk: false),
+        PassStub(
+            line: line, company: company, brand: sub.companyBrand, onShowCard: widget.onNavigateToQr, onInk: false),
       BasakStatus.pendingReview => const StepLine(steps: ['أُرسل الإيصال', 'المراجعة', 'التفعيل'], current: 1),
       BasakStatus.pendingPayment => PassAction(
           caption: 'المبلغ المطلوب', value: formatMoney(sub.price), actionLabel: 'ادفع الآن', onAction: toSubscription),
@@ -561,7 +562,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         ? null
         : ref.watch(signedPhotoProvider((bucket: 'supervisor-avatars', path: sub.supervisorPhotoPath!))).valueOrNull;
     final photo = photoUrl == null ? null : avatarImage(photoUrl);
-    final name = sub.supervisorName ?? 'مشرف الخط';
+    final name = sub.supervisorName ?? 'مشرف الباص';
     final phone = sub.supervisorPhone ?? '';
     final colors = context.colors;
     final text = context.text;

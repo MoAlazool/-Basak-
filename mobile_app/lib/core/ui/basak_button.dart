@@ -214,20 +214,25 @@ class BasakButton extends StatelessWidget {
   }
 }
 
-/// An outlined button on the ink ground, 48 high: "كل التفاصيل" under the
+/// An outlined button on the ink ground, 48 high: «التفاصيل» under the
 /// student's card. Quiet on purpose; the card above it is what is read.
 class InkOutlineButton extends StatelessWidget {
   final String label;
   final IconData? icon;
   final VoidCallback? onPressed;
 
-  const InkOutlineButton({super.key, required this.label, required this.onPressed, this.icon});
+  /// Said in place of [label] to a screen reader, where the label is short
+  /// for what the button does («التفاصيل»: «اقلب البطاقة لعرض التفاصيل»).
+  final String? semanticLabel;
+
+  const InkOutlineButton({super.key, required this.label, required this.onPressed, this.icon, this.semanticLabel});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     return BasakPressable(
       onTap: onPressed,
+      semanticLabel: semanticLabel,
       child: Container(
         constraints: const BoxConstraints(minHeight: BasakSpace.tapTarget),
         padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s12),
@@ -236,22 +241,25 @@ class InkOutlineButton extends StatelessWidget {
           borderRadius: BasakRadius.all(BasakRadius.control),
           border: Border.all(color: colors.inkOutline, width: 1.5),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 18, color: colors.onInk),
-              const SizedBox(width: BasakSpace.s8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.text.bodySmall.copyWith(color: colors.onInk, fontWeight: FontWeight.w500),
+        child: ExcludeSemantics(
+          excluding: semanticLabel != null,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: colors.onInk),
+                const SizedBox(width: BasakSpace.s8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.bodySmall.copyWith(color: colors.onInk, fontWeight: FontWeight.w500),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

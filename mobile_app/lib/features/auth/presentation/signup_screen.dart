@@ -8,6 +8,7 @@ import 'package:basak_mobile/core/ui/ui.dart';
 
 import '../../../core/media/picker_errors.dart';
 import '../../../core/widgets/photo_adjust_screen.dart';
+import '../biometrics/biometric_sign_in.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 import 'college_picker_sheet.dart';
@@ -138,6 +139,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   Future<void> _submit() async {
     setState(() => _failure = null);
+    // Taken now: once the account exists, this screen is gone.
+    final offerPending = ref.read(biometricOfferPendingProvider.notifier);
     try {
       await ref.read(authStateProvider.notifier).registerStudent(
             phone: _phone.text.trim(),
@@ -149,6 +152,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             profileImageBytes: _photo,
             profileImageExtension: 'jpg',
           );
+      // A new account, made with its password: the app may now offer the
+      // faster way in, as it does after a sign-in.
+      offerPending.state = true;
     } catch (error) {
       if (!mounted) return;
       HapticFeedback.mediumImpact();

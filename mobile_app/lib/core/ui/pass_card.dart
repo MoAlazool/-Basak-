@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../media/company_brand.dart';
 import '../theme/app_icons.dart';
 import 'basak_button.dart';
+import 'company_logo.dart';
 import 'status_chip.dart';
 import 'tokens.dart';
 
@@ -380,23 +382,39 @@ class PassStub extends StatelessWidget {
   final VoidCallback? onShowCard;
   final bool onInk;
 
-  const PassStub({super.key, required this.line, required this.company, this.onShowCard, this.onInk = true});
+  /// The company's logo and emblem: its mark takes the bus glyph's tile.
+  final CompanyBrand brand;
+
+  const PassStub({
+    super.key,
+    required this.line,
+    required this.company,
+    this.onShowCard,
+    this.onInk = true,
+    this.brand = CompanyBrand.none,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
+    final bus = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: onInk ? colors.inkRaised : colors.sunken,
+        borderRadius: BasakRadius.all(BasakRadius.tile),
+      ),
+      child: Icon(LucideIcons.bus, size: 19, color: onInk ? colors.sky : colors.teal),
+    );
     return Row(
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: onInk ? colors.inkRaised : colors.sunken,
-            borderRadius: BasakRadius.all(BasakRadius.tile),
-          ),
-          child: Icon(LucideIcons.bus, size: 19, color: onInk ? colors.sky : colors.teal),
-        ),
+        // The bus until the company's mark is there, and where it has none.
+        brand.hasMark
+            ? ExcludeSemantics(
+                child: CompanyLogo(name: company, brand: brand, size: 40, radius: BasakRadius.tile, placeholder: bus),
+              )
+            : bus,
         const SizedBox(width: BasakSpace.s12),
         Expanded(
           child: Column(

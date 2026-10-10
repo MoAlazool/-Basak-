@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/media/company_brand.dart';
 import '../../../core/network/network_errors.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
@@ -56,6 +57,10 @@ class AppNotification {
   /// Where a tap leads (`route`) and the ids it concerns. Ids only.
   final Map<String, String> data;
 
+  /// The company it comes from, when the server names one (`company`).
+  final String companyName;
+  final CompanyBrand companyBrand;
+
   const AppNotification({
     required this.id,
     this.type = 'announcement.admin',
@@ -72,12 +77,18 @@ class AppNotification {
     required this.read,
     this.mine = false,
     this.data = const {},
+    this.companyName = '',
+    this.companyBrand = CompanyBrand.none,
   });
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
     final type = json['type'] as String? ?? '';
     final rawData = json['data'];
+    // Absent on an older server and in pages saved before it was sent.
+    final company = json['company'];
     return AppNotification(
+      companyName: company is Map ? (company['name'] as String? ?? '') : '',
+      companyBrand: CompanyBrand.fromJson(company),
       id: json['id'] as String,
       type: type,
       category: NotificationCategory.parse(json['category'] as String?, type: type),
@@ -111,6 +122,12 @@ class AppNotification {
         _ => type == 'announcement.platform' ? 'منصة باصك' : 'إدارة الشركة',
       };
 
+  /// Whether the company's own mark stands beside it: what its management or
+  /// one of its supervisors sent. The platform's announcements are stored one
+  /// per company and still speak as «منصة باصك»; what the system sends is «باصك».
+  bool get fromCompany =>
+      type != 'announcement.platform' && senderRole != 'system' && (companyName.isNotEmpty || companyBrand.hasMark);
+
   /// The title and text in the app's language: English only when the app runs
   /// in English and the server sent an English text.
   String titleFor(String languageCode) => languageCode == 'en' ? (titleEn ?? title) : title;
@@ -135,6 +152,8 @@ class AppNotification {
         read: value,
         mine: mine,
         data: data,
+        companyName: companyName,
+        companyBrand: companyBrand,
       );
 
   /// Matches a search of title, text, sender or audience.

@@ -55,7 +55,7 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) => Semantics(
-        label: 'جاري التحميل',
+        label: 'جارٍ التحميل',
         child: ExcludeSemantics(
           child: _animate && !MediaQuery.disableAnimationsOf(context)
               ? FadeTransition(opacity: _pulse, child: widget.child)
@@ -346,13 +346,6 @@ class StudentCardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget fact(double value) => Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Bone(width: 48, height: 9),
-            const SizedBox(height: 8),
-            Bone(width: value, height: 12),
-          ]),
-        );
     return Skeleton(
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.gutter, BasakSpace.s12, BasakSpace.gutter, BasakSpace.s14),
@@ -377,17 +370,16 @@ class StudentCardSkeleton extends StatelessWidget {
               ]),
               const SizedBox(height: 16),
               LayoutBuilder(builder: (context, box) {
-                final side = box.maxWidth.clamp(120.0, 204.0);
+                final side = box.maxWidth.clamp(120.0, 232.0);
                 return Bone(width: side, height: side, radius: BasakRadius.card);
               }),
               const SizedBox(height: 14),
               const Bone(width: 190, height: 28, radius: BasakRadius.full),
               const SizedBox(height: 24),
-              Row(children: [fact(70), const SizedBox(width: 16), fact(90)]),
-              const SizedBox(height: 14),
-              Row(children: [fact(90), const SizedBox(width: 16), fact(80)]),
-              const SizedBox(height: 16),
+              // The face of the card: the facts are on its back.
               const Bone(height: 58, radius: BasakRadius.small),
+              const SizedBox(height: 12),
+              const Bone(width: 150, height: 10),
             ]),
           ),
         ]),
