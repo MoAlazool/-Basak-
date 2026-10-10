@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../../../../core/sync/session.dart';
+import '../../subscription/models/subscription_model.dart';
 
 /// One supervisor of a line the student rides.
 class LineSupervisor {
@@ -14,6 +15,24 @@ class LineSupervisor {
   final String? photoPath;
 
   const LineSupervisor({required this.lineId, required this.name, required this.phone, this.photoPath});
+
+  /// The supervisors of [sub]'s line from [all] (`lineSupervisorsProvider`),
+  /// the primary contact first. Until they are known, or when they cannot be
+  /// read (offline, an older server), the primary contact as the subscription
+  /// carries it; empty when there is none.
+  static List<LineSupervisor> ofLine(SubscriptionModel sub, List<LineSupervisor>? all) {
+    final line = all?.where((s) => s.lineId == sub.lineId).toList() ?? const <LineSupervisor>[];
+    if (line.isNotEmpty) return line;
+    final phone = sub.supervisorPhone?.trim() ?? '';
+    return [
+      if (phone.isNotEmpty)
+        LineSupervisor(
+            lineId: sub.lineId,
+            name: sub.supervisorName?.trim() ?? '',
+            phone: phone,
+            photoPath: sub.supervisorPhotoPath),
+    ];
+  }
 
   /// `get_my_line_supervisors()`'s answer; anything unexpected in it is left out.
   static List<LineSupervisor> listFromJson(Object? json) => [

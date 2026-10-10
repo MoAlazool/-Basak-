@@ -5,6 +5,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../notifications/data/notifications_repository.dart';
 import '../../../notifications/presentation/notifications_page.dart';
 import '../../daily_ride/models/vote_settings.dart';
+import '../data/line_supervisors.dart';
 import 'student_home_screen.dart';
 import 'supervisor_contact_sheet.dart';
 
@@ -54,16 +55,26 @@ class NotificationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Home already holds the subscription: nothing is read again for it here.
-    final phone = ref.watch(currentSubscriptionProvider).valueOrNull?.supervisorPhone ?? '';
+    // Home already holds the subscription and the line's supervisors: nothing is read again here.
+    final sub = ref.watch(currentSubscriptionProvider).valueOrNull;
+    final supervisors =
+        sub == null ? const <LineSupervisor>[] : LineSupervisor.ofLine(sub, ref.watch(lineSupervisorsProvider).valueOrNull);
     return NotificationsPage(
       preferences: false,
-      detailAction: (notification) => _callSupervisor(phone, notification),
+      detailAction: (notification) => _callSupervisor(supervisorPhone(supervisors, notification.senderName), notification),
     );
   }
 
+  /// The number to answer a supervisor's message on: the supervisor of that
+  /// name on the student's line, else the line's primary contact ('' if none).
+  static String supervisorPhone(List<LineSupervisor> supervisors, String senderName) {
+    if (supervisors.isEmpty) return '';
+    final sender = senderName.trim();
+    return supervisors.firstWhere((s) => s.name == sender, orElse: () => supervisors.first).phone;
+  }
+
   /// A message from the bus supervisor can be answered with a call, when the
-  /// student's subscription knows the supervisor's number.
+  /// student's line has a supervisor's number.
   static AlertAction? _callSupervisor(String phone, AppNotification notification) {
     if (notification.senderRole != 'supervisor') return null;
     if (phone.trim().isEmpty) return null;

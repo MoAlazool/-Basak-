@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/ui/ui.dart';
+import '../../home/data/line_supervisors.dart';
 import '../../home/presentation/student_home_screen.dart';
 import '../../home/presentation/supervisor_contact_sheet.dart';
 
@@ -30,21 +31,24 @@ class HelpEntry {
   });
 }
 
-/// «عن رحلتك واشتراكك»: the people the app already knows. Today that is the
-/// bus supervisor of the student's line, when the subscription names one.
+/// «عن رحلتك واشتراكك»: the people the app already knows. Today those are
+/// the bus supervisors of the student's line, the primary contact first.
 final helpJourneyProvider = Provider<List<HelpEntry>>((ref) {
   final sub = ref.watch(currentSubscriptionProvider).valueOrNull;
-  final phone = sub?.supervisorPhone?.trim() ?? '';
-  if (sub == null || phone.isEmpty) return const [];
-  final name = (sub.supervisorName ?? '').trim().isEmpty ? 'مشرف الباص' : sub.supervisorName!.trim();
+  if (sub == null) return const [];
   return [
-    HelpEntry(
-      icon: LucideIcons.userRound,
-      person: true,
-      title: name,
-      subtitle: SupervisorContactSheet.roleLabel(sub.lineName),
-      action: (page) => SupervisorContactSheet.show(page, name: name, phone: phone, lineName: sub.lineName),
-    ),
+    for (final supervisor in LineSupervisor.ofLine(sub, ref.watch(lineSupervisorsProvider).valueOrNull))
+      () {
+        final name = supervisor.name.isEmpty ? 'مشرف الباص' : supervisor.name;
+        return HelpEntry(
+          icon: LucideIcons.userRound,
+          person: true,
+          title: name,
+          subtitle: SupervisorContactSheet.roleLabel(sub.lineName),
+          action: (page) =>
+              SupervisorContactSheet.show(page, name: name, phone: supervisor.phone, lineName: sub.lineName),
+        );
+      }(),
   ];
 });
 
