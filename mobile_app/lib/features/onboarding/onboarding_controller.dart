@@ -23,8 +23,9 @@ class OnboardingController extends StateNotifier<bool?> {
     }
   }
 
-  Future<void> complete({bool openSignup = false}) async {
+  Future<void> complete({bool openSignup = false, bool openSignIn = false}) async {
     authEntryOpensSignup = openSignup;
+    authEntryOpensSignIn = openSignIn;
     state = true;
     try {
       await _storage.write(key: _key, value: 'true');
@@ -35,6 +36,10 @@ class OnboardingController extends StateNotifier<bool?> {
 /// Whether the auth screen should open on registration (set by onboarding's
 /// final page). Read once when the auth screen is first built.
 bool authEntryOpensSignup = false;
+
+/// Whether the auth screen should open on sign-in (onboarding's «لديّ حساب»).
+/// Neither set: the welcome screen.
+bool authEntryOpensSignIn = false;
 
 final onboardingProvider =
     StateNotifierProvider<OnboardingController, bool?>((ref) => OnboardingController());

@@ -30,6 +30,7 @@ export const PlatformNotificationsPage = page(() => import('../pages/PlatformNot
 export const CompanyAdminsPage = page(() => import('../pages/CompanyAdminsPage'), 'CompanyAdminsPage');
 export const UniversitiesPage = page(() => import('../pages/UniversitiesPage'), 'UniversitiesPage');
 export const PlatformDefaultsPage = page(() => import('../pages/SubscriptionSettingsPage'), 'PlatformDefaultsPage');
+export const AppVersionsPage = page(() => import('../pages/AppVersionsPage'), 'AppVersionsPage');
 
 // One company's workspace.
 export const OverviewPage = page(() => import('../pages/OverviewPage'), 'OverviewPage');

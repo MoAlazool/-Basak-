@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basak design system · Pass states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="width:1200px;height:1040px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;padding:64px;display:flex;flex-direction:column;gap:40px">
+
+<header style="display:flex;align-items:flex-end;justify-content:space-between;gap:40px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#00658D;letter-spacing:.08em;text-transform:uppercase">Basak · Student app · 2026</div>
+<h1 style="margin:0;font-size:44px;line-height:54px;font-weight:600">The Home pass, by status</h1>
+</div>
+<p style="margin:0;max-width:440px;font-size:15px;line-height:24px;color:#476273">Always a ticket. Above the tear: status and route. Below it: the one thing to do, or, when there is nothing to do, the line and a shortcut to the card. Dates, money and receipts live on the subscription tab.</p>
+</header>
+
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:36px 32px;align-items:start">
+<sc-for list="{{passes}}" as="p" hint-placeholder-count="6">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">{{p.key}}</div>
+<section dir="rtl" style="border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:18px;overflow:hidden;background:{{p.bg}};color:{{p.fg}};box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;align-items:center;gap:8px;border-radius:999px;padding:5px 10px 5px 12px;font-size:13px;line-height:20px;font-weight:500;background:{{p.chipBg}};color:{{p.chipFg}}">
+<span style="width:8px;height:8px;border-radius:4px;background:{{p.dot}}"></span>
+<span>{{p.chip}}</span>
+</div>
+<div style="font-size:13px;line-height:20px;color:{{p.accent}}">{{p.period}}</div>
+</div>
+<div style="display:grid;grid-template-columns:10px 1fr;column-gap:14px">
+<div style="display:flex;flex-direction:column;align-items:center" aria-hidden="true">
+<span style="height:8px"></span>
+<span style="width:10px;height:10px;border-radius:5px;flex:none;border:2px solid {{p.stop}}"></span>
+<span style="width:2px;flex:1;background:{{p.rule}}"></span>
+</div>
+<div style="padding-bottom:12px">
+<div style="font-size:17px;line-height:26px;font-weight:600">كوبري السرو</div>
+<div style="font-size:12px;line-height:18px;color:{{p.sub}}">محطة الصعود</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:center" aria-hidden="true">
+<span style="width:2px;height:8px;background:{{p.rule}}"></span>
+<span style="width:10px;height:10px;border-radius:5px;flex:none;background:{{p.stop}}"></span>
+</div>
+<div>
+<div style="font-size:17px;line-height:26px;font-weight:600">المنصورة الجديدة</div>
+<div style="font-size:12px;line-height:18px;color:{{p.sub}}">{{p.destSub}}</div>
+</div>
+</div>
+<sc-if value="{{p.action}}" hint-placeholder-val="{{true}}">
+<div style="height:0;margin:0 -20px;position:relative;border-top:1.5px dashed {{p.rule}}" aria-hidden="true">
+<span style="position:absolute;top:-11px;right:-10px;width:20px;height:20px;border-radius:10px;background:#F0F5F8"></span>
+<span style="position:absolute;top:-11px;left:-10px;width:20px;height:20px;border-radius:10px;background:#F0F5F8"></span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="min-width:0">
+<div style="font-size:12px;line-height:18px;color:{{p.sub}}">{{p.footCap}}</div>
+<div style="font-size:15px;line-height:24px;font-weight:500">{{p.footVal}}</div>
+</div>
+<span style="height:44px;padding:0 18px;border-radius:14px;display:flex;align-items:center;font-size:14px;font-weight:600;flex:none;background:#00658D;color:#FFFFFF">{{p.action}}</span>
+</div>
+</sc-if>
+<sc-if value="{{p.progress}}" hint-placeholder-val="{{false}}">
+<div style="height:0;margin:0 -20px;position:relative;border-top:1.5px dashed {{p.rule}}" aria-hidden="true">
+<span style="position:absolute;top:-11px;right:-10px;width:20px;height:20px;border-radius:10px;background:#F0F5F8"></span>
+<span style="position:absolute;top:-11px;left:-10px;width:20px;height:20px;border-radius:10px;background:#F0F5F8"></span>
+</div>
+<div style="display:flex;align-items:flex-start">
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:76px">
+<span style="width:24px;height:24px;border-radius:12px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+<span style="font-size:12px;line-height:18px;font-weight:500">أُرسل الإيصال</span>
+</div>
+<span style="flex:1;height:2px;background:#00658D;margin-top:11px"></span>
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:76px">
+<span style="width:24px;height:24px;border-radius:12px;background:#FFFFFF;box-shadow:inset 0 0 0 2px #00658D;display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:4px;background:#00658D"></span></span>
+<span style="font-size:12px;line-height:18px;font-weight:600;color:#00658D">المراجعة</span>
+</div>
+<span style="flex:1;height:2px;background:#D5E0E7;margin-top:11px"></span>
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:76px">
+<span style="width:24px;height:24px;border-radius:12px;background:#FFFFFF;box-shadow:inset 0 0 0 2px #C3D1DA"></span>
+<span style="font-size:12px;line-height:18px;color:#58707F">التفعيل</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{p.stub}}" hint-placeholder-val="{{false}}">
+<div style="height:0;margin:0 -20px;position:relative;border-top:1.5px dashed {{p.rule}}" aria-hidden="true">
+<span style="position:absolute;top:-11px;right:-10px;width:20px;height:20px;border-radius:10px;background:#F0F5F8"></span>
+<span style="position:absolute;top:-11px;left:-10px;width:20px;height:20px;border-radius:10px;background:#F0F5F8"></span>
+</div>
+<div style="display:flex;align-items:center;gap:12px">
+<span aria-hidden="true" style="width:40px;height:40px;border-radius:12px;background:{{p.tile}};color:{{p.stop}};display:flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="14" rx="3"></rect><path d="M4 11h16M8 21v-4M16 21v-4M8 14.5h.01M16 14.5h.01"></path></svg></span>
+<div style="flex:1;min-width:0"><div style="font-size:15px;line-height:24px;font-weight:600">خط الزرقا</div><div style="font-size:12px;line-height:18px;color:{{p.sub}}">النورس للنقل</div></div>
+<span aria-hidden="true" style="width:48px;height:48px;border-radius:16px;background:{{p.qrBg}};color:{{p.qrFg}};display:flex;align-items:center;justify-content:center;flex:none"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"></path></svg></span>
+</div>
+</sc-if>
+</section>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":1040}}'>
+class Component extends DCLogic {
+renderVals() {
+const light = { bg: '#FFFFFF', fg: '#17384A', sub: '#58707F', rule: '#D5E0E7', stop: '#00658D', accent: '#58707F', tile: '#E4ECF1', qrBg: '#00658D', qrFg: '#FFFFFF' };
+const ink = { bg: '#17384A', fg: '#FFFFFF', sub: '#A9BCC8', rule: '#34596D', stop: '#A8D8F0', accent: '#A8D8F0', tile: '#214B61', qrBg: '#5BD4A0', qrFg: '#17384A' };
+const none = { action: '', progress: false, footCap: '', footVal: '', stub: false, destSub: 'خط الزرقا · النورس للنقل' };
+return {
+passes: [
+{ key: 'pending_payment · pay', ...light, ...none, chip: 'بانتظار الدفع', chipBg: '#E5F3FA', chipFg: '#00658D', dot: '#00658D', period: 'الفصل الأول', footCap: 'المبلغ المطلوب', footVal: '4,500 ج.م', action: 'ادفع الآن' },
+{ key: 'rejected · send a new receipt', ...light, ...none, chip: 'إيصال مرفوض', chipBg: '#FCEBE9', chipFg: '#B3261E', dot: '#B3261E', period: 'الفصل الأول', footCap: 'المحاولة 2 من 5', footVal: 'المبلغ غير مطابق', action: 'إيصال جديد' },
+{ key: 'expired · renew', ...light, ...none, chip: 'منتهٍ', chipBg: '#E4ECF1', chipFg: '#476273', dot: '#476273', period: 'الفصل الأول', footCap: 'الفصل الثاني', footVal: '4,500 ج.م', action: 'جدّد' },
+{ key: 'pending_review · nothing to do', ...light, ...none, chip: 'قيد المراجعة', chipBg: '#FCF1DC', chipFg: '#8A5300', dot: '#8A5300', period: 'الفصل الأول', progress: true },
+{ key: 'active · nothing to do', ...ink, ...none, chip: 'نشط', chipBg: '#214B61', chipFg: '#FFFFFF', dot: '#5BD4A0', period: 'الفصل الأول', stub: true, destSub: 'الجامعة' },
+{ key: 'active, starts later · nothing to do', ...light, ...none, chip: 'يبدأ قريباً', chipBg: '#E5F3FA', chipFg: '#00658D', dot: '#00658D', period: 'الفصل الثاني · 7 فبراير', stub: true, destSub: 'الجامعة' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

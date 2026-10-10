@@ -232,6 +232,9 @@ class ReceiptModel {
   final String createdAt;
   final String? reviewedAt;
 
+  /// The company's payment method the student said they paid with.
+  final String? paymentMethodId;
+
   ReceiptModel({
     required this.id,
     required this.subscriptionId,
@@ -242,6 +245,7 @@ class ReceiptModel {
     this.reviewedBy,
     required this.createdAt,
     this.reviewedAt,
+    this.paymentMethodId,
   });
 
   bool get isRejected => status == 'rejected';
@@ -257,6 +261,7 @@ class ReceiptModel {
       reviewedBy: json['reviewed_by'] as String?,
       createdAt: json['created_at'] as String,
       reviewedAt: json['reviewed_at'] as String?,
+      paymentMethodId: json['payment_method_id'] as String?,
     );
   }
 }

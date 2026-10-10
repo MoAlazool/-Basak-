@@ -21,7 +21,7 @@ describe('a pending receipt as the table shows it', () => {
   it('takes every field from the server row', () => {
     expect(toPendingRow(answer())).toEqual({
       id: 'r1', subscriptionId: 's1', studentId: 'st1', studentName: 'أحمد محمد علي', studentPhone: '01000000000',
-      university: 'جامعة المنصورة', college: 'الهندسة', companyId: 'c1', companyName: 'شركة النقل', lineName: 'خط ١',
+      university: 'جامعة المنصورة', college: 'الهندسة', specialisation: '', companyId: 'c1', companyName: 'شركة النقل', lineName: 'خط ١',
       stationName: 'المحطة', departureTime: '07:30', returnTime: '15:00', subscriptionType: 'termly',
       periodLabel: 'الفصل الأول 2026/2027', periodStart: '2026-09-20', periodEnd: '2027-01-20', periodPhase: 'current',
       price: 3500, imagePath: 'company/student/receipt.jpg', legacyImageUrl: null, attemptNumber: 2, createdAt: '2026-10-01T08:00:00Z',

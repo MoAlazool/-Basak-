@@ -125,6 +125,24 @@ class SupervisorRepository {
     return SupervisorMonthlySummary.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
+  /// Seats of one bus per line, as the company set them: `{line id: seats}`.
+  /// A line without a number is left out. Empty on a database that has no
+  /// `get_my_line_capacities` yet, and whenever it cannot be read: the screens
+  /// then simply say nothing about buses.
+  Future<Map<String, int>> getLineCapacities() async {
+    try {
+      final response = await OfflineCache.readThrough(
+          'supervisor.capacities', () => _gateway.rpc(SupabaseRpcs.getMyLineCapacities));
+      return {
+        for (final row in response as List? ?? const [])
+          if (row is Map && row['line_id'] != null && (row['bus_capacity'] as num? ?? 0) > 0)
+            '${row['line_id']}': (row['bus_capacity'] as num).toInt(),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Where the supervisor's own photo is stored (null: none).
   Future<String?> getPhotoPath(String userId) async {
     final row = await OfflineCache.readThrough('supervisor.photo', () => _gateway.photoRow(userId));
@@ -173,6 +191,13 @@ final supervisorPhotoUrlProvider = FutureProvider<String?>((ref) async {
   } catch (_) {
     return null;
   }
+});
+
+/// Seats of one bus per line (`{line id: seats}`), kept for the session.
+/// Empty when the company set none or the database cannot say.
+final lineCapacitiesProvider = FutureProvider<Map<String, int>>((ref) {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(supervisorRepoProvider).getLineCapacities();
 });
 
 // Kept per month for the session, so going back to a month does not reload it.

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>اشتراك جديد · الخطوط</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+</style>
+</helmet>
+<div dir="rtl" style="width:390px;height:1010px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;display:flex;flex-direction:column;padding:60px 20px 34px;overflow:hidden">
+
+<a href="HomeNew.dc.html" aria-label="إغلاق" style="width:44px;height:44px;border-radius:22px;background:#FFFFFF;color:#17384A;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</a>
+
+<div style="display:flex;flex-direction:column;gap:4px;padding:20px 0 24px">
+<h1 style="margin:0;font-size:28px;line-height:38px;font-weight:600">اشتراك جديد</h1>
+<p style="margin:0;font-size:15px;line-height:24px;color:#476273">إلى جامعة المنصورة الجديدة</p>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+
+<div style="background:#FFFFFF;border-radius:16px;padding:0 16px;min-height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<span style="width:24px;height:24px;border-radius:12px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+<div style="flex:1;min-width:0">
+<div style="font-size:11px;line-height:16px;color:#58707F">شركة النقل</div>
+<div style="font-size:15px;line-height:22px;font-weight:500">النورس للنقل</div>
+</div>
+<a href="FlowCompany.dc.html" style="min-height:44px;display:flex;align-items:center;padding:0 4px;font-size:14px;font-weight:600">تغيير</a>
+</div>
+
+<section style="display:flex;flex-direction:column;gap:10px;padding-bottom:6px">
+<div style="display:flex;align-items:center;gap:12px;min-height:40px;padding:0 4px">
+<span style="width:24px;height:24px;border-radius:12px;box-shadow:inset 0 0 0 2px #00658D;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none">2</span>
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">الخط والمحطة</h2>
+</div>
+
+<sc-for list="{{lines}}" as="l" hint-placeholder-count="3">
+<a href="FlowStation.dc.html" style="background:#FFFFFF;border-radius:20px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;color:#17384A;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+<div style="min-width:0">
+<div style="font-size:17px;line-height:26px;font-weight:600">{{l.name}}</div>
+<div style="display:flex;align-items:center;gap:8px;font-size:13px;line-height:20px;color:#58707F">
+<span>{{l.stops}}</span>
+<sc-if value="{{l.daily}}" hint-placeholder-val="{{false}}">
+<span style="border-radius:10px;padding:1px 8px;background:#E4ECF1;color:#476273;font-size:12px;line-height:18px;font-weight:500">يومي متاح</span>
+</sc-if>
+</div>
+</div>
+<div style="flex:none;font-size:17px;line-height:26px;font-weight:600"><span style="font-size:12px;font-weight:400;color:#58707F">من</span> {{l.price}} <span style="font-size:12px;font-weight:400;color:#58707F">ج.م</span></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px">
+<div style="background:#F0F5F8;border-radius:12px;padding:8px 12px">
+<div style="font-size:11px;line-height:16px;color:#58707F">أول ذهاب</div>
+<div style="font-size:14px;line-height:22px;font-weight:500">{{l.first}}</div>
+</div>
+<div style="background:#F0F5F8;border-radius:12px;padding:8px 12px">
+<div style="font-size:11px;line-height:16px;color:#58707F">آخر عودة</div>
+<div style="font-size:14px;line-height:22px;font-weight:500">{{l.last}}</div>
+</div>
+</div>
+</a>
+</sc-for>
+
+<div aria-disabled="true" style="background:#FFFFFF;border-radius:20px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div style="min-width:0">
+<div style="font-size:17px;line-height:26px;font-weight:600;color:#58707F">شربين</div>
+<div style="font-size:13px;line-height:20px;color:#58707F">4 محطات · الاشتراك مغلق حالياً</div>
+</div>
+<span style="border-radius:10px;padding:3px 10px;background:#E4ECF1;color:#476273;font-size:12px;line-height:18px;font-weight:500;flex:none">غير متاح</span>
+</div>
+</section>
+
+<div aria-disabled="true" style="border-radius:16px;padding:0 16px;min-height:56px;display:flex;align-items:center;gap:12px;background:#E4ECF1">
+<span style="width:24px;height:24px;border-radius:12px;box-shadow:inset 0 0 0 2px #9DB0BB;color:#58707F;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none">3</span>
+<span style="font-size:16px;line-height:24px;color:#58707F">الفترة</span>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1010}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+lines: [
+{ name: 'الزرقا', stops: '7 محطات', price: '4,500', first: '6:15 ص', last: '5:30 م', daily: false },
+{ name: 'فارسكور', stops: '5 محطات', price: '4,200', first: '6:30 ص', last: '5:30 م', daily: false },
+{ name: 'كفر سعد', stops: '6 محطات', price: '4,800', first: '6:00 ص', last: '4:30 م', daily: true }
+]
+};
+}
+}
+</script>
+</body>
+</html>

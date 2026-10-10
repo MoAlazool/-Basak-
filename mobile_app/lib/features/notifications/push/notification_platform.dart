@@ -65,6 +65,19 @@ class NotificationPlatform {
     }
   }
 
+  /// Opens this app's own page in the system settings, where its permissions
+  /// are (the camera). A build without it opens the notification page.
+  static Future<bool> openAppSettings() async {
+    if (!_android && !_ios) return false;
+    try {
+      return await _channel.invokeMethod<bool>('openAppSettings') ?? false;
+    } on MissingPluginException {
+      return openSystemSettings();
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Shows [count] on the app icon (iOS). Android has no number to set: its
   /// launcher dot follows the notifications still in the tray.
   static Future<void> setBadge(int count) async {

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/supabase_config.dart';
 import '../../../core/constants/supabase_tables.dart';
 import '../../../core/network/perf_trace.dart';
 import '../../../core/network/supabase_service.dart';
@@ -44,12 +45,28 @@ class SupabaseRoleLookup implements RoleLookup {
   }
 }
 
+/// How a new student's row reaches the database (replaced in tests).
+abstract class StudentRows {
+  Future<void> insert(Map<String, dynamic> record);
+}
+
+class SupabaseStudentRows implements StudentRows {
+  const SupabaseStudentRows();
+
+  @override
+  Future<void> insert(Map<String, dynamic> record) =>
+      SupabaseService.client.from(SupabaseTables.students).insert(record);
+}
+
 class AuthRepository {
   final RoleLookup _roles;
+  final StudentRows _students;
 
   bool _roleRpcMissing = false;
 
-  AuthRepository({RoleLookup? roles}) : _roles = roles ?? const SupabaseRoleLookup();
+  AuthRepository({RoleLookup? roles, StudentRows? students})
+      : _roles = roles ?? const SupabaseRoleLookup(),
+        _students = students ?? const SupabaseStudentRows();
 
   SupabaseClient get _client => SupabaseService.client;
 
@@ -66,7 +83,13 @@ class AuthRepository {
       });
 
   static const phoneAlreadyRegisteredMessage =
-      'رقم الهاتف مسجل بالفعل. سجّل الدخول به، أو استخدم «نسيت كلمة المرور».';
+      'رقم الهاتف مسجل بالفعل. سجّل الدخول به، أو استخدم نسيت كلمة المرور.';
+
+  /// What is saved for a student who names no college (older accounts).
+  static const unknownCollege = 'غير محدد';
+
+  /// The longest specialisation the database takes.
+  static const specialisationMaxLength = 80;
 
   static String normalizeEgyptianPhone(String phone) {
     var digits = toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
@@ -79,16 +102,44 @@ class AuthRepository {
     return digits;
   }
 
+  /// The universities a student can pick: id, name and, when it has one, city.
   Future<List<Map<String, String>>> getActiveUniversities() async {
     final rows = await _client
         .from('universities')
-        .select('id, name')
+        .select('id, name, city')
         .eq('is_active', true)
         .order('name');
     return (rows as List<dynamic>)
-        .map(
-            (row) => {'id': row['id'] as String, 'name': row['name'] as String})
+        .map((row) => {
+              'id': row['id'] as String,
+              'name': row['name'] as String,
+              if ((row['city'] as String?)?.trim().isNotEmpty ?? false) 'city': (row['city'] as String).trim(),
+            })
         .toList();
+  }
+
+  /// Whether [error] says the database has no `specialisation` column yet
+  /// (the migration that adds it has not been applied).
+  static bool isUnknownSpecialisationColumn(Object error) {
+    if (error is! PostgrestException) return false;
+    final text = '${error.message} ${error.details ?? ''} ${error.hint ?? ''}'.toLowerCase();
+    if (!text.contains('specialisation')) return false;
+    // PGRST204: not in the schema cache; 42703: undefined column.
+    return error.code == 'PGRST204' || error.code == '42703' || text.contains('column');
+  }
+
+  /// Saves the student's row. The specialisation travels only when there is
+  /// one, and a database that does not know the column yet gets the row once
+  /// more without it: signing up never depends on that migration.
+  Future<void> saveStudentRow(Map<String, dynamic> record, {String? specialisation}) async {
+    final value = specialisation?.trim() ?? '';
+    if (value.isEmpty) return _students.insert(record);
+    try {
+      await _students.insert({...record, 'specialisation': value});
+    } catch (error) {
+      if (!isUnknownSpecialisationColumn(error)) rethrow;
+      await _students.insert(record);
+    }
   }
 
   /// Registers a new student: the sign-in account, the optional photo and the
@@ -99,6 +150,7 @@ class AuthRepository {
     required String university,
     required String college,
     required String password,
+    String? specialisation,
     Uint8List? profileImageBytes,
     String? profileImageExtension,
   }) async {
@@ -186,10 +238,10 @@ class AuthRepository {
         'phone': cleanPhone,
         'full_name': fullName.trim(),
         'university': university.trim(),
-        'college': college.trim().isEmpty ? 'غير محدد' : college.trim(),
+        'college': college.trim().isEmpty ? unknownCollege : college.trim(),
         if (profileImagePath != null) 'profile_image_url': profileImagePath,
       };
-      await _client.from(SupabaseTables.students).insert(record);
+      await saveStudentRow(record, specialisation: specialisation);
     } catch (e) {
       if (profileImagePath != null) {
         try {
@@ -278,6 +330,48 @@ class AuthRepository {
 
   Future<void> signOut() async {
     await _client.auth.signOut();
+  }
+
+  /// The signed-in session's refresh token: what signing out puts aside when
+  /// signing in with Face ID or a fingerprint is switched on.
+  String? get currentRefreshToken {
+    try {
+      return _client.auth.currentSession?.refreshToken;
+    } catch (_) {
+      return null; // Supabase not started (tests, previews)
+    }
+  }
+
+  /// Signs out of this phone only: the session stays alive on the server, to
+  /// be picked up again by [restoreSession].
+  Future<void> signOutKeepingSession() => SupabaseService.signOutOnThisPhone();
+
+  /// Signs in with a refresh token put aside by an earlier sign-out. Throws
+  /// what the server answers when the token is no longer good.
+  Future<({User user, UserRole role})> restoreSession(String refreshToken) async {
+    final response = await _client.auth.setSession(refreshToken);
+    final user = response.user ?? response.session?.user ?? _client.auth.currentUser;
+    if (user == null) throw const AuthException('The session could not be restored.');
+    return (user: user, role: await detectUserRole(user.id));
+  }
+
+  /// Ends on the server a session this phone no longer wants («حساب آخر»),
+  /// through a client of its own: nobody is signed in here meanwhile.
+  Future<void> revokeSession(String refreshToken) async {
+    final auth = GoTrueClient(
+      url: '${SupabaseConfig.supabaseUrl}/auth/v1',
+      headers: {
+        'apikey': SupabaseConfig.supabaseAnonKey,
+        'Authorization': 'Bearer ${SupabaseConfig.supabaseAnonKey}',
+      },
+      autoRefreshToken: false,
+    );
+    try {
+      await auth.setSession(refreshToken).timeout(const Duration(seconds: 10));
+      await auth.signOut().timeout(const Duration(seconds: 10));
+    } finally {
+      auth.dispose();
+    }
   }
 
   /// Forgot password, step 1 (no sign-in): asks the student's bus company to

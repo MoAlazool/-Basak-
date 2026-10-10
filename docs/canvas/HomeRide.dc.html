@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الرئيسية · تأكيد رحلة الغد</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+</style>
+</helmet>
+<div dir="rtl" style="width:390px;height:844px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;position:relative;overflow:hidden">
+
+<div aria-hidden="true" style="padding:60px 20px 0;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:12px;padding-bottom:4px">
+<div style="width:44px;height:44px;border-radius:22px;background:#D6EBF5;flex:none"></div>
+<div>
+<div style="font-size:13px;line-height:20px;color:#58707F">مساء الخير</div>
+<div style="font-size:22px;line-height:32px;font-weight:600">سارة أحمد</div>
+</div>
+</div>
+<div style="height:250px;border-radius:28px;background:#17384A"></div>
+</div>
+<div aria-hidden="true" style="position:absolute;inset:0;background:rgba(23,56,74,.48)"></div>
+
+<section role="dialog" aria-label="تأكيد رحلة الغد" style="position:absolute;left:0;right:0;bottom:0;background:#FFFFFF;border-radius:28px 28px 0 0;padding:10px 20px 34px;display:flex;flex-direction:column;gap:18px">
+<span aria-hidden="true" style="width:40px;height:4px;border-radius:2px;background:#C3D1DA;align-self:center"></span>
+
+<div style="display:flex;flex-direction:column;gap:2px">
+<h1 style="margin:0;font-size:22px;line-height:32px;font-weight:600">رحلة الغد</h1>
+<p style="margin:0;font-size:14px;line-height:22px;color:#476273">الاثنين 12 أكتوبر · من كوبري السرو</p>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<h2 style="margin:0;font-size:15px;line-height:24px;font-weight:600">الذهاب</h2>
+<span style="font-size:12px;line-height:18px;color:#58707F">موعد مرور الباص على محطتك</span>
+</div>
+<div role="radiogroup" aria-label="موعد الذهاب" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px">
+<sc-for list="{{deps}}" as="t" hint-placeholder-count="5">
+<button type="button" role="radio" aria-checked="{{t.on}}" onClick="{{t.pick}}" style="height:50px;border-radius:14px;font-size:16px;font-weight:{{t.w}};background:{{t.bg}};color:{{t.fg}};box-shadow:inset 0 0 0 2px {{t.ring}}">{{t.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<h2 style="margin:0;font-size:15px;line-height:24px;font-weight:600">العودة</h2>
+<span style="font-size:12px;line-height:18px;color:#58707F">موعد تحرّك الباص من الجامعة</span>
+</div>
+<div role="radiogroup" aria-label="موعد العودة" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px">
+<sc-for list="{{rets}}" as="t" hint-placeholder-count="6">
+<button type="button" role="radio" aria-checked="{{t.on}}" onClick="{{t.pick}}" style="height:50px;border-radius:14px;font-size:16px;font-weight:{{t.w}};background:{{t.bg}};color:{{t.fg}};box-shadow:inset 0 0 0 2px {{t.ring}}">{{t.label}}</button>
+</sc-for>
+<button type="button" role="radio" aria-checked="{{none.on}}" onClick="{{none.pick}}" style="grid-column:1 / -1;height:50px;border-radius:14px;font-size:15px;font-weight:{{none.w}};background:{{none.bg}};color:{{none.fg}};box-shadow:inset 0 0 0 2px {{none.ring}}">لن أعود بالباص</button>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:2px;padding-top:2px">
+<a href="HomeConfirmed.dc.html" style="height:54px;border-radius:16px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600">تأكيد الركوب</a>
+<a href="Main.dc.html" style="height:48px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;color:#476273">لن أركب غداً</a>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const s = this.state || {};
+const dep = s.dep || '0723';
+const ret = s.ret || '1530';
+const look = (on) => ({
+on: on ? 'true' : 'false',
+w: on ? 600 : 500,
+bg: on ? '#E5F3FA' : '#F0F5F8',
+fg: on ? '#00658D' : '#17384A',
+ring: on ? '#00658D' : 'transparent'
+});
+const deps = [
+{ id: '0638', label: '6:38 ص' }, { id: '0723', label: '7:23 ص' }, { id: '0808', label: '8:08 ص' },
+{ id: '0853', label: '8:53 ص' }, { id: '0938', label: '9:38 ص' }
+];
+const rets = [
+{ id: '1230', label: '12:30 م' }, { id: '1330', label: '1:30 م' }, { id: '1430', label: '2:30 م' },
+{ id: '1530', label: '3:30 م' }, { id: '1630', label: '4:30 م' }, { id: '1730', label: '5:30 م' }
+];
+return {
+deps: deps.map((t) => ({ ...t, ...look(t.id === dep), pick: () => this.setState({ dep: t.id }) })),
+rets: rets.map((t) => ({ ...t, ...look(t.id === ret), pick: () => this.setState({ ret: t.id }) })),
+none: { ...look(ret === 'none'), pick: () => this.setState({ ret: 'none' }) }
+};
+}
+}
+</script>
+</body>
+</html>

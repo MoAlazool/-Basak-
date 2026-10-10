@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
+
+import 'package:basak_mobile/core/ui/ui.dart';
+
+import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
+import 'password_strength.dart';
 
 /// Student "Forgot password".
 /// 1. The student enters their phone number -> a reset request reaches their
@@ -19,17 +24,21 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
-  static const _teal = Color(0xFF1F6F8B);
-  final _phoneForm = GlobalKey<FormState>();
-  final _resetForm = GlobalKey<FormState>();
   late final _phone = TextEditingController(text: widget.initialPhone);
   final _code = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
+  final _confirmFocus = FocusNode();
   bool _codeStep = false;
   bool _busy = false;
   bool _hide = true;
-  String? _error;
+  String? _phoneError;
+  String? _codeError;
+  String? _passwordError;
+  String? _confirmError;
+
+  /// What the server answered, when it is no single field's fault.
+  String? _failure;
 
   @override
   void dispose() {
@@ -37,209 +46,206 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     _code.dispose();
     _password.dispose();
     _confirm.dispose();
+    _confirmFocus.dispose();
     super.dispose();
   }
 
   String _clean(Object error) => error.toString().replaceFirst('Exception: ', '');
 
+  String get _codeDigits => AuthRepository.toLatinDigits(_code.text.trim());
+
+  bool _validPhone() {
+    final valid = RegExp(r'^01[0125][0-9]{8}$').hasMatch(AuthRepository.normalizeEgyptianPhone(_phone.text));
+    setState(() {
+      _phoneError = valid ? null : 'اكتب رقم هاتف مصري صحيح من 11 رقماً.';
+      _failure = null;
+    });
+    return valid;
+  }
+
   Future<void> _request() async {
     FocusScope.of(context).unfocus();
-    if (!_phoneForm.currentState!.validate()) return;
-    setState(() { _busy = true; _error = null; });
+    if (_busy || !_validPhone()) return;
+    setState(() => _busy = true);
     try {
       await ref.read(authRepositoryProvider).requestPasswordReset(_phone.text);
       if (mounted) setState(() => _codeStep = true);
     } catch (error) {
-      if (mounted) setState(() => _error = _clean(error));
+      if (mounted) setState(() => _failure = _clean(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _haveCode() {
+    FocusScope.of(context).unfocus();
+    if (_validPhone()) setState(() => _codeStep = true);
   }
 
   Future<void> _reset() async {
     FocusScope.of(context).unfocus();
-    if (!_resetForm.currentState!.validate()) return;
-    setState(() { _busy = true; _error = null; });
+    if (_busy) return;
+    final codeError = RegExp(r'^\d{6}$').hasMatch(_codeDigits) ? null : 'أدخل الرمز المكون من 6 أرقام.';
+    final passwordError = _password.text.length < passwordMinLength ? passwordTooShortMessage : null;
+    final confirmError = _confirm.text != _password.text ? passwordMismatchMessage : null;
+    setState(() {
+      _codeError = codeError;
+      _passwordError = passwordError;
+      _confirmError = confirmError;
+      _failure = null;
+    });
+    if (codeError != null || passwordError != null || confirmError != null) return;
+
+    setState(() => _busy = true);
     try {
       await ref.read(authRepositoryProvider).resetPasswordWithCode(
             phone: _phone.text,
-            code: _code.text,
+            code: _codeDigits,
             newPassword: _password.text,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.'),
-        backgroundColor: Color(0xFF07865A),
-      ));
+      BasakToast.show(context, 'تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.');
       Navigator.of(context).pop(_phone.text.trim());
     } catch (error) {
-      if (mounted) setState(() => _error = _clean(error));
+      if (mounted) setState(() => _failure = _clean(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  InputDecoration _field(String hint, IconData icon, {Widget? suffix, String? prefix}) => InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon, size: 19),
-        prefixText: prefix,
-        suffixIcon: suffix,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        filled: true,
-        fillColor: const Color(0xFFFAFCFE),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F9FC),
-      appBar: AppBar(
-        title: const Text('استعادة كلمة المرور'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: const Color(0xFF17384A),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                child: Padding(
-                  padding: const EdgeInsets.all(22),
-                  child: _codeStep ? _codeForm() : _phoneFormView(),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+  void _back() {
+    if (_busy) return;
+    if (_codeStep) {
+      setState(() {
+        _codeStep = false;
+        _failure = null;
+      });
+    } else {
+      Navigator.of(context).maybePop();
+    }
   }
 
-  Widget _phoneFormView() => Form(
-        key: _phoneForm,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Icon(LucideIcons.keyRound, size: 40, color: _teal),
-          const SizedBox(height: 12),
-          const Text('أدخل رقم الهاتف المسجل في حسابك',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF17384A))),
-          const SizedBox(height: 6),
-          const Text(
-              'سيصل طلبك إلى إدارة شركة النقل التي تشترك معها، أو إلى إدارة باصك إن لم يكن لك اشتراك. بعد التحقق من هويتك ستحصل على رمز من 6 أرقام لتعيين كلمة مرور جديدة.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Color(0xFF718695))),
-          const SizedBox(height: 18),
-          TextFormField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            textDirection: TextDirection.ltr,
-            decoration: _field('010XXXXXXXX', LucideIcons.phone, prefix: '+20  '),
-            validator: (v) => (v ?? '').replaceAll(RegExp(r'\D'), '').length < 10
-                ? 'أدخل رقم هاتف مصري صحيح'
-                : null,
-          ),
-          ..._errorBox(),
-          const SizedBox(height: 16),
-          _primary('إرسال طلب الاستعادة', _request),
-          TextButton(
-            onPressed: _busy ? null : () => setState(() { _codeStep = true; _error = null; }),
-            child: const Text('لديّ رمز بالفعل'),
-          ),
-        ]),
+  @override
+  Widget build(BuildContext context) => PopScope(
+        // Back leaves the code step for the phone step before it leaves the screen.
+        canPop: !_codeStep,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _back();
+        },
+        child: _codeStep ? _codePage() : _phonePage(),
       );
 
-  Widget _codeForm() => Form(
-        key: _resetForm,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-                color: const Color(0xFFE7F8F0), borderRadius: BorderRadius.circular(14)),
-            child: const Text(
-                'تم إرسال طلبك. تواصل مع إدارة شركة النقل التي تشترك معها (أو إدارة باصك) للحصول على رمز الاستعادة، ثم أدخله هنا مع كلمة المرور الجديدة. الرمز صالح لمدة 30 دقيقة.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF07865A))),
+  Widget _phonePage() => EntryPage(
+        key: const ValueKey('forgot-request'),
+        onBack: _back,
+        title: 'استعادة كلمة المرور',
+        subtitle: 'اكتب رقم هاتفك، ونرسل طلباً لإدارة شركتك لتعطيك رمز الاستعادة.',
+        actions: [
+          BasakButton(
+            key: const Key('forgot-send'),
+            label: 'إرسال طلب الاستعادة',
+            loading: _busy,
+            onPressed: _request,
           ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            textDirection: TextDirection.ltr,
-            decoration: _field('010XXXXXXXX', LucideIcons.phone, prefix: '+20  '),
-            validator: (v) => (v ?? '').replaceAll(RegExp(r'\D'), '').length < 10
-                ? 'أدخل رقم هاتف مصري صحيح'
-                : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _code,
-            keyboardType: TextInputType.number,
-            textDirection: TextDirection.ltr,
-            maxLength: 6,
-            decoration: _field('رمز الاستعادة (6 أرقام)', LucideIcons.hash),
-            validator: (v) => RegExp(r'^\d{6}$').hasMatch((v ?? '').trim())
-                ? null
-                : 'أدخل الرمز المكون من 6 أرقام',
-          ),
-          const SizedBox(height: 4),
-          TextFormField(
-            controller: _password,
-            obscureText: _hide,
-            decoration: _field('كلمة المرور الجديدة', LucideIcons.lockKeyhole,
-                suffix: IconButton(
-                  onPressed: () => setState(() => _hide = !_hide),
-                  icon: Icon(_hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 19),
-                )),
-            validator: (v) => (v ?? '').length < 8 ? 'كلمة المرور 8 أحرف على الأقل' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _confirm,
-            obscureText: _hide,
-            decoration: _field('تأكيد كلمة المرور', LucideIcons.lockKeyhole),
-            validator: (v) => v != _password.text ? 'كلمتا المرور غير متطابقتين' : null,
-          ),
-          ..._errorBox(),
-          const SizedBox(height: 16),
-          _primary('تعيين كلمة المرور', _reset),
-          TextButton(
-            onPressed: _busy ? null : _request,
-            child: const Text('إعادة إرسال الطلب'),
-          ),
-        ]),
+          EntryLink(key: const Key('forgot-have-code'), label: 'لديّ رمز بالفعل', onTap: _busy ? null : _haveCode),
+        ],
+        children: [
+          GroupedFields(children: [
+            GroupedField(
+              key: const Key('forgot-phone'),
+              label: 'رقم الهاتف',
+              hint: '01XXXXXXXXX',
+              controller: _phone,
+              error: _phoneError,
+              ltr: true,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.telephoneNumber],
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9+٠-٩]')),
+                LengthLimitingTextInputFormatter(14),
+              ],
+              onChanged: (_) {
+                if (_phoneError != null) setState(() => _phoneError = null);
+              },
+              onSubmitted: (_) => _request(),
+            ),
+          ]),
+          const InfoNote('الرمز لا يصل برسالة نصية. تأخذه من إدارة الشركة، وهو صالح 30 دقيقة.'),
+          if (_failure != null) InlineError(message: _failure!),
+        ],
       );
 
-  List<Widget> _errorBox() => _error == null
-      ? const []
-      : [
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-                color: const Color(0xFFFFF1F0), borderRadius: BorderRadius.circular(12)),
-            child: Text(_error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFFB42318), fontSize: 13)),
-          ),
-        ];
-
-  Widget _primary(String label, VoidCallback onPressed) => SizedBox(
-        height: 50,
-        child: ElevatedButton(
-          onPressed: _busy ? null : onPressed,
-          style: ElevatedButton.styleFrom(
-              backgroundColor: _teal,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-          child: _busy
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+  Widget _codePage() {
+    final strength = passwordStrength(_password.text);
+    final ready = _codeDigits.length == 6 && _password.text.isNotEmpty && _confirm.text.isNotEmpty;
+    return EntryPage(
+      key: const ValueKey('forgot-reset'),
+      onBack: _back,
+      title: 'أدخل الرمز',
+      subtitle: 'ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.',
+      actions: [
+        BasakButton(
+          key: const Key('forgot-reset-submit'),
+          label: 'تعيين كلمة المرور',
+          loading: _busy,
+          onPressed: ready ? _reset : null,
         ),
-      );
+        EntryLink(key: const Key('forgot-resend'), label: 'إعادة إرسال الطلب', onTap: _busy ? null : _request),
+      ],
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CodeField(
+              key: const Key('forgot-code'),
+              controller: _code,
+              hasError: _codeError != null,
+              semanticLabel: 'رمز الاستعادة',
+              onChanged: (_) => setState(() => _codeError = null),
+            ),
+            if (_codeError != null) ...[
+              const SizedBox(height: BasakSpace.s6),
+              FieldNote(_codeError!),
+            ],
+          ],
+        ),
+        AutofillGroup(
+          child: GroupedFields(children: [
+            GroupedField(
+              key: const Key('forgot-password'),
+              label: 'كلمة المرور الجديدة',
+              hint: '8 أحرف على الأقل',
+              controller: _password,
+              error: _passwordError,
+              ltr: true,
+              obscureText: _hide,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newPassword],
+              trailing: PasswordEye(hidden: _hide, onTap: () => setState(() => _hide = !_hide)),
+              onChanged: (_) => setState(() => _passwordError = null),
+              onSubmitted: (_) => _confirmFocus.requestFocus(),
+            ),
+            GroupedField(
+              key: const Key('forgot-confirm'),
+              label: 'تأكيد كلمة المرور',
+              hint: 'أعد كتابتها',
+              controller: _confirm,
+              focusNode: _confirmFocus,
+              error: _confirmError,
+              ltr: true,
+              obscureText: _hide,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.newPassword],
+              onChanged: (_) => setState(() => _confirmError = null),
+            ),
+          ]),
+        ),
+        // Judging an empty field as "weak" only scolds the student.
+        if (_password.text.isNotEmpty) StrengthMeter(level: strength.level, label: strength.label),
+        if (_failure != null) InlineError(message: _failure!),
+      ],
+    );
+  }
 }

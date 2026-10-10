@@ -49,6 +49,10 @@ dependencies:
   flutter_contacts: ^2.1.0
   printing: ^5.14.3
   gal: ^2.3.3
+  local_auth: ^3.0.2
+  in_app_review: ^2.0.12
+  local_auth_android: ^2.2.0
+  local_auth_darwin: ^2.0.4
 
 dev_dependencies:
   flutter_test:

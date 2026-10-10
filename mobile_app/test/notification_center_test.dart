@@ -460,10 +460,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('اليوم'), findsOneWidget);
-      expect(find.text('غير المقروءة (2)'), findsOneWidget);
+      expect(find.text('غير المقروءة · 2'), findsOneWidget);
       expect(find.text('تأخير الباص'), findsOneWidget);
 
-      await tester.tap(find.text('غير المقروءة (2)'));
+      await tester.tap(find.text('غير المقروءة · 2'));
       await tester.pumpAndSettle();
       expect(find.text('إجازة رسمية'), findsNothing);
       expect(find.text('تم تفعيل اشتراكك'), findsOneWidget);
@@ -478,16 +478,20 @@ void main() {
       expect(repo.marked, [
         ['a']
       ]);
-      expect(find.text('غير المقروءة (1)'), findsOneWidget);
+      expect(find.text('غير المقروءة · 1'), findsOneWidget);
       expect(shell.shown, [NotificationDestination.subscription]);
       expect(shell.intents.single.subscriptionId, 'sub-9');
       expect(repo.openedIds, isEmpty, reason: 'only pushes and banners count as opened');
 
-      // A read announcement leads nowhere else: it is already on screen.
+      // A read announcement leads nowhere else: its whole text opens in a sheet.
       await tester.tap(find.text('إجازة رسمية'));
       await tester.pumpAndSettle();
       expect(shell.shown.length, 1);
       expect(repo.marked.length, 1);
+      expect(find.text('نص إجازة رسمية'), findsNWidgets(2), reason: 'the row, and the sheet over it');
+      await tester.tap(find.text('إغلاق'));
+      await tester.pumpAndSettle();
+      expect(find.text('إغلاق'), findsNothing);
     });
 
     testWidgets('an offline mark is undone and says why', (tester) async {
@@ -498,7 +502,7 @@ void main() {
       await tester.tap(find.text('قراءة الكل'));
       await tester.pumpAndSettle();
       expect(find.text(offlineActionMessage), findsOneWidget);
-      expect(find.text('غير المقروءة (1)'), findsOneWidget);
+      expect(find.text('غير المقروءة · 1'), findsOneWidget);
     });
 
     testWidgets('empty states: nothing yet, and nothing unread', (tester) async {
@@ -520,7 +524,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      expect(find.text('لا توجد إشعارات بعد'), findsOneWidget);
+      expect(find.text('لا توجد تنبيهات بعد'), findsOneWidget);
     });
 
     testWidgets('scrolling to the end loads the older page', (tester) async {

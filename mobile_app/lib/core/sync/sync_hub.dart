@@ -275,6 +275,7 @@ class SyncScope extends ConsumerStatefulWidget {
     if (key == 'sale_catalog') return saleCatalogProvider;
     if (key == 'supervisor.photo') return supervisorPhotoUrlProvider;
     if (key == 'supervisor.dashboard') return supervisorDashboardProvider;
+    if (key == 'supervisor.capacities') return lineCapacitiesProvider;
     if (key.startsWith('supervisor.offered.')) return offeredSubscriptionTypesProvider(rest('supervisor.offered.'));
     if (key.startsWith('supervisor.monthly.')) {
       final month = DateTime.tryParse(rest('supervisor.monthly.'));

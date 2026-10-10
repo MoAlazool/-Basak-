@@ -1,27 +1,38 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../../../../core/widgets/skeleton.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'supervisor_contact_sheet.dart';
-import 'package:basak_mobile/core/theme/app_icons.dart';
-import '../../../../core/network/network_errors.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/avatar_image.dart';
+
 import '../../../../core/media/signed_photo.dart';
-import '../../../../core/widgets/glass_scaffold.dart';
-import '../../../../core/widgets/greeting_header.dart';
-import '../../../notifications/data/notification_feed.dart';
+import '../../../../core/network/network_errors.dart';
+import '../../../../core/storage/offline_cache.dart';
 import '../../../../core/sync/session.dart';
 import '../../../../core/sync/sync_hub.dart';
-import '../../invites/invites.dart';
+import '../../../../core/theme/app_icons.dart';
+import '../../../../core/ui/ui.dart';
+import '../../../../core/widgets/avatar_image.dart';
+import '../../../../core/widgets/basak_ui.dart' show BasakUi;
+import '../../../../core/widgets/connection_strip_host.dart';
+import '../../../../core/widgets/greeting_header.dart';
+import '../../../../core/widgets/skeleton.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../notifications/data/notification_feed.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
+import '../../invites/invites.dart';
+import '../../recap/recap_copy.dart';
+import '../../recap/recap_repository.dart';
+import '../../recap/recap_screen.dart';
+import '../../../rating/rating.dart';
 import '../../subscription/data/subscription_repository.dart';
 import '../../subscription/models/subscription_model.dart';
+import '../../subscription/presentation/purchase_flow.dart' show formatMoney;
 import 'notifications_screen.dart';
+import 'ride_card.dart';
+import 'ride_sheet.dart';
+import 'supervisor_contact_sheet.dart';
 
 final subscriptionRepoProvider = Provider((ref) => SubscriptionRepository());
 final dailyRideRepoProvider = Provider((ref) => DailyRideRepository());
@@ -57,6 +68,9 @@ final voteSettingsProvider = FutureProvider<VoteSettings>((ref) {
   return ref.watch(dailyRideRepoProvider).getVoteSettings(subscription.companyId);
 });
 
+/// Home: who the student is, where their subscription stands, tomorrow's ride
+/// and the bus supervisor. Nothing else: dates and money are on the
+/// subscription tab, the QR is on the card tab.
 class StudentHomeScreen extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToSubscription;
   final VoidCallback onNavigateToQr;
@@ -78,18 +92,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   String? _selectedDepartureTime;
   String? _selectedReturnTime;
 
-  /// Departure time of the confirmed ride (null when not riding): the bus
-  /// arrival shown on the subscription card. Unlike [_selectedDepartureTime]
-  /// it only changes when a confirmation is saved.
+  /// Departure time of the confirmed ride (null when not riding). Unlike
+  /// [_selectedDepartureTime] it only changes when a confirmation is saved.
   String? _confirmedDepartureTime;
   DateTime? _loadedRideDate;
   Timer? _votingWindowTimer;
   Timer? _settingsWait;
   Map<DateTime, bool> _weeklyRideStatuses = const {};
-
-  static const _ink = Color(0xFF17384A);
-  static const _teal = Color(0xFF00658D);
-  static const _canvas = Color(0xFFEAF5FA);
 
   @override
   void initState() {
@@ -207,53 +216,77 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _confirmRide(SubscriptionModel sub,
-      {required bool isRiding}) async {
+  /// "نعم، سأركب" and "تعديل": the times are chosen in the sheet.
+  Future<void> _askRide(SubscriptionModel sub, RideMoment moment) async {
+    final now = DateTime.now();
+    final choice = await RideSheet.show(
+      context,
+      title: RideWords.rideOf(moment.day, now),
+      subtitle: '${RideWords.date(moment.day)} · من ${sub.boardingTitle}',
+      declineLabel: 'لن أركب ${RideWords.when(moment.day, now)}',
+      departures: _availableTimes(sub.departureTimes, sub.departureTime),
+      returns: _availableTimes(sub.returnTimes, sub.returnTime),
+      departureLabel: BasakUi.time12,
+      // The way back starts at the university: that is the time shown.
+      returnLabel: (time) => BasakUi.time12(sub.returnShown(time)),
+      departure: _selectedDepartureTime,
+      returnTime: _selectedReturnTime,
+      returning: _isReturningToday,
+    );
+    if (choice == null || !mounted) return;
+    await _confirmRide(sub, choice);
+  }
+
+  Future<void> _confirmRide(SubscriptionModel sub, RideChoice choice) async {
     // One vote at a time, however fast the button is tapped.
     if (_isSavingRide) return;
     final repository = ref.read(dailyRideRepoProvider);
     final vote = _vote;
     final now = DateTime.now();
+    final rideDate = vote.rideDateFor(now);
     if (!vote.isOpenAt(now)) {
-      _showRideMessage('التصويت مغلق الآن. ${vote.windowSentence}',
-          isError: true);
+      // Closed while the sheet was open: the card says so from now on.
+      _toast('انتهى وقت تأكيد ${RideWords.rideOf(rideDate, now)}.', failed: true);
+      setState(() {});
       return;
     }
+    final isRiding = choice.riding;
     final departureTimes =
         _availableTimes(sub.departureTimes, sub.departureTime);
     final returnTimes = _availableTimes(sub.returnTimes, sub.returnTime);
-    final departureTime = departureTimes.contains(_selectedDepartureTime)
-        ? _selectedDepartureTime
-        : departureTimes.firstOrNull;
-    final returnTime = returnTimes.contains(_selectedReturnTime)
-        ? _selectedReturnTime
-        : returnTimes.firstOrNull;
-    if (isRiding && departureTime == null) {
-      _showRideMessage('لا توجد مواعيد ذهاب متاحة لهذا الخط.', isError: true);
-      return;
-    }
-    if (isRiding && _isReturningToday && returnTime == null) {
-      _showRideMessage('اختر موعد العودة أو فعّل خيار عدم الركوب في العودة.',
-          isError: true);
+    // "Not riding" keeps the times last chosen, for the next "yes".
+    final departureTime = isRiding
+        ? choice.departure
+        : (departureTimes.contains(_selectedDepartureTime) ? _selectedDepartureTime : departureTimes.firstOrNull);
+    final isReturning = isRiding ? choice.returning : _isReturningToday;
+    final returnTime = isRiding
+        ? choice.returnTime
+        : (returnTimes.contains(_selectedReturnTime) ? _selectedReturnTime : returnTimes.firstOrNull);
+    if (isRiding && !departureTimes.contains(departureTime)) {
+      _toast('لا توجد مواعيد ذهاب متاحة لهذا الخط.', failed: true);
       return;
     }
     // Show the choice at once; if the server refuses, put the previous one back.
     final before = (
       riding: _isRidingToday,
+      returns: _isReturningToday,
       departure: _selectedDepartureTime,
       returning: _selectedReturnTime,
       confirmed: _confirmedDepartureTime,
       week: _weeklyRideStatuses,
+      loaded: _loadedRideDate,
     );
-    final rideDate = vote.rideDateFor(now);
     final rideDay = DateTime(rideDate.year, rideDate.month, rideDate.day);
     setState(() {
       _isSavingRide = true;
       _isRidingToday = isRiding;
+      _isReturningToday = isReturning;
       _selectedDepartureTime = departureTime;
       _selectedReturnTime = returnTime;
       _confirmedDepartureTime = isRiding ? departureTime : null;
       _weeklyRideStatuses = {..._weeklyRideStatuses, rideDay: isRiding};
+      // The vote for this day is known from here on, read or not.
+      _loadedRideDate = rideDate;
     });
     try {
       final result = await repository.confirmRide(
@@ -261,7 +294,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         isRiding: isRiding,
         departureTime: departureTime,
         returnTime: returnTime,
-        isReturning: _isReturningToday,
+        isReturning: isReturning,
       );
       if (!mounted) return;
       setState(() {
@@ -274,20 +307,22 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       });
       // Voted (riding or not): no more reminders for this ride.
       unawaited(_planReminders(justVoted: rideDay));
-      _showRideMessage(isRiding
-          ? 'تم تأكيد حضورك ومواعيد رحلتك ليوم ${_dateLabel(rideDate)}.'
+      _toast(isRiding
+          ? 'تم تأكيد حضورك ومواعيد رحلتك ليوم ${BasakUi.dateLabel(rideDate)}.'
           : 'تم إلغاء تأكيد الحضور.');
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isSavingRide = false;
         _isRidingToday = before.riding;
+        _isReturningToday = before.returns;
         _selectedDepartureTime = before.departure;
         _selectedReturnTime = before.returning;
         _confirmedDepartureTime = before.confirmed;
         _weeklyRideStatuses = before.week;
+        _loadedRideDate = before.loaded;
       });
-      _showRideMessage(errorMessage(e), isError: true);
+      _toast(errorMessage(e), failed: true);
     }
   }
 
@@ -303,49 +338,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     return values;
   }
 
-  String _timeLabel(String value) {
-    final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(value);
-    if (match == null) return value;
-    final rawHour = int.tryParse(match.group(1)!) ?? 0;
-    final minute = match.group(2)!;
-    final hour = rawHour % 12 == 0 ? 12 : rawHour % 12;
-    return '$hour:$minute ${rawHour < 12 ? 'ص' : 'م'}';
-  }
-
-  void _showRideMessage(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? AppColors.error : AppColors.success,
-      behavior: SnackBarBehavior.floating,
-    ));
-  }
-
-  String _dateLabel(DateTime date) {
-    const weekdays = [
-      'الاثنين',
-      'الثلاثاء',
-      'الأربعاء',
-      'الخميس',
-      'الجمعة',
-      'السبت',
-      'الأحد'
-    ];
-    const months = [
-      'يناير',
-      'فبراير',
-      'مارس',
-      'أبريل',
-      'مايو',
-      'يونيو',
-      'يوليو',
-      'أغسطس',
-      'سبتمبر',
-      'أكتوبر',
-      'نوفمبر',
-      'ديسمبر',
-    ];
-    return '${weekdays[date.weekday - 1]}، ${date.day} ${months[date.month - 1]}';
-  }
+  void _toast(String message, {bool failed = false}) =>
+      BasakToast.show(context, message, kind: failed ? BasakToastKind.failure : BasakToastKind.success);
 
   @override
   Widget build(BuildContext context) {
@@ -377,661 +371,278 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         : ref.watch(studentProfileSummaryProvider(user.id));
     final name = (user?.userMetadata?['full_name'] as String?)?.trim();
     final photo = studentPhoto(profileAsync.valueOrNull?['profile_image_url'] as String?);
-    final now = DateTime.now();
+    final invites = ref.watch(myInvitesProvider).valueOrNull ?? const <CompanyInvite>[];
+    // The term's recap: only at the end of a term, and only when there is one.
+    final recap = ref.watch(termRecapProvider).valueOrNull;
 
-    return GlassScaffold(
-      canvas: _canvas,
-      body: ColoredBox(
-        color: _canvas,
-        child: RefreshIndicator(
-          color: _teal,
+    final List<Widget> children;
+    if (subAsync.hasValue) {
+      final sub = subAsync.value;
+      children = [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GreetingHeader(
+              // Greeted by the first two names; the full name is on
+              // the card, the receipts and the profile.
+              name: (name == null || name.isEmpty) ? 'طالبنا' : GreetingHeader.firstTwoNames(name),
+              photoUrl: photo == null ? null : ref.watch(signedPhotoProvider(photo)).valueOrNull,
+              unread: ref.watch(unreadNotificationsProvider),
+              onNotifications: () => NotificationsScreen.open(context),
+            ),
+            // Saved data on screen: said here, under the header.
+            ConnectionStripHost(
+              onRetry: _handleRefresh,
+              padding: const EdgeInsetsDirectional.only(top: BasakSpace.s12),
+            ),
+          ],
+        ),
+        if (recap != null)
+          RecapBanner(
+            key: const Key('recap-banner'),
+            title: RecapCopy.bannerTitle,
+            message: recap.bannerLine,
+            onTap: () => RecapScreen.open(context, recap),
+          ),
+        if (invites.isNotEmpty) const InvitesCard(),
+        if (sub != null)
+          _pass(sub)
+        else if (invites.isEmpty)
+          _StartCard(
+            university: _withoutTitle(profileAsync.valueOrNull?['university'] as String?),
+            onStart: widget.onNavigateToSubscription,
+          )
+        else
+          // An invitation is one way in; choosing a subscription is the other.
+          SheetLink(label: 'أو اختر اشتراكك بنفسك', onTap: widget.onNavigateToSubscription),
+        if (sub != null && !sub.isExpired)
+          sub.isActive ? _ride(sub, vote) : const RideLockedCard(),
+        if (sub != null && (sub.supervisorPhone ?? '').isNotEmpty) _supervisor(sub),
+      ];
+    } else if (subAsync.hasError) {
+      final offline = isNetworkFailure(subAsync.error!);
+      children = [
+        SizedBox(height: MediaQuery.sizeOf(context).height * .14),
+        PageError(
+          icon: offline ? LucideIcons.wifiOff : LucideIcons.triangleAlert,
+          title: offline ? 'لا يوجد اتصال' : 'تعذر تحميل بيانات الاشتراك',
+          message: offline
+              ? 'نحتاج الإنترنت مرة واحدة لتحميل بياناتك. بعدها تعمل بطاقتك واشتراكك بدون اتصال.'
+              : errorMessage(subAsync.error!),
+          onAction: () => ref.invalidate(currentSubscriptionProvider),
+        ),
+      ];
+    } else {
+      // A true first load, with nothing saved: the page's own shape.
+      children = const [HomeSkeleton()];
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: BasakChrome.onGround,
+      // The store rating is asked from here, at a calm moment, once Home has
+      // loaded with a running subscription.
+      child: RatingMoment(
+        ready: subAsync.valueOrNull?.isActive == true,
+        child: BasakPage(
           onRefresh: _handleRefresh,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              sliver: SliverList.list(
-                children: [
-                  GreetingHeader(
-                    // Greeted by the first two names; the full name is on
-                    // the card, the receipts and the profile.
-                    name: (name == null || name.isEmpty) ? 'طالبنا' : GreetingHeader.firstTwoNames(name),
-                    photoUrl: photo == null ? null : ref.watch(signedPhotoProvider(photo)).valueOrNull,
-                    unread: ref.watch(unreadNotificationsProvider),
-                    onNotifications: () => NotificationsScreen.open(context),
-                  ),
-                  const SizedBox(height: 18),
-                  const InvitesCard(),
-                  subAsync.when(
-                    loading: () => const _LoadingCard(),
-                    error: (_, __) => _ErrorCard(
-                        onRetry: () =>
-                            ref.invalidate(currentSubscriptionProvider)),
-                    data: (sub) => sub == null
-                        ? _emptySubscription()
-                        : _subscriptionCard(sub),
-                  ),
-                  const SizedBox(height: 22),
-                  _sectionTitle('تأكيد حضور الرحلة',
-                      trailing: _pill(
-                          vote.isOpenAt(now)
-                              ? 'مفتوح حتى ${vote.closesLabel}'
-                              : 'يفتح ${vote.opensLabel}',
-                          const Color(0xFFEAF4FB),
-                          _teal)),
-                  const SizedBox(height: 10),
-                  subAsync.valueOrNull?.isActive == true
-                      ? _rideCard(subAsync.valueOrNull!, vote)
-                      : _lockedRideCard(),
-                  if (subAsync.valueOrNull?.isActive == true) ...[
-                    const SizedBox(height: 22),
-                    _sectionTitle('متابعة رحلات الأسبوع'),
-                    const SizedBox(height: 10),
-                    _weeklyRideCard(),
-                  ],
-                  if ((subAsync.valueOrNull?.supervisorPhone ?? '')
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 22),
-                    _sectionTitle('مشرف الحافلة',
-                        trailing: _pill('متاح للخدمة', const Color(0xFFE7F8F0),
-                            const Color(0xFF07865A))),
-                    const SizedBox(height: 10),
-                    _supervisorCard(subAsync.valueOrNull!),
-                  ],
-                  const SizedBox(height: 100),
-                ],
-              ),
-            ),
-          ],
+          // Clear of the floating tab bar, whose height the shell reports here.
+          bottomInset: MediaQuery.paddingOf(context).bottom + BasakSpace.s24,
+          children: children,
         ),
-      ),
-    ),
-  );
-}
-
-  Widget _subscriptionCard(SubscriptionModel sub) {
-    final active = sub.isActive;
-    // The bus comes at the time the student confirmed for the ride day.
-    final arrival = active ? _confirmedDepartureTime : null;
-    final statusText = active && sub.isUpcoming
-        ? 'مدفوع · يبدأ ${sub.startDate ?? ''}'
-        : active
-        ? 'نشط'
-        : sub.isPendingReview
-            ? 'قيد المراجعة'
-            : sub.isRejected
-                ? 'مرفوض'
-                : 'بانتظار الدفع';
-    final statusColor = active
-        ? const Color(0xFF40D0A2)
-        : sub.isRejected
-            ? const Color(0xFFFF8E8E)
-            : const Color(0xFFFFC66D);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF247CA2), Color(0xFF075579)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x3020698C), blurRadius: 20, offset: Offset(0, 10))
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // The route first, the subscription's state on the other side.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.only(top: 3),
-                child: Icon(LucideIcons.mapPin, size: 19, color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Text(sub.boardingTitle,
-                      style: AppTextStyles.titleMedium
-                          .copyWith(color: Colors.white))),
-              const SizedBox(width: 10),
-              _pill('●  $statusText', const Color(0x3325D69B), statusColor),
-            ],
-          ),
-          const SizedBox(height: 9),
-          _whiteInfo(LucideIcons.busFront, sub.lineLabel),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-                color: Colors.white.withOpacity(.13),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withOpacity(.16))),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.clock3, color: Colors.white, size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('موعد وصول الباص المتوقع',
-                          style: AppTextStyles.labelSmall
-                              .copyWith(color: Colors.white70)),
-                      const SizedBox(height: 3),
-                      if (arrival != null)
-                        Text(_timeLabel(arrival),
-                            style: AppTextStyles.titleLarge
-                                .copyWith(color: Colors.white, fontSize: 21))
-                      else
-                        Text(
-                            active
-                                ? 'أكّد حضورك لتحديد الموعد'
-                                : 'بعد تفعيل الاشتراك',
-                            style: AppTextStyles.bodyLarge.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ),
-                if (!active || arrival != null)
-                  _pill(active ? 'في الموعد' : statusText,
-                      Colors.white.withOpacity(.14), statusColor),
-              ],
-            ),
-          ),
-          if (!active) ...[
-            const SizedBox(height: 13),
-            Text('حالة الاشتراك ستتحدث بعد مراجعة الإيصال.',
-                style:
-                    AppTextStyles.labelSmall.copyWith(color: Colors.white70)),
-          ],
-        ],
       ),
     );
   }
 
-  Widget _emptySubscription() => Container(
-        padding: const EdgeInsets.all(22),
-        decoration: _cardDecoration(),
-        child: Column(
-          children: [
-            Container(
-                width: 52,
-                height: 52,
-                decoration: const BoxDecoration(
-                    color: Color(0xFFE5F3FA), shape: BoxShape.circle),
-                child: const Icon(LucideIcons.ticket, color: _teal)),
-            const SizedBox(height: 12),
-            Text('ابدأ رحلتك الجامعية',
-                style: AppTextStyles.titleLarge.copyWith(color: _ink)),
-            const SizedBox(height: 5),
-            Text(
-                'اختر خط السير ومحطة الركوب المناسبة لك، ثم أكمل طلب الاشتراك.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.bodyMedium
-                    .copyWith(color: const Color(0xFF718695))),
-            const SizedBox(height: 15),
-            SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                    onPressed: widget.onNavigateToSubscription,
-                    icon: const Icon(LucideIcons.arrowLeft, size: 18),
-                    label: const Text('استعراض الاشتراكات'))),
-          ],
-        ),
-      );
+  /// "جامعة المنصورة الجديدة" → "المنصورة الجديدة": the caption already says
+  /// it is the university.
+  static String? _withoutTitle(String? university) {
+    final name = (university ?? '').trim().replaceFirst(RegExp(r'^(جامعة|جامعه)\s+'), '');
+    return name.isEmpty ? null : name;
+  }
 
-  Widget _rideCard(SubscriptionModel sub, VoteSettings vote) {
-    final departureTimes =
-        _availableTimes(sub.departureTimes, sub.departureTime);
-    final returnTimes = _availableTimes(sub.returnTimes, sub.returnTime);
-    final selectedDeparture = departureTimes.contains(_selectedDepartureTime)
-        ? _selectedDepartureTime
-        : departureTimes.firstOrNull;
-    final selectedReturn = returnTimes.contains(_selectedReturnTime)
-        ? _selectedReturnTime
-        : returnTimes.firstOrNull;
+  static String _lineTitle(SubscriptionModel sub) {
+    final line = (sub.lineName ?? '').trim();
+    if (line.isEmpty) return 'الخط';
+    return line.startsWith('خط ') ? line : 'خط $line';
+  }
+
+  static BasakStatus _statusOf(SubscriptionModel sub) {
+    if (sub.isExpired) return BasakStatus.expired;
+    if (sub.isActive) return sub.isUpcoming ? BasakStatus.upcoming : BasakStatus.active;
+    if (sub.isPendingReview) return BasakStatus.pendingReview;
+    if (sub.isRejected) return BasakStatus.rejected;
+    return BasakStatus.pendingPayment;
+  }
+
+  /// The pass: always a ticket. Its stub carries the one thing to do, or,
+  /// with nothing to do, the line and the way to the card.
+  Widget _pass(SubscriptionModel sub) {
+    final status = _statusOf(sub);
+    final company = (sub.companyName ?? '').trim();
+    final line = _lineTitle(sub);
+    final starts = DateTime.tryParse(sub.startDate ?? '');
+    final toSubscription = widget.onNavigateToSubscription;
+
+    final Widget footer = switch (status) {
+      BasakStatus.active =>
+        PassStub(line: line, company: company, onShowCard: widget.onNavigateToQr),
+      BasakStatus.upcoming =>
+        PassStub(line: line, company: company, onShowCard: widget.onNavigateToQr, onInk: false),
+      BasakStatus.pendingReview => const StepLine(steps: ['أُرسل الإيصال', 'المراجعة', 'التفعيل'], current: 1),
+      BasakStatus.pendingPayment => PassAction(
+          caption: 'المبلغ المطلوب', value: formatMoney(sub.price), actionLabel: 'ادفع الآن', onAction: toSubscription),
+      BasakStatus.rejected => PassAction(
+          caption: 'المبلغ المطلوب', value: formatMoney(sub.price), actionLabel: 'إيصال جديد', onAction: toSubscription),
+      BasakStatus.expired => PassAction(
+          caption: sub.periodName, value: formatMoney(sub.price), actionLabel: 'جدّد', onAction: toSubscription),
+    };
+    // With the line in the stub, the destination is captioned as what it is.
+    final stubbed = status == BasakStatus.active || status == BasakStatus.upcoming;
+
+    return PassCard(
+      status: status,
+      period: status == BasakStatus.upcoming && starts != null
+          ? '${sub.periodName} · ${starts.day} ${BasakUi.arabicMonths[starts.month - 1]}'
+          : sub.periodName,
+      onPeriodTap: status == BasakStatus.active ? toSubscription : null,
+      from: sub.boardingTitle,
+      to: _withoutTitle(sub.destination) ?? line,
+      toCaption: stubbed ? 'الجامعة' : (company.isEmpty ? line : '$line · $company'),
+      footer: footer,
+    );
+  }
+
+  Widget _ride(SubscriptionModel sub, VoteSettings vote) {
     final now = DateTime.now();
-    final isLocked = !vote.isOpenAt(now);
-    final rideDate = vote.rideDateFor(now);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(LucideIcons.calendarCheck2, color: _teal, size: 19),
-          const SizedBox(width: 8),
-          Expanded(
-              child: Text(_dateLabel(rideDate),
-                  style: AppTextStyles.titleMedium.copyWith(color: _ink))),
-          _pill(
-              _isRidingToday ? 'تم التأكيد' : 'لم يتم التأكيد',
-              _isRidingToday
-                  ? const Color(0xFFE7F8F0)
-                  : const Color(0xFFF2F7FA),
-              _isRidingToday
-                  ? const Color(0xFF07865A)
-                  : const Color(0xFF718695)),
-        ]),
-        const SizedBox(height: 5),
-        Text(
-            'اختر موعد الذهاب والعودة. ${vote.windowSentence}',
-            style: AppTextStyles.labelSmall
-                .copyWith(color: const Color(0xFF718695))),
-        const SizedBox(height: 16),
-        Row(children: [
-          Expanded(
-              child: Text('موعد الذهاب',
-                  style: AppTextStyles.titleMedium.copyWith(color: _ink))),
-          Text('${departureTimes.length} مواعيد متاحة',
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: const Color(0xFF718695))),
-        ]),
-        const SizedBox(height: 9),
-        if (departureTimes.isEmpty)
-          _emptyTimeMessage('لم يضف المشرف مواعيد ذهاب لهذا الخط بعد.')
-        else
-          // Side by side: up to three in a row.
-          LayoutBuilder(builder: (context, constraints) {
-            final columns = departureTimes.length.clamp(1, 3);
-            final width =
-                ((constraints.maxWidth - 8 * (columns - 1)) / columns).floorToDouble();
-            return Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: List.generate(departureTimes.length, (index) {
-                final time = departureTimes[index];
-                final selected = time == selectedDeparture;
-                final label = index == 0
-                    ? 'نزول مبكر'
-                    : index == 1
-                        ? 'نزول متأخر'
-                        : 'موعد الذهاب ${index + 1}';
-                return SizedBox(
-                  width: width,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: isLocked
-                        ? null
-                        : () => setState(() => _selectedDepartureTime = time),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFFF0FDF4)
-                            : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: selected
-                                ? const Color(0xFF22C55E)
-                                : const Color(0xFFE5EDF2)),
-                      ),
-                      child: Column(children: [
-                        Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                  selected
-                                      ? LucideIcons.circleCheck
-                                      : LucideIcons.circle,
-                                  color: selected
-                                      ? const Color(0xFF16A34A)
-                                      : const Color(0xFFB6C3CB),
-                                  size: 16),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(label,
-                                      maxLines: 1,
-                                      style: AppTextStyles.labelSmall.copyWith(
-                                          color: _ink,
-                                          fontWeight: FontWeight.w700)),
-                                ),
-                              ),
-                            ]),
-                        const SizedBox(height: 4),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(_timeLabel(time),
-                              style: AppTextStyles.titleMedium.copyWith(
-                                  color: selected
-                                      ? const Color(0xFF16834A)
-                                      : _ink)),
-                        ),
-                      ]),
-                    ),
-                  ),
-                );
-              }),
-            );
-          }),
-        const SizedBox(height: 16),
-        Text('موعد العودة',
-            style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-        const SizedBox(height: 8),
-        if (returnTimes.isEmpty)
-          _emptyTimeMessage('لم يضف المشرف مواعيد عودة لهذا الخط بعد.')
-        else
-          Wrap(
-            spacing: 7,
-            runSpacing: 2,
-            children: returnTimes.map((time) {
-              final selected = time == selectedReturn;
-              return ChoiceChip(
-                label: Text(_timeLabel(sub.returnShown(time))),
-                selected: selected,
-                onSelected: isLocked
-                    ? null
-                    : (_) => setState(() => _selectedReturnTime = time),
-                selectedColor: const Color(0xFF2E8FAE),
-                backgroundColor: Colors.white,
-                labelStyle: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF526575),
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
-                side: BorderSide(
-                    color: selected
-                        ? const Color(0xFF2E8FAE)
-                        : const Color(0xFFE0E8EE)),
-                showCheckmark: false,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              );
-            }).toList(),
-          ),
-        CheckboxListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: !_isReturningToday,
-          onChanged: isLocked
-              ? null
-              : (value) =>
-                  setState(() => _isReturningToday = !(value ?? false)),
-          activeColor: _teal,
-          title: Text('لا أريد الركوب في رحلة العودة',
-              style: AppTextStyles.labelSmall.copyWith(color: _ink)),
-        ),
-        if (_isRidingToday) ...[
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-                color: const Color(0xFFE8F9F1),
-                borderRadius: BorderRadius.circular(13)),
-            child: Text(
-                'حضورك مؤكد: ${_timeLabel(selectedDeparture ?? sub.departureTime ?? '')}'
-                '${_isReturningToday && selectedReturn != null ? ' والعودة ${_timeLabel(sub.returnShown(selectedReturn))}' : ' بدون عودة'}',
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: const Color(0xFF087A56))),
-          ),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _isSavingRide ||
-                    isLocked ||
-                    departureTimes.isEmpty ||
-                    (_isReturningToday && returnTimes.isEmpty)
-                ? null
-                : () => _confirmRide(sub, isRiding: true),
-            icon: _isSavingRide
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(LucideIcons.circleCheck, size: 18),
-            label: Text(
-                _isRidingToday ? 'تحديث تأكيد الحضور' : 'تأكيد الحضور للرحلة'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF16A34A),
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: const Color(0xFFB9C8CF),
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15)),
-            ),
-          ),
-        ),
-        if (isLocked)
-          Padding(
-            padding: const EdgeInsets.only(top: 7),
-            child: Center(
-                child: Text(
-                    'التصويت مغلق الآن. ${vote.windowSentence}',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.labelSmall
-                        .copyWith(color: const Color(0xFF8A6670)))),
-          ),
-        if (_isRidingToday && !isLocked)
-          Center(
-            child: TextButton(
-              onPressed: _isSavingRide
-                  ? null
-                  : () => _confirmRide(sub, isRiding: false),
-              child: const Text('إلغاء تأكيد الحضور'),
-            ),
-          ),
-      ]),
+    final rideDay = vote.rideDateFor(now);
+    final loaded = _loadedRideDate;
+    // What was read is about this ride day (not the one before a roll-over).
+    final known = loaded != null && DateUtils.isSameDay(loaded, rideDay);
+    final moment = RideMoment.resolve(
+      vote: vote,
+      now: now,
+      known: known,
+      riding: known && _isRidingToday,
+      voted: known && _weeklyRideStatuses.containsKey(rideDay),
+      hasDepartures: _availableTimes(sub.departureTimes, sub.departureTime).isNotEmpty,
+    );
+    final returnTime = _selectedReturnTime;
+    final showsWeek = moment.kind == RideCardKind.ask || moment.isConfirmed;
+    return ValueListenableBuilder<DateTime?>(
+      // Writes are never queued: without a connection the card says so.
+      valueListenable: OfflineCache.offlineSince,
+      builder: (context, offlineSince, _) => RideCard(
+        moment: moment,
+        now: now,
+        offline: offlineSince != null,
+        saving: _isSavingRide,
+        departureLabel: _confirmedDepartureTime == null ? null : BasakUi.time12(_confirmedDepartureTime),
+        returnLabel:
+            _isReturningToday && returnTime != null ? BasakUi.time12(sub.returnShown(returnTime)) : null,
+        week: showsWeek
+            ? RideWords.week(
+                asked: moment.day,
+                statuses: _weeklyRideStatuses,
+                vote: vote,
+                ringAsked: moment.kind == RideCardKind.ask)
+            : const [],
+        onYes: () => _askRide(sub, moment),
+        onNo: () => _confirmRide(sub, const RideChoice.notRiding()),
+        onEdit: () => _askRide(sub, moment),
+      ),
     );
   }
 
-  Widget _emptyTimeMessage(String message) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(11),
-        decoration: BoxDecoration(
-            color: const Color(0xFFFFF7E6),
-            borderRadius: BorderRadius.circular(12)),
-        child: Text(message,
-            style: AppTextStyles.labelSmall
-                .copyWith(color: const Color(0xFF8A6670))),
-      );
-
-  Widget _lockedRideCard() => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _cardDecoration(),
-        child: Row(
-          children: [
-            const Icon(LucideIcons.lockKeyhole,
-                size: 21, color: Color(0xFF7D91A0)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Text('تأكيد الرحلة متاح بعد تفعيل الاشتراك.',
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(color: const Color(0xFF718695)))),
-            TextButton(
-                onPressed: widget.onNavigateToSubscription,
-                child: const Text('اشترك')),
-          ],
-        ),
-      );
-
-  Widget _weeklyRideCard() {
-    final today = DateTime.now();
-    final saturdayOffset = (today.weekday + 1) % 7;
-    final saturday = DateTime(today.year, today.month, today.day)
-        .subtract(Duration(days: saturdayOffset));
-    const labels = ['س', 'ح', 'ن', 'ث', 'ر', 'خ', 'ج'];
-    // Only this week's days: the votes read also cover the days after it.
-    final count = List.generate(7, (index) => saturday.add(Duration(days: index)))
-        .where((date) => _weeklyRideStatuses[date] == true)
-        .length;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(LucideIcons.calendarDays, color: _teal, size: 19),
-          const SizedBox(width: 8),
-          Expanded(
-              child: Text('رحلات مؤكدة هذا الأسبوع',
-                  style: AppTextStyles.titleMedium.copyWith(color: _ink))),
-          _pill(
-              '$count رحلات', const Color(0xFFE7F8F0), const Color(0xFF07865A)),
-        ]),
-        const SizedBox(height: 14),
-        Row(
-          children: List.generate(7, (index) {
-            final date = saturday.add(Duration(days: index));
-            final riding = _weeklyRideStatuses[date] == true;
-            final isTomorrow =
-                date.year == today.add(const Duration(days: 1)).year &&
-                    date.month == today.add(const Duration(days: 1)).month &&
-                    date.day == today.add(const Duration(days: 1)).day;
-            return Expanded(
-                child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: riding
-                      ? const Color(0xFFE7F8F0)
-                      : const Color(0xFFF3F7FA),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: isTomorrow ? _teal : Colors.transparent),
-                ),
-                child: Column(children: [
-                  Text(labels[index],
-                      style: AppTextStyles.labelSmall
-                          .copyWith(color: AppColors.textSecondary)),
-                  const SizedBox(height: 4),
-                  Text('${date.day}',
-                      style: AppTextStyles.labelSmall
-                          .copyWith(color: _ink, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Icon(riding ? LucideIcons.circleCheck : LucideIcons.circle,
-                      size: 15,
-                      color: riding
-                          ? const Color(0xFF07865A)
-                          : const Color(0xFFB6C3CB)),
-                ]),
-              ),
-            ));
-          }),
-        ),
-      ]),
-    );
-  }
-
-  /// The bus supervisor. Tapping opens a sheet to call them or save their number.
-  Widget _supervisorCard(SubscriptionModel sub) {
+  /// The bus supervisor: one row, a call and a WhatsApp chat one tap away.
+  /// Tapping the row opens the sheet with the rest (save, copy).
+  Widget _supervisor(SubscriptionModel sub) {
     final photoUrl = sub.supervisorPhotoPath == null
         ? null
         : ref.watch(signedPhotoProvider((bucket: 'supervisor-avatars', path: sub.supervisorPhotoPath!))).valueOrNull;
     final photo = photoUrl == null ? null : avatarImage(photoUrl);
     final name = sub.supervisorName ?? 'مشرف الخط';
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: const Key('supervisor-card'),
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => SupervisorContactSheet.show(context,
-            name: name, phone: sub.supervisorPhone ?? '', lineName: sub.lineName, photo: photo),
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: _cardDecoration(),
-          child: Row(
-            children: [
-              CircleAvatar(
-                  radius: 21,
-                  backgroundColor: const Color(0xFFE5F3FA),
-                  backgroundImage: photo,
-                  child: photo == null ? const Icon(LucideIcons.userRound, color: _teal, size: 20) : null),
-              const SizedBox(width: 11),
-              Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: AppTextStyles.titleMedium.copyWith(color: _ink)),
-                const SizedBox(height: 2),
-                Text(sub.supervisorPhone ?? '',
-                    textDirection: TextDirection.ltr,
-                    style: AppTextStyles.labelSmall.copyWith(color: const Color(0xFF718695)))
-              ])),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFE5F3FA), borderRadius: BorderRadius.circular(14)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(LucideIcons.phone, color: _teal, size: 16),
-                  const SizedBox(width: 6),
-                  Text('تواصل',
-                      style: AppTextStyles.labelSmall.copyWith(color: _teal, fontWeight: FontWeight.w700)),
-                ]),
+    final phone = sub.supervisorPhone ?? '';
+    final colors = context.colors;
+    final text = context.text;
+    return BasakPressable(
+      key: const Key('supervisor-card'),
+      onTap: () =>
+          SupervisorContactSheet.show(context, name: name, phone: phone, lineName: sub.lineName, photo: photo),
+      child: BasakCard(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s14),
+        child: Row(
+          children: [
+            PhotoRing(name: name, image: photo),
+            const SizedBox(width: BasakSpace.s12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.body.copyWith(fontWeight: FontWeight.w500)),
+                  Text('مشرف الباص', style: text.caption.copyWith(color: colors.ink3)),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: BasakSpace.s8),
+            BasakIconButton(
+              key: const Key('supervisor-row-call'),
+              icon: LucideIcons.phone,
+              label: 'اتصال بالمشرف',
+              onCard: true,
+              onPressed: () => SupervisorContactSheet.call(context, phone),
+            ),
+            const SizedBox(width: BasakSpace.s6),
+            BasakIconButton(
+              key: const Key('supervisor-row-whatsapp'),
+              icon: LucideIcons.messageCircle,
+              label: 'واتساب المشرف',
+              onCard: true,
+              onPressed: () => SupervisorContactSheet.whatsapp(context, phone),
+            ),
+          ],
         ),
       ),
     );
   }
-
-  Widget _sectionTitle(String title, {Widget? trailing}) => Row(children: [
-        Expanded(
-            child: Text(title,
-                style: AppTextStyles.titleMedium.copyWith(color: _ink))),
-        if (trailing != null) trailing
-      ]);
-
-  Widget _pill(String label, Color background, Color foreground) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-            color: background, borderRadius: BorderRadius.circular(20)),
-        child: Text(label,
-            style: AppTextStyles.labelSmall
-                .copyWith(color: foreground, fontWeight: FontWeight.w700)),
-      );
-
-  Widget _whiteInfo(IconData icon, String value) => Row(children: [
-        Icon(icon, size: 16, color: Colors.white70),
-        const SizedBox(width: 6),
-        Text(value,
-            style: AppTextStyles.bodyMedium.copyWith(color: Colors.white70))
-      ]);
-
-  BoxDecoration _cardDecoration() => BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEAF0F4)),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x0A16384A), blurRadius: 14, offset: Offset(0, 5))
-        ],
-      );
 }
 
-class _LoadingCard extends StatelessWidget {
-  const _LoadingCard();
-  @override
-  Widget build(BuildContext context) => const HomeSkeleton();
-}
+/// No subscription yet: the route with what is already known (the
+/// university) and the stop still to choose, and the way in.
+class _StartCard extends StatelessWidget {
+  final String? university;
+  final VoidCallback onStart;
 
-class _ErrorCard extends StatelessWidget {
-  final VoidCallback onRetry;
-  const _ErrorCard({required this.onRetry});
+  const _StartCard({required this.university, required this.onStart});
+
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(20)),
-        child: Column(children: [
-          const Text('تعذر تحميل بيانات الاشتراك'),
-          TextButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('إعادة المحاولة'))
-        ]),
+  Widget build(BuildContext context) => Semantics(
+        container: true,
+        label: 'اشتراكك',
+        child: BasakCard(
+          radius: BasakRadius.sheet,
+          padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('ابدأ اشتراكك', style: context.text.title),
+              const SizedBox(height: BasakSpace.s18),
+              RouteRail(
+                from: 'اختر محطتك',
+                fromPending: true,
+                to: university ?? 'جامعتك',
+                toCaption: university == null ? 'الجامعة' : 'جامعتك',
+                large: true,
+              ),
+              const SizedBox(height: BasakSpace.s18),
+              BasakButton(label: 'اشترك الآن', onPressed: onStart),
+            ],
+          ),
+        ),
       );
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:basak_mobile/core/widgets/floating_glass_nav_bar.dart';
-import 'package:basak_mobile/core/widgets/glass_container.dart';
 
 /// The student / supervisor shell in miniature: a scrolling tab body (with a
 /// horizontal strip at the top) and the floating bar, wired the same way.
@@ -60,7 +59,6 @@ class _ShellState extends State<_Shell> {
         onTabSelected: _selectTab,
         items: FloatingGlassNavBar.supervisorNavItems,
         collapsed: _navCollapsed,
-        onExpand: () => setState(() => _navCollapsed = false),
       ),
     );
   }
@@ -70,70 +68,112 @@ Widget _app({int rows = 60}) => MaterialApp(
       home: Directionality(textDirection: TextDirection.rtl, child: _Shell(rows: rows)),
     );
 
-Rect _bar(WidgetTester tester) => tester.getRect(
-    find.descendant(of: find.byType(FloatingGlassNavBar), matching: find.byType(GlassContainer)));
+Rect _bar(WidgetTester tester) => tester.getRect(find.byKey(const Key('nav-pill')));
 
 void main() {
-  testWidgets('scrolling down shrinks the bar to a circle at the start side; up expands it',
+  testWidgets('scrolling down folds the labels and lowers the pill, keeping every tab; up restores it',
       (tester) async {
     await tester.pumpWidget(_app());
     final screenWidth = tester.view.physicalSize.width / tester.view.devicePixelRatio;
-    expect(_bar(tester).width, screenWidth - 40);
+    final fullWidth = screenWidth - 2 * FloatingGlassNavBar.sideMargin;
+    expect(_bar(tester).size, Size(fullWidth, FloatingGlassNavBar.height));
     expect(find.text('الرحلات'), findsOneWidget);
 
     await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
-    // Mid-animation: the tabs are clipped, never squeezed (an overflow fails the test).
+    // Mid-animation: the labels are clipped, never squeezed (an overflow fails the test).
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 175));
-    final mid = _bar(tester).width;
-    expect(mid, lessThan(screenWidth - 40));
-    expect(mid, greaterThan(FloatingGlassNavBar.height));
+    final mid = _bar(tester).height;
+    expect(mid, lessThan(FloatingGlassNavBar.height));
+    expect(mid, greaterThan(FloatingGlassNavBar.collapsedHeight));
     await tester.pumpAndSettle();
 
-    final circle = _bar(tester);
-    expect(circle.size, const Size.square(FloatingGlassNavBar.height));
-    expect(circle.right, screenWidth - 20, reason: 'RTL: the start side is the right');
+    expect(_bar(tester).size, Size(fullWidth, FloatingGlassNavBar.collapsedHeight));
     expect(find.text('الرحلات'), findsNothing);
-    final selected = FloatingGlassNavBar.supervisorNavItems.first.activeIcon;
-    expect(find.byIcon(selected), findsOneWidget);
+    for (final item in FloatingGlassNavBar.supervisorNavItems) {
+      expect(find.byIcon(item.icon), findsOneWidget, reason: '${item.label} stays one tap away');
+    }
 
     await tester.drag(find.byKey(const Key('body')), const Offset(0, 120));
     await tester.pumpAndSettle();
-    expect(_bar(tester).width, screenWidth - 40);
+    expect(_bar(tester).size, Size(fullWidth, FloatingGlassNavBar.height));
     expect(find.text('الرحلات'), findsOneWidget);
   });
 
-  testWidgets('the circle shows the selected tab; tapping it expands the bar on that tab',
+  testWidgets('collapsed, another tab is one tap away; choosing it brings the labels back',
       (tester) async {
     await tester.pumpWidget(_app());
-    await tester.tap(find.text('الرحلات'));
     await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
     await tester.pumpAndSettle();
-    expect(_bar(tester).width, FloatingGlassNavBar.height);
-    final trips = FloatingGlassNavBar.supervisorNavItems[1].activeIcon;
-    expect(find.byIcon(trips), findsOneWidget);
+    expect(_bar(tester).height, FloatingGlassNavBar.collapsedHeight);
+    expect(find.text('الرحلات'), findsNothing);
 
-    // The circle sits where the first tab was: the tap expands, it does not switch tabs.
-    await tester.tap(find.byIcon(trips));
+    final trips = FloatingGlassNavBar.supervisorNavItems[1];
+    await tester.tap(find.byIcon(trips.icon));
     await tester.pumpAndSettle();
     expect(find.text('الرحلات'), findsOneWidget);
-    expect(_bar(tester).width, greaterThan(FloatingGlassNavBar.height));
-
-    await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(trips), findsOneWidget);
+    expect(_bar(tester).height, FloatingGlassNavBar.height);
+    expect(
+      tester.getSemantics(find.bySemanticsLabel(trips.label)),
+      matchesSemantics(label: trips.label, isButton: true, isSelected: true, hasSelectedState: true,
+          isEnabled: true, hasEnabledState: true, hasTapAction: true),
+    );
   });
 
   testWidgets('changing tabs from the page expands the bar', (tester) async {
     await tester.pumpWidget(_app());
     await tester.drag(find.byKey(const Key('body')), const Offset(0, -60));
     await tester.pumpAndSettle();
-    expect(_bar(tester).width, FloatingGlassNavBar.height);
+    expect(_bar(tester).height, FloatingGlassNavBar.collapsedHeight);
 
     await tester.tap(find.text('افتح المسح'));
     await tester.pumpAndSettle();
-    expect(find.text('مسح QR'), findsOneWidget);
-    expect(_bar(tester).width, greaterThan(FloatingGlassNavBar.height));
+    expect(find.text('مسح'), findsOneWidget);
+    expect(_bar(tester).height, FloatingGlassNavBar.height);
+  });
+
+  testWidgets('every tab is at least 48 wide and tall, collapsed too', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_app());
+    for (final collapsed in [false, true]) {
+      if (collapsed) {
+        await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
+        await tester.pumpAndSettle();
+      }
+      for (final item in FloatingGlassNavBar.supervisorNavItems) {
+        final size = tester.getSize(find.bySemanticsLabel(item.label));
+        expect(size.width, greaterThanOrEqualTo(48), reason: item.label);
+        expect(size.height, greaterThanOrEqualTo(48), reason: item.label);
+      }
+    }
+  });
+
+  testWidgets('the ink pill sits behind the selected tab and slides to the one that is chosen',
+      (tester) async {
+    await tester.pumpWidget(_app());
+    final items = FloatingGlassNavBar.supervisorNavItems;
+    Rect pill() => tester.getRect(find.byKey(const Key('nav-indicator')));
+    double centre(int index) => tester.getCenter(find.byIcon(items[index].icon)).dx;
+
+    expect(pill().center.dx, moreOrLessEquals(centre(0), epsilon: .5));
+    expect(pill().size, const Size(52, 32));
+
+    await tester.tap(find.text(items[2].label));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 175));
+    // On its way: between the two tabs (RTL, so the third tab is to the left).
+    expect(pill().center.dx, lessThan(centre(0)));
+    expect(pill().center.dx, greaterThan(centre(2)));
+    await tester.pumpAndSettle();
+    expect(pill().center.dx, moreOrLessEquals(centre(2), epsilon: .5));
+    expect(pill().center.dy, moreOrLessEquals(tester.getCenter(find.byIcon(items[2].icon)).dy, epsilon: .5));
+
+    // Collapsed, it stays behind the same icon.
+    await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(pill().center, within(distance: .5, from: tester.getCenter(find.byIcon(items[2].icon))));
   });
 
   testWidgets('horizontal scrolls and pages too short to scroll leave the bar alone',

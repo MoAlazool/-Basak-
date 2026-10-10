@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../ui/tokens.dart';
+
 /// "الإصدار 1.0.2": the installed build's version (pubspec `version`), so it
 /// can never drift from what is actually installed.
 class AppVersionLabel extends StatelessWidget {
@@ -18,7 +20,7 @@ class AppVersionLabel extends StatelessWidget {
             'الإصدار $version',
             textAlign: TextAlign.center,
             textDirection: TextDirection.rtl,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF8A9AA8), letterSpacing: 0.2),
+            style: context.text.caption.copyWith(color: context.colors.ink3),
           );
         },
       );

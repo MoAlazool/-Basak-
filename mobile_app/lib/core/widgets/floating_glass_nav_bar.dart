@@ -3,9 +3,8 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:basak_mobile/core/theme/app_icons.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_text_styles.dart';
-import 'glass_container.dart';
+import '../ui/basak_button.dart';
+import '../ui/tokens.dart';
 
 class NavItem {
   final IconData icon;
@@ -19,18 +18,20 @@ class NavItem {
   });
 }
 
-/// Floating glass tab bar. Like iOS 26 it can collapse into a glass circle at
-/// the start side holding only the selected tab's icon; tapping it calls
-/// [onExpand].
+/// The floating tab bar of both shells: a solid white pill, 16 from the edges.
+/// An ink pill sits behind the selected tab's icon and slides to whichever tab
+/// is chosen. When [collapsed] (the page was scrolled down) the labels fold away and the
+/// pill drops from 64 to 52; every tab stays one tap away.
 class FloatingGlassNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTabSelected;
   final List<NavItem> items;
   final bool collapsed;
-  final VoidCallback? onExpand;
 
   static const double height = 64;
-  static const Duration animationDuration = Duration(milliseconds: 350);
+  static const double collapsedHeight = 52;
+  static const double sideMargin = 16;
+  static const Duration animationDuration = BasakMotion.page;
 
   const FloatingGlassNavBar({
     super.key,
@@ -38,7 +39,6 @@ class FloatingGlassNavBar extends StatelessWidget {
     required this.onTabSelected,
     required this.items,
     this.collapsed = false,
-    this.onExpand,
   });
 
   /// Whether a scroll should collapse (true) or expand (false) the bar, or
@@ -69,9 +69,9 @@ class FloatingGlassNavBar extends StatelessWidget {
           label: 'الرئيسية',
         ),
         NavItem(
-          icon: LucideIcons.creditCard,
-          activeIcon: LucideIcons.creditCard,
-          label: 'الاشتراك',
+          icon: LucideIcons.ticket,
+          activeIcon: LucideIcons.ticket,
+          label: 'اشتراكي',
         ),
         NavItem(
           icon: LucideIcons.qrCode,
@@ -85,180 +85,134 @@ class FloatingGlassNavBar extends StatelessWidget {
         ),
       ];
 
-  /// Default supervisor navigation tabs configuration
-  /// Supervisor navigation tabs configuration
   /// Supervisor navigation tabs configuration
   static List<NavItem> get supervisorNavItems => const [
         NavItem(icon: LucideIcons.home, activeIcon: LucideIcons.home, label: 'الرئيسية'),
         NavItem(icon: LucideIcons.route, activeIcon: LucideIcons.route, label: 'الرحلات'),
-        NavItem(icon: LucideIcons.scanLine, activeIcon: LucideIcons.scanLine, label: 'مسح QR'),
-        NavItem(icon: LucideIcons.chartColumn, activeIcon: LucideIcons.chartColumn, label: 'الملخص'),
+        NavItem(icon: LucideIcons.scanLine, activeIcon: LucideIcons.scanLine, label: 'مسح'),
         NavItem(icon: LucideIcons.user, activeIcon: LucideIcons.user, label: 'حسابي'),
       ];
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final colors = context.colors;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        bottom: bottomPadding > 0 ? bottomPadding + 8 : 20,
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) => TweenAnimationBuilder<double>(
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(
+          start: sideMargin,
+          end: sideMargin,
+          bottom: bottomPadding > 0 ? bottomPadding + 8 : 10,
+        ),
+        child: TweenAnimationBuilder<double>(
           tween: Tween(end: collapsed ? 1.0 : 0.0),
           duration: animationDuration,
-          curve: Curves.easeInOutCubic,
-          builder: (context, t, _) {
-            final fullWidth = constraints.maxWidth;
-            final width = lerpDouble(fullWidth, height, t)!;
-            return Align(
-              alignment: AlignmentDirectional.centerStart,
-              heightFactor: 1,
-              child: GlassContainer(
-                width: width,
-                height: height,
-                blur: 18.0,
-                opacity: 0.82,
-                borderRadius: height / 2, // Floating pill, a circle when collapsed
-                padding: EdgeInsets.zero,
-                shadows: AppColors.floatingBarShadow,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // The tabs keep their full width and are clipped while the
-                    // bar shrinks, so nothing squeezes or overflows mid-animation.
-                    if (t < 1)
-                      IgnorePointer(
-                        ignoring: collapsed,
-                        child: Opacity(
-                          opacity: (1 - t * 2).clamp(0.0, 1.0),
-                          child: LayoutBuilder(
-                            builder: (context, inner) => OverflowBox(
-                              alignment: AlignmentDirectional.centerStart,
-                              minWidth: inner.maxWidth + fullWidth - width,
-                              maxWidth: inner.maxWidth + fullWidth - width,
-                              child: _buildTabs(),
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (t > 0)
-                      IgnorePointer(
-                        ignoring: !collapsed,
-                        child: Opacity(
-                          opacity: ((t - 0.5) * 2).clamp(0.0, 1.0),
-                          child: _buildCollapsedTab(),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCollapsedTab() {
-    final item = items[currentIndex];
-    return Semantics(
-      button: true,
-      label: item.label,
-      child: GestureDetector(
-        onTap: onExpand,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.all(9),
+          curve: BasakMotion.pageCurve,
+          builder: (context, t, _) => Container(
+            key: const Key('nav-pill'),
+            height: lerpDouble(height, collapsedHeight, t),
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s8),
             decoration: BoxDecoration(
-              color: AppColors.babyBlueUltraLight.withOpacity(0.9),
-              shape: BoxShape.circle,
+              color: colors.surface,
+              borderRadius: BasakRadius.all(BasakRadius.full),
+              border: Border.all(color: colors.hairline),
+              boxShadow: BasakShadow.floating,
             ),
-            child: Icon(item.activeIcon, size: 24, color: AppColors.babyBlue),
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final slot = box.maxWidth / items.length;
+                // The icons sit at the top of a column that is centred in the
+                // bar; the label under them is what folds away.
+                final label = (1 - t) * (BasakSpace.s4 + MediaQuery.textScalerOf(context).scale(_labelLine));
+                final top = (box.maxHeight - _iconBox - label) / 2;
+                return Stack(
+                  children: [
+                    AnimatedPositionedDirectional(
+                      duration: animationDuration,
+                      curve: BasakMotion.pageCurve,
+                      start: slot * currentIndex + (slot - _indicatorWidth) / 2,
+                      top: top,
+                      width: _indicatorWidth,
+                      height: _iconBox,
+                      child: DecoratedBox(
+                        key: const Key('nav-indicator'),
+                        decoration:
+                            BoxDecoration(color: colors.ink, borderRadius: BasakRadius.all(BasakRadius.tile)),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        for (var index = 0; index < items.length; index++) Expanded(child: _tab(context, index, t)),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTabs() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: List.generate(items.length, (index) {
-          final isSelected = index == currentIndex;
-          final item = items[index];
+  static const double _indicatorWidth = 52;
+  static const double _iconBox = 32;
+  static const double _labelLine = 16;
 
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onTabSelected(index),
-              behavior: HitTestBehavior.opaque,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Animated Icon with Scale & Color transition
-                    AnimatedScale(
-                      scale: isSelected ? 1.15 : 1.0,
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOutCubic,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        padding: isSelected
-                            ? const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 4)
-                            : const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.babyBlueUltraLight.withOpacity(0.9)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          isSelected ? item.activeIcon : item.icon,
-                          size: 22,
-                          color: isSelected
-                              ? AppColors.babyBlue
-                              : AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    // Text Label
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOutCubic,
-                      style: isSelected
-                          ? AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.babyBlueDark,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 10.5,
-                            )
-                          : AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.textSecondary.withOpacity(0.7),
-                              fontSize: 9.5,
-                            ),
+  Widget _tab(BuildContext context, int index, double t) {
+    final colors = context.colors;
+    final item = items[index];
+    final isSelected = index == currentIndex;
+
+    // White on the ink pill once it arrives; the tab it leaves fades back.
+    final icon = SizedBox(
+      height: _iconBox,
+      child: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: isSelected ? colors.onInk : colors.ink3),
+        duration: animationDuration,
+        curve: BasakMotion.pageCurve,
+        builder: (context, color, _) =>
+            Icon(isSelected ? item.activeIcon : item.icon, size: isSelected ? 20 : 22, color: color),
+      ),
+    );
+
+    return BasakPressable(
+      onTap: () => onTabSelected(index),
+      semanticLabel: item.label,
+      selected: isSelected,
+      selectionHaptic: true,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          icon,
+          // The label folds away as the bar collapses; the icon stays.
+          if (t < 1)
+            ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: 1 - t,
+                child: Opacity(
+                  opacity: (1 - t * 2).clamp(0.0, 1.0),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(top: BasakSpace.s4),
+                    child: ExcludeSemantics(
                       child: Text(
                         item.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: context.text.tab.copyWith(
+                          color: isSelected ? colors.ink : colors.ink3,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          );
-        }),
+        ],
       ),
     );
   }

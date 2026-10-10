@@ -38,9 +38,11 @@ class SupabaseProfileGateway implements ProfileGateway {
         .from('students')
         // Everything the app shows of the student's own row, in one read: the
         // home screen and the profile, the card (qr_code_value) and whether a
-        // new password must be chosen first (must_change_password).
-        .select('full_name, phone, university, college, email, birth_date, profile_image_url, '
-            'qr_code_value, must_change_password')
+        // new password must be chosen first (must_change_password). The whole
+        // row is asked for, not a list of columns: a column this version knows
+        // but the database does not have yet (specialisation) is then simply
+        // absent from the answer, where naming it would fail the read.
+        .select()
         .eq('id', userId)
         .maybeSingle();
   }
@@ -81,7 +83,8 @@ class SupabaseProfileGateway implements ProfileGateway {
 final profileRepositoryProvider = Provider((ref) => ProfileRepository());
 
 /// What a student may change about themselves: the photo, and the optional
-/// email, college and birth date. Name, phone and university are fixed.
+/// email, college, specialisation and birth date. Name, phone and university
+/// are fixed.
 class ProfileRepository {
   final ProfileGateway _gateway;
 
@@ -92,18 +95,42 @@ class ProfileRepository {
 
   /// Saves the optional details. An empty value clears the field.
   ///
+  /// The specialisation is sent only when the student changed it
+  /// ([specialisationChanged]), through the form of `update_my_profile` that
+  /// takes it. A database that does not have that form yet answers "no such
+  /// function": the other details are then saved the way they always were and
+  /// the answer is false: everything but the specialisation was saved.
+  ///
   /// The server's answer (the saved values) is written into what this phone
   /// holds, so the profile and the card (which is made from it) show it
   /// without being read again;
   /// the caller only invalidates their providers.
-  Future<void> updateDetails({String? email, String? college, DateTime? birthDate}) async {
+  Future<bool> updateDetails({
+    String? email,
+    String? college,
+    DateTime? birthDate,
+    String? specialisation,
+    bool specialisationChanged = false,
+  }) async {
     final echo = OwnChanges.begin('students');
+    final details = <String, dynamic>{
+      'p_email': email?.trim(),
+      'p_college': college?.trim(),
+      'p_birth_date': birthDate == null ? null : _isoDate(birthDate),
+    };
+    var withSpecialisation = specialisationChanged;
     try {
-      final saved = await requireOnline(() => _gateway.updateDetails({
-            'p_email': email?.trim(),
-            'p_college': college?.trim(),
-            'p_birth_date': birthDate == null ? null : _isoDate(birthDate),
-          }));
+      Object? saved;
+      if (withSpecialisation) {
+        try {
+          saved = await requireOnline(
+              () => _gateway.updateDetails({...details, 'p_specialisation': specialisation?.trim()}));
+        } catch (error) {
+          if (!isMissingFunction(error)) rethrow;
+          withSpecialisation = false;
+        }
+      }
+      if (!withSpecialisation) saved = await requireOnline(() => _gateway.updateDetails(details));
       echo.done();
       final values = saved is Map
           ? Map<String, dynamic>.from(saved)
@@ -111,14 +138,22 @@ class ProfileRepository {
               'email': (email ?? '').trim().isEmpty ? null : email!.trim().toLowerCase(),
               'college': (college ?? '').trim().isEmpty ? 'غير محدد' : college!.trim(),
               'birth_date': birthDate == null ? null : _isoDate(birthDate),
+              if (withSpecialisation)
+                'specialisation': (specialisation ?? '').trim().isEmpty ? null : specialisation!.trim(),
             };
       await OfflineCache.applyLocal('profile.summary', (row) => row is Map ? {...row, ...values} : row);
+      return withSpecialisation == specialisationChanged;
     } catch (error) {
       echo.failed();
       if (error is PostgrestException) throw Exception(error.message);
       rethrow;
     }
   }
+
+  /// The server has no function of that name and arguments (PostgREST
+  /// PGRST202, a 404): this database is older than this version of the app.
+  static bool isMissingFunction(Object error) =>
+      error is PostgrestException && (error.code == 'PGRST202' || error.code == '42883' || error.code == '404');
 
   /// Replaces the profile photo with [jpeg] (already framed and compressed).
   ///

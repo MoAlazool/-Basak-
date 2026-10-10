@@ -1,4 +1,5 @@
 import Flutter
+import LocalAuthentication
 import PassKit
 import UIKit
 import UserNotifications
@@ -29,6 +30,28 @@ import UserNotifications
     engineBridge.pluginRegistry.registrar(forPlugin: "BasakWallet")?
       .register(AddPassButtonFactory(), withId: "basak/add_pass_button")
 
+    // Signing in with Face ID / Touch ID: the system's own state of what is
+    // enrolled. It is different once a face or a finger is added or removed,
+    // and the app then drops its stored sign-in (lib/.../biometric_device.dart).
+    let biometrics = FlutterMethodChannel(
+      name: "basak/biometrics", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    biometrics.setMethodCallHandler { call, result in
+      switch call.method {
+      case "enrollmentMark":
+        let context = LAContext()
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error),
+          let state = context.evaluatedPolicyDomainState
+        {
+          result(state.base64EncodedString())
+        } else {
+          result(nil)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     // Notifications: the unread count on the app icon, and the way to this
     // app's page in Settings when notifications were switched off there.
     let notifications = FlutterMethodChannel(
@@ -43,7 +66,7 @@ import UserNotifications
           UIApplication.shared.applicationIconBadgeNumber = count
         }
         result(nil)
-      case "openSettings":
+      case "openSettings", "openAppSettings":
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return result(false) }
         UIApplication.shared.open(url) { opened in result(opened) }
       default:

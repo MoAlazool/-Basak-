@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import 'auth_form_styles.dart';
+import 'package:basak_mobile/core/theme/app_icons.dart';
+import 'package:basak_mobile/core/ui/ui.dart';
 
-/// Bottom sheet for choosing the student's university.
+/// The sheet a student picks their university from.
 ///
 /// Search forgives the usual Arabic spelling differences (ه/ة, أ/إ/آ/ا, ى/ي,
-/// diacritics), so "جامعه المنصوره" finds "جامعة المنصورة".
+/// diacritics), so "جامعه المنصوره" finds "جامعة المنصورة"; it reads the city
+/// too.
 class UniversityPickerSheet extends StatefulWidget {
+  /// Each: `id`, `name` and, when the university has one, `city`.
   final List<Map<String, String>> universities;
   final String? selectedId;
 
@@ -16,13 +18,8 @@ class UniversityPickerSheet extends StatefulWidget {
   /// Returns the chosen university id, or null when the sheet is dismissed.
   static Future<String?> show(BuildContext context,
           {required List<Map<String, String>> universities, String? selectedId}) =>
-      showModalBottomSheet<String>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        backgroundColor: Colors.white,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      BasakSheet.showFrame<String>(
+        context,
         builder: (_) => UniversityPickerSheet(universities: universities, selectedId: selectedId),
       );
 
@@ -43,6 +40,7 @@ class UniversityPickerSheet extends StatefulWidget {
 class _UniversityPickerSheetState extends State<UniversityPickerSheet> {
   final _search = TextEditingController();
   String _query = '';
+  late String? _picked = widget.selectedId;
 
   @override
   void dispose() {
@@ -54,132 +52,50 @@ class _UniversityPickerSheetState extends State<UniversityPickerSheet> {
   Widget build(BuildContext context) {
     final needle = UniversityPickerSheet.normalize(_query);
     final matches = widget.universities
-        .where((u) => UniversityPickerSheet.normalize(u['name'] ?? '').contains(needle))
+        .where((u) => UniversityPickerSheet.normalize('${u['name'] ?? ''} ${u['city'] ?? ''}').contains(needle))
         .toList();
-    // A short list needs no search box (and no keyboard covering it).
-    final searchable = widget.universities.length > 6;
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final none = widget.universities.isEmpty;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: keyboard),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.78),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 8, 4),
-            child: Row(children: [
-              const Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('اختر جامعتك',
-                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: AuthStyles.ink)),
-                  SizedBox(height: 2),
-                  Text('تحدد الخطوط والرحلات المتاحة لك.',
-                      style: TextStyle(fontSize: 13, color: AuthStyles.muted)),
-                ]),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                tooltip: 'إغلاق',
-                icon: const Icon(Icons.close_rounded, color: AuthStyles.muted),
-              ),
-            ]),
-          ),
-          if (searchable)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              child: TextField(
-                controller: _search,
-                textInputAction: TextInputAction.search,
-                style: AuthStyles.inputStyle,
-                onChanged: (value) => setState(() => _query = value),
-                decoration: AuthStyles.field(
-                  icon: Icons.search_rounded,
-                  hint: 'ابحث باسم الجامعة',
-                  suffix: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'مسح البحث',
-                          icon: const Icon(Icons.cancel_rounded, size: 20, color: AuthStyles.muted),
-                          onPressed: () => setState(() {
-                            _search.clear();
-                            _query = '';
-                          }),
-                        ),
-                ),
+    return BasakSheetFrame(
+      title: 'جامعتك',
+      largeTitle: true,
+      header: none
+          ? null
+          : BasakSearchField(
+              controller: _search,
+              hint: 'ابحث باسم الجامعة أو المدينة',
+              onChanged: (value) => setState(() => _query = value),
+            ),
+      primary: none
+          ? null
+          : BasakButton(
+              key: const Key('university-confirm'),
+              label: 'تأكيد',
+              onPressed: _picked == null ? null : () => Navigator.pop(context, _picked),
+            ),
+      child: matches.isEmpty
+          ? EmptyState(
+              icon: LucideIcons.school,
+              title: none ? 'لا توجد جامعات متاحة حالياً.' : 'لا توجد جامعة بهذا الاسم.',
+            )
+          : Semantics(
+              container: true,
+              label: 'الجامعات',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < matches.length; i++) ...[
+                    if (i > 0) const SizedBox(height: BasakSpace.s4),
+                    SheetRadioRow(
+                      title: matches[i]['name'] ?? '',
+                      subtitle: matches[i]['city'],
+                      selected: matches[i]['id'] == _picked,
+                      onTap: () => setState(() => _picked = matches[i]['id']),
+                    ),
+                  ],
+                ],
               ),
             ),
-          const SizedBox(height: 6),
-          Flexible(
-            child: matches.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.search_off_rounded, size: 40, color: Color(0xFFB4C6D1)),
-                      const SizedBox(height: 10),
-                      Text(
-                        widget.universities.isEmpty ? 'لا توجد جامعات متاحة حالياً.' : 'لا توجد جامعة بهذا الاسم.',
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AuthStyles.ink),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text('جرّب كلمة أقصر، أو تواصل مع إدارة النقل لإضافة جامعتك.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, height: 1.5, color: AuthStyles.muted)),
-                    ]),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                    itemCount: matches.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, indent: 60, endIndent: 8, color: Color(0xFFEDF2F5)),
-                    itemBuilder: (context, index) {
-                      final university = matches[index];
-                      final selected = university['id'] == widget.selectedId;
-                      return Material(
-                        color: selected ? const Color(0xFFEAF5FA) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            Navigator.pop(context, university['id']);
-                          },
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 60),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                              child: Row(children: [
-                                Container(
-                                  width: 38,
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: selected ? AuthStyles.teal : const Color(0xFFF0F5F8),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.school_rounded,
-                                      size: 20, color: selected ? Colors.white : AuthStyles.muted),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(university['name'] ?? '',
-                                      style: TextStyle(
-                                          fontSize: 15.5,
-                                          height: 1.35,
-                                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                                          color: AuthStyles.ink)),
-                                ),
-                                if (selected) const Icon(Icons.check_circle_rounded, color: AuthStyles.teal),
-                              ]),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ]),
-      ),
     );
   }
 }

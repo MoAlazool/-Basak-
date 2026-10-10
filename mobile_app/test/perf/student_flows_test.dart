@@ -274,7 +274,8 @@ void main() {
     }
 
     await rest();
-    expect(find.text('دعوة من المستقبل'), findsOneWidget);
+    expect(find.text('دعوة للاشتراك من'), findsOneWidget);
+    expect(find.text('المستقبل'), findsOneWidget);
     world.log.reset();
 
     world.invites.gate = Completer<void>();
@@ -284,7 +285,7 @@ void main() {
     world.invites.gate!.complete();
     await rest();
     expect(world.invites.answers, [(id: 'invite-1', accept: false)], reason: 'the second tap did nothing');
-    expect(find.text('دعوة من المستقبل'), findsNothing, reason: 'gone from the answer, without asking for the list');
+    expect(find.text('دعوة للاشتراك من'), findsNothing, reason: 'gone from the answer, without asking for the list');
     expect(world.log.calls, {'invites.respond': 1});
 
     // Accepting opens a subscription on the server: it is read once, here.
@@ -296,7 +297,7 @@ void main() {
     c.invalidate(myInvitesProvider);
     await rest();
     world.log.reset();
-    await tester.tap(find.text('قبول'));
+    await tester.tap(find.text('قبول الدعوة'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('موافق، انضم'));
     await rest();
@@ -348,7 +349,7 @@ void main() {
       final front = ValueNotifier(false);
       final c = await pumpTab(tester, world, front);
       await rest(tester);
-      expect(find.text('اشتراكاتي'), findsOneWidget, reason: 'the tab is built, behind the home tab');
+      expect(find.text('اشتراكي'), findsOneWidget, reason: 'the tab is built, behind the home tab');
       expect(world.log.of('sale_catalog'), 0, reason: 'built in the background: nothing on sale is shown');
 
       // Changes while the tab is behind: marked stale, read by nobody.

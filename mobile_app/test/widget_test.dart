@@ -156,19 +156,27 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     await tester.pump(const Duration(milliseconds: 3200));
 
-    expect(find.text('باصك | Basak'), findsOneWidget);
+    // A phone nobody is signed in on opens on the welcome screen.
+    expect(find.text('باصك'), findsOneWidget);
+    expect(find.text('اشتراك الباص الجامعي، بكل بساطة.'), findsOneWidget);
+    expect(find.text('إنشاء حساب طالب'), findsOneWidget);
     expect(find.text('تسجيل الدخول'), findsOneWidget);
-    // The installed version, under the sign-in form.
+    // The installed version, under the ways in.
     expect(find.text('الإصدار 1.0.2'), findsOneWidget);
-    await tester.tap(find.text('مشرف'));
-    await tester.pump();
-    expect(find.text('إنشاء حساب جديد'), findsNothing);
+
+    // Supervisors have a sign-in of their own: no sign-up, no recovery.
+    await tester.tap(find.text('دخول المشرفين'));
+    await tester.pumpAndSettle();
+    expect(find.text('دخول المشرف'), findsOneWidget);
+    expect(find.text('إنشاء حساب'), findsNothing);
     expect(
-        find.text('حسابات المشرفين ينشئها مسؤول النظام فقط.'), findsOneWidget);
+        find.text('حسابات المشرفين ينشئها مسؤول النظام فقط. لتغيير كلمة المرور تواصل مع إدارة شركتك.'),
+        findsOneWidget);
     expect(find.text('نسيت كلمة المرور؟'), findsNothing);
-    await tester.tap(find.text('طالب'));
-    await tester.pump();
-    expect(find.text('إنشاء حساب جديد'), findsOneWidget);
+    await tester.tap(find.text('دخول الطلاب'));
+    await tester.pumpAndSettle();
+    expect(find.text('أهلاً بعودتك'), findsOneWidget);
+    expect(find.text('إنشاء حساب'), findsOneWidget);
 
     // Forgot password (students only) opens the reset screen and comes back.
     await tester.ensureVisible(find.text('نسيت كلمة المرور؟'));
@@ -176,18 +184,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('استعادة كلمة المرور'), findsOneWidget);
     expect(find.text('إرسال طلب الاستعادة'), findsOneWidget);
+    // A code in hand still needs the phone number it was issued for.
+    await tester.enterText(find.byType(TextField), '01012345678');
     await tester.tap(find.text('لديّ رمز بالفعل'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('تعيين كلمة المرور'), findsOneWidget);
     tester.state<NavigatorState>(find.byType(Navigator).last).pop();
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('إنشاء حساب جديد'));
-    await tester.tap(find.text('إنشاء حساب جديد'));
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.ensureVisible(find.text('إنشاء حساب'));
+    await tester.tap(find.text('إنشاء حساب'));
+    await tester.pumpAndSettle();
+    // Sign-up opens on its first step; the photo and the college have steps of their own.
     expect(find.text('الاسم بالكامل'), findsOneWidget);
-    expect(find.text('ثلاثي أو رباعي كما في بطاقتك الجامعية.'), findsOneWidget);
-    expect(find.text('الصورة الشخصية'), findsOneWidget);
+    expect(find.text('اسمك كما في بطاقتك الجامعية، ورقم هاتفك هو اسم دخولك.'), findsOneWidget);
+    expect(find.text('صورتك'), findsOneWidget);
     expect(find.text('الكلية'), findsNothing);
   });
 
