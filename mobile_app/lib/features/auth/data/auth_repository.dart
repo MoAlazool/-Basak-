@@ -401,7 +401,26 @@ class AuthRepository {
         params: {'p_phone': cleanPhone});
   }
 
-  /// Forgot password, step 2: the one-time code given by the company admin
+  /// Forgot password, step 2: is this the one-time code the company admin
+  /// gave? Checked before the new-password page; a wrong code counts as one of
+  /// its 5 tries, a right one stays valid for [resetPasswordWithCode].
+  Future<void> verifyResetCode({required String phone, required String code}) async {
+    try {
+      await _client.functions.invoke('student-reset-password', body: {
+        'phone': normalizeEgyptianPhone(phone),
+        'code': code.trim(),
+        'verifyOnly': true,
+      });
+    } on FunctionException catch (error) {
+      final details = error.details;
+      final message = details is Map && details['error'] is String
+          ? details['error'] as String
+          : 'تعذر التحقق من الرمز. حاول مرة أخرى.';
+      throw Exception(message);
+    }
+  }
+
+  /// Forgot password, step 3: the one-time code given by the company admin
   /// plus the new password. The password goes only to Supabase Auth.
   Future<void> resetPasswordWithCode({
     required String phone,

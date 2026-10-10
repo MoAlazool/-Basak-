@@ -1,10 +1,13 @@
 import { serviceClient } from '../_shared/clients.ts';
 import { errorMessage, jsonResponse, preflight } from '../_shared/http.ts';
 
-// Step 3 of the student "Forgot password" flow (see migration
-// 20261004000003_student_password_reset.sql). Called by the app before sign-in
-// with the phone number, the one-time code issued by the bus company admin and
-// the new password. The password goes straight to Supabase Auth.
+// Steps 3 and 4 of the student "Forgot password" flow (see migration
+// 20261004000003_student_password_reset.sql), called by the app before sign-in.
+//   * { phone, code, verifyOnly: true }: is this the one-time code the bus
+//     company issued? The app asks before it shows the new-password page. A
+//     wrong code counts as one of the 5 tries; a right one is not used up.
+//   * { phone, code, newPassword }: checks the code again and sets the new
+//     password, which goes straight to Supabase Auth; the code is then used.
 const reasons: Record<string, string> = {
   no_code: 'لا يوجد رمز استعادة فعّال لهذا الرقم. اطلب الاستعادة ثم تواصل مع إدارة شركتك للحصول على الرمز.',
   expired: 'انتهت صلاحية الرمز. اطلب رمزاً جديداً من إدارة شركتك.',
@@ -21,8 +24,9 @@ Deno.serve(async (request: Request) => {
     const phone = String(body.phone ?? '');
     const code = String(body.code ?? '').replace(/\D/g, '');
     const newPassword = String(body.newPassword ?? '');
+    const verifyOnly = body.verifyOnly === true;
     if (code.length !== 6) return jsonResponse({ error: 'أدخل الرمز المكون من 6 أرقام.' }, 400);
-    if (newPassword.length < 8) {
+    if (!verifyOnly && newPassword.length < 8) {
       return jsonResponse({ error: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.' }, 400);
     }
 
@@ -40,6 +44,7 @@ Deno.serve(async (request: Request) => {
         ? ` المحاولات المتبقية: ${check.attempts_left}.` : '';
       return jsonResponse({ error: message + left, reason: check?.reason }, 400);
     }
+    if (verifyOnly) return jsonResponse({ valid: true });
 
     const { error: updateError } = await service.auth.admin.updateUserById(check.student_id, {
       password: newPassword,

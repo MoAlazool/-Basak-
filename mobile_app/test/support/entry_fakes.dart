@@ -76,6 +76,16 @@ class FakeEntryRepository extends AuthRepository {
   @override
   Future<void> requestPasswordReset(String phone) async => resetRequests.add(phone);
 
+  /// What `verifyResetCode` throws (a wrong or expired code).
+  Object? verifyError;
+  final List<({String phone, String code})> verifications = [];
+
+  @override
+  Future<void> verifyResetCode({required String phone, required String code}) async {
+    verifications.add((phone: phone, code: code));
+    if (verifyError != null) throw verifyError!;
+  }
+
   @override
   Future<void> resetPasswordWithCode({
     required String phone,
