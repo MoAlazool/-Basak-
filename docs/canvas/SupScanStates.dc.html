@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basak supervisor · Scan outcomes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+input,textarea{font:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width:1200px;height:940px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;padding:64px;display:flex;flex-direction:column;gap:40px">
+<header style="display:flex;align-items:flex-end;justify-content:space-between;gap:40px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#00658D;letter-spacing:.08em;text-transform:uppercase">Basak · Supervisor app · 2026</div>
+<h1 style="margin:0;font-size:44px;line-height:54px;font-weight:600">Scan result, by outcome</h1>
+</div>
+<p style="margin:0;max-width:460px;font-size:15px;line-height:24px;color:#476273">One sheet, six outcomes from <code style="font-family:inherit;font-weight:500">supervisor_check_in_student</code>. Colour says how serious it is: green boarded, teal already on board, red not allowed, amber not recorded.</p>
+</header>
+
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:36px 32px;align-items:start">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">checked_in</div>
+<section dir="rtl" style="background:#FFFFFF;border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(23,56,74,.05);min-height:232px">
+<div style="display:flex;align-items:center;gap:12px"><span aria-hidden="true" style="width:48px;height:48px;border-radius:24px;background:#E3F4EC;color:#0A6B4A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span><div style="min-width:0"><div style="font-size:17px;line-height:26px;font-weight:600">تم تسجيل الصعود</div><div style="font-size:13px;line-height:20px;color:#476273;text-wrap:pretty">ذهاب 7:00 ص · سُجّل 7:23 ص</div></div></div>
+<div style="background:#F0F5F8;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px"><div aria-hidden="true" style="width:36px;height:36px;border-radius:18px;background:#D6EBF5;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex:none">س</div><div style="min-width:0"><div style="font-size:14px;line-height:22px;font-weight:600">سارة أحمد محمود</div><div style="font-size:12px;line-height:18px;color:#476273">كوبري السرو · أكّدت ذهاب 7:23 ص</div></div></div>
+<div style="margin-top:auto"><button type="button" style="height:48px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><span>مسح التالي</span></button></div>
+</section>
+<div style="font-size:13px;line-height:20px;color:#58707F">Medium haptic. Closes by itself after 2 s; the camera never stops.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">already_checked_in</div>
+<section dir="rtl" style="background:#FFFFFF;border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(23,56,74,.05);min-height:232px">
+<div style="display:flex;align-items:center;gap:12px"><span aria-hidden="true" style="width:48px;height:48px;border-radius:24px;background:#E5F3FA;color:#00658D;display:flex;align-items:center;justify-content:center;flex:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"></path></svg></span><div style="min-width:0"><div style="font-size:17px;line-height:26px;font-weight:600">سبق تسجيله اليوم</div><div style="font-size:13px;line-height:20px;color:#476273;text-wrap:pretty">صعد 7:02 ص في رحلة الذهاب.</div></div></div>
+<div style="background:#F0F5F8;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px"><div aria-hidden="true" style="width:36px;height:36px;border-radius:18px;background:#D6EBF5;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex:none">ي</div><div style="min-width:0"><div style="font-size:14px;line-height:22px;font-weight:600">يوسف طارق حسن</div><div style="font-size:12px;line-height:18px;color:#476273">شرباص · أكّد ذهاب 7:15 ص</div></div></div>
+<div style="margin-top:auto"><button type="button" style="height:48px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><span>مسح التالي</span></button></div>
+</section>
+<div style="font-size:13px;line-height:20px;color:#58707F">A notice, not an error: the student is on the bus. Light haptic, stays until tapped.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">no_active_subscription</div>
+<section dir="rtl" style="background:#FFFFFF;border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(23,56,74,.05);min-height:232px">
+<div style="display:flex;align-items:center;gap:12px"><span aria-hidden="true" style="width:48px;height:48px;border-radius:24px;background:#FCEBE9;color:#B3261E;display:flex;align-items:center;justify-content:center;flex:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m5.6 5.6 12.8 12.8"></path></svg></span><div style="min-width:0"><div style="font-size:17px;line-height:26px;font-weight:600">لا يوجد اشتراك ساري</div><div style="font-size:13px;line-height:20px;color:#476273;text-wrap:pretty">لم يُسجَّل الصعود.</div></div></div>
+<div style="background:#F0F5F8;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px"><div aria-hidden="true" style="width:36px;height:36px;border-radius:18px;background:#D6EBF5;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex:none">ع</div><div style="min-width:0"><div style="font-size:14px;line-height:22px;font-weight:600">عمر خالد منصور</div><div style="font-size:12px;line-height:18px;color:#476273">الزرقا · الاشتراك غير مفعّل أو منتهٍ</div></div></div>
+<div style="margin-top:auto"><button type="button" style="height:48px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><span>مسح التالي</span></button></div>
+</section>
+<div style="font-size:13px;line-height:20px;color:#58707F">Heavy haptic. Details are shown so the supervisor can explain why.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">outside_assigned_lines</div>
+<section dir="rtl" style="background:#FFFFFF;border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(23,56,74,.05);min-height:232px">
+<div style="display:flex;align-items:center;gap:12px"><span aria-hidden="true" style="width:48px;height:48px;border-radius:24px;background:#FCEBE9;color:#B3261E;display:flex;align-items:center;justify-content:center;flex:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span><div style="min-width:0"><div style="font-size:17px;line-height:26px;font-weight:600">الطالب ليس على خطك</div><div style="font-size:13px;line-height:20px;color:#476273;text-wrap:pretty">غير مشترك في الخطوط المسندة إليك. لم يُسجَّل الصعود.</div></div></div>
+
+<div style="margin-top:auto"><button type="button" style="height:48px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><span>مسح التالي</span></button></div>
+</section>
+<div style="font-size:13px;line-height:20px;color:#58707F">The server returns no student details here, so none are drawn.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">not_found</div>
+<section dir="rtl" style="background:#FFFFFF;border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(23,56,74,.05);min-height:232px">
+<div style="display:flex;align-items:center;gap:12px"><span aria-hidden="true" style="width:48px;height:48px;border-radius:24px;background:#FCEBE9;color:#B3261E;display:flex;align-items:center;justify-content:center;flex:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"></path></svg></span><div style="min-width:0"><div style="font-size:17px;line-height:26px;font-weight:600">رمز غير معروف</div><div style="font-size:13px;line-height:20px;color:#476273;text-wrap:pretty">هذا الرمز لا يخص أي طالب مسجّل في باصك.</div></div></div>
+
+<div style="margin-top:auto"><button type="button" style="height:48px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><span>مسح التالي</span></button></div>
+</section>
+<div style="font-size:13px;line-height:20px;color:#58707F">Also any code that is not a Basak card.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#476273">offline_lookup</div>
+<section dir="rtl" style="background:#FFFFFF;border-radius:28px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(23,56,74,.05);min-height:232px">
+<div style="display:flex;align-items:center;gap:12px"><span aria-hidden="true" style="width:48px;height:48px;border-radius:24px;background:#FCF1DC;color:#8A5300;display:flex;align-items:center;justify-content:center;flex:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M2 8.82a15 15 0 0 1 4.17-2.65M10.66 5c4.01-.36 8.14.9 11.34 3.76M16.85 11.25a10 10 0 0 1 2.22 1.68M5 13a10 10 0 0 1 5.24-2.76M12 20h.01"></path></svg></span><div style="min-width:0"><div style="font-size:17px;line-height:26px;font-weight:600">بدون إنترنت · لم يُسجَّل</div><div style="font-size:13px;line-height:20px;color:#476273;text-wrap:pretty">بيانات محفوظة من آخر تحقق. أعد المسح عند عودة الاتصال.</div></div></div>
+<div style="background:#F0F5F8;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px"><div aria-hidden="true" style="width:36px;height:36px;border-radius:18px;background:#D6EBF5;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex:none">س</div><div style="min-width:0"><div style="font-size:14px;line-height:22px;font-weight:600">سارة أحمد محمود</div><div style="font-size:12px;line-height:18px;color:#476273">الزرقا · كوبري السرو</div></div></div>
+<div style="margin-top:auto"><button type="button" style="height:48px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><span>مسح التالي</span></button></div>
+</section>
+<div style="font-size:13px;line-height:20px;color:#58707F">Only for a student scanned before on this phone. Nothing is queued, and the sheet says so.</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":940}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1476 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-09T13:10:00Z"
+ },
+ "title": "Basak Mobile Redesign",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 3504,
+   "w": 390,
+   "h": 920,
+   "title": "Home · Active, ride not confirmed",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "System.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1200,
+   "h": 1780,
+   "title": "Design system · Tokens"
+  },
+  "Components.dc.html": {
+   "x": 1280,
+   "y": 0,
+   "w": 1200,
+   "h": 1760,
+   "title": "Design system · Components"
+  },
+  "PassStates.dc.html": {
+   "x": 2560,
+   "y": 0,
+   "w": 1200,
+   "h": 1040,
+   "title": "Design system · Home pass by status"
+  },
+  "Splash.dc.html": {
+   "x": 0,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Splash",
+   "radius": 36
+  },
+  "Welcome.dc.html": {
+   "x": 2350,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Entry · Returning users",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "SignIn.dc.html": {
+   "x": 2820,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign in",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "SignUp.dc.html": {
+   "x": 3290,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign up · 1 Details",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "UniversitySheet.dc.html": {
+   "x": 4230,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign up · University sheet",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "SignUpPhoto.dc.html": {
+   "x": 5170,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign up · 3 Photo",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "SignUpPassword.dc.html": {
+   "x": 5640,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign up · 4 Password",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "HomeRide.dc.html": {
+   "x": 470,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "Home · Confirm ride sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "HomeConfirmed.dc.html": {
+   "x": 940,
+   "y": 3504,
+   "w": 390,
+   "h": 920,
+   "title": "Home · Ride confirmed",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "HomeNew.dc.html": {
+   "x": 1410,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "Home · No subscription",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "HomeInvite.dc.html": {
+   "x": 1880,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "Home · Company invitation",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "InviteSheet.dc.html": {
+   "x": 2350,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "Invitation · Accept sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "HomePending.dc.html": {
+   "x": 2820,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "Home · Receipt under review",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Card.dc.html": {
+   "x": 3290,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "My card · What the supervisor sees",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowCompany.dc.html": {
+   "x": 0,
+   "y": 4884,
+   "w": 390,
+   "h": 844,
+   "title": "Subscribe · 1 Company",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowLines.dc.html": {
+   "x": 470,
+   "y": 4884,
+   "w": 390,
+   "h": 1010,
+   "title": "Subscribe · 2 Line cards",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowStation.dc.html": {
+   "x": 940,
+   "y": 4884,
+   "w": 390,
+   "h": 844,
+   "title": "Subscribe · 2 Station sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowPeriod.dc.html": {
+   "x": 1410,
+   "y": 4884,
+   "w": 390,
+   "h": 844,
+   "title": "Subscribe · 3 Period",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowConfirm.dc.html": {
+   "x": 1880,
+   "y": 4884,
+   "w": 390,
+   "h": 844,
+   "title": "Subscribe · Review & confirm",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Pay.dc.html": {
+   "x": 2350,
+   "y": 4884,
+   "w": 390,
+   "h": 1040,
+   "title": "Pay · Method, details, notes, receipt",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PayUpload.dc.html": {
+   "x": 2820,
+   "y": 4884,
+   "w": 390,
+   "h": 844,
+   "title": "Pay · Uploading receipt",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PayDone.dc.html": {
+   "x": 3290,
+   "y": 4884,
+   "w": 390,
+   "h": 844,
+   "title": "Pay · Submitted",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SubscriptionAwaiting.dc.html": {
+   "x": 0,
+   "y": 6384,
+   "w": 390,
+   "h": 844,
+   "title": "Subscription · Awaiting payment",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SubscriptionReview.dc.html": {
+   "x": 470,
+   "y": 6384,
+   "w": 390,
+   "h": 844,
+   "title": "Subscription · Under review",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Subscription.dc.html": {
+   "x": 940,
+   "y": 6384,
+   "w": 390,
+   "h": 950,
+   "title": "Subscription · Active",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SubscriptionExpired.dc.html": {
+   "x": 1410,
+   "y": 6384,
+   "w": 390,
+   "h": 844,
+   "title": "Subscription · Expired",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Receipt.dc.html": {
+   "x": 1880,
+   "y": 6384,
+   "w": 390,
+   "h": 844,
+   "title": "Receipt · In app",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Invoice.dc.html": {
+   "x": 2350,
+   "y": 6384,
+   "w": 794,
+   "h": 1123,
+   "title": "Receipt · Downloadable PDF (A4)"
+  },
+  "Inbox.dc.html": {
+   "x": 0,
+   "y": 7944,
+   "w": 390,
+   "h": 844,
+   "title": "Alerts · Inbox (from the Home bell)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "InboxDetail.dc.html": {
+   "x": 470,
+   "y": 7944,
+   "w": 390,
+   "h": 844,
+   "title": "Alerts · Detail sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "InboxEmpty.dc.html": {
+   "x": 940,
+   "y": 7944,
+   "w": 390,
+   "h": 844,
+   "title": "Alerts · Empty + OS permission",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Profile.dc.html": {
+   "x": 1410,
+   "y": 7944,
+   "w": 390,
+   "h": 896,
+   "title": "Account",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Help.dc.html": {
+   "x": 1880,
+   "y": 7944,
+   "w": 390,
+   "h": 844,
+   "title": "Account · Help & support sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "StateLoading.dc.html": {
+   "x": 0,
+   "y": 9364,
+   "w": 390,
+   "h": 844,
+   "title": "State · Loading skeleton",
+   "radius": 36
+  },
+  "StateOffline.dc.html": {
+   "x": 470,
+   "y": 9364,
+   "w": 390,
+   "h": 920,
+   "title": "State · Offline, cached",
+   "radius": 36
+  },
+  "StatePartial.dc.html": {
+   "x": 940,
+   "y": 9364,
+   "w": 390,
+   "h": 844,
+   "title": "State · Syncing, one section failed",
+   "radius": 36
+  },
+  "StateError.dc.html": {
+   "x": 1410,
+   "y": 9364,
+   "w": 390,
+   "h": 844,
+   "title": "State · Nothing cached",
+   "radius": 36
+  },
+  "StateRejected.dc.html": {
+   "x": 1880,
+   "y": 9364,
+   "w": 390,
+   "h": 844,
+   "title": "State · Receipt rejected",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Onboarding1.dc.html": {
+   "x": 470,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Onboarding · 1 Every company, one place",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "Onboarding2.dc.html": {
+   "x": 940,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Onboarding · 2 Subscribe and pay",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "Onboarding3.dc.html": {
+   "x": 1410,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Onboarding · 3 Daily ride and alerts",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "SignUpStudy.dc.html": {
+   "x": 3760,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign up · 2 University & college",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "CollegeSheet.dc.html": {
+   "x": 4700,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign up · College sheet",
+   "radius": 36,
+   "is_interactive": true
+  },
+  "CardDetails.dc.html": {
+   "x": 3760,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "My card · All details sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "CardInactive.dc.html": {
+   "x": 4230,
+   "y": 3504,
+   "w": 390,
+   "h": 844,
+   "title": "My card · Not active yet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SystemPlus.dc.html": {
+   "x": 3840,
+   "y": 0,
+   "w": 1200,
+   "h": 2200,
+   "title": "Design system · Additions & Flutter mapping",
+   "is_interactive": null,
+   "radius": null
+  },
+  "ComponentsPlus.dc.html": {
+   "x": 5120,
+   "y": 0,
+   "w": 1200,
+   "h": 1460,
+   "title": "Design system · Components, second set",
+   "is_interactive": null,
+   "radius": null
+  },
+  "NavOptions.dc.html": {
+   "x": 6400,
+   "y": 0,
+   "w": 1200,
+   "h": 1280,
+   "title": "Design system · Tab bar options",
+   "is_interactive": null,
+   "radius": null
+  },
+  "SignInFace.dc.html": {
+   "x": 6110,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign in · Face ID (iPhone)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SignInTouch.dc.html": {
+   "x": 6580,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign in · Fingerprint or face (Android)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SignInPrompt.dc.html": {
+   "x": 7050,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign in · The phone's own prompt",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SignInBioFailed.dc.html": {
+   "x": 7520,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Sign in · Not recognised",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "BioEnable.dc.html": {
+   "x": 7990,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Biometrics · Offered after first sign-in",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Onboarding4.dc.html": {
+   "x": 1880,
+   "y": 2240,
+   "w": 390,
+   "h": 844,
+   "title": "Onboarding · 4 Card",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Platforms.dc.html": {
+   "x": 7680,
+   "y": 0,
+   "w": 1200,
+   "h": 1790,
+   "title": "Design system · iPhone and Android",
+   "is_interactive": null,
+   "radius": null
+  },
+  "RecapHome.dc.html": {
+   "x": 0,
+   "y": 10784,
+   "w": 390,
+   "h": 1008,
+   "title": "Recap · Banner on Home",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapCover.dc.html": {
+   "x": 470,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 1 Cover",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapHours.dc.html": {
+   "x": 940,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 2 Hours",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapDays.dc.html": {
+   "x": 1410,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 3 Days",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapCalendar.dc.html": {
+   "x": 1880,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 4 Shape of the term",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapStreak.dc.html": {
+   "x": 2350,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 5 Longest run",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapTimes.dc.html": {
+   "x": 2820,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 6 Favourite time",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapReturn.dc.html": {
+   "x": 3290,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 7 Return",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapStation.dc.html": {
+   "x": 3760,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 8 Stop and line",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapCollege.dc.html": {
+   "x": 4230,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 9 College",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapTitle.dc.html": {
+   "x": 4700,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 10 Title",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapShare.dc.html": {
+   "x": 5170,
+   "y": 10784,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · 11 Share card",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RecapPersonas.dc.html": {
+   "x": 0,
+   "y": 12276,
+   "w": 1200,
+   "h": 2440,
+   "title": "Recap · Nine students, nine posters",
+   "is_interactive": null,
+   "radius": null
+  },
+  "RecapColleges.dc.html": {
+   "x": 1280,
+   "y": 12276,
+   "w": 1200,
+   "h": 1620,
+   "title": "Recap · A line for every specialisation",
+   "is_interactive": null,
+   "radius": null
+  },
+  "RecapTitles.dc.html": {
+   "x": 2560,
+   "y": 12276,
+   "w": 1200,
+   "h": 1420,
+   "title": "Recap · The titles bank",
+   "is_interactive": null,
+   "radius": null
+  },
+  "RecapSystem.dc.html": {
+   "x": 3840,
+   "y": 12276,
+   "w": 1200,
+   "h": 1980,
+   "title": "Recap · How one is built",
+   "is_interactive": null,
+   "radius": null
+  },
+  "RecapMini.dc.html": {
+   "x": 5120,
+   "y": 12276,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · Short version (1 to 7 rides)",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "RecapDays3.dc.html": {
+   "x": 5590,
+   "y": 12276,
+   "w": 390,
+   "h": 844,
+   "title": "Recap · Days page, three-day week",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "RateIOS.dc.html": {
+   "x": 0,
+   "y": 15276,
+   "w": 390,
+   "h": 844,
+   "title": "Rating · iPhone (App Store)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "RateAndroid.dc.html": {
+   "x": 470,
+   "y": 15276,
+   "w": 390,
+   "h": 844,
+   "title": "Rating · Android (Google Play)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "UpdateAvailable.dc.html": {
+   "x": 940,
+   "y": 15276,
+   "w": 390,
+   "h": 844,
+   "title": "Update · Available (optional)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "UpdateRequired.dc.html": {
+   "x": 1410,
+   "y": 15276,
+   "w": 390,
+   "h": 844,
+   "title": "Update · Required",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "ForgotRequest.dc.html": {
+   "x": 0,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Password · Ask for a reset",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "ForgotReset.dc.html": {
+   "x": 470,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Password · Code and new password",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "ForcePassword.dc.html": {
+   "x": 940,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Password · Forced change",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "WrongRole.dc.html": {
+   "x": 1410,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Sign in · Account not for this app",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PhotoSource.dc.html": {
+   "x": 1880,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Photo · Camera or photos",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PhotoAdjust.dc.html": {
+   "x": 2350,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Photo · Adjust in the circle",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "HomeNotOpen.dc.html": {
+   "x": 2820,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Home · Confirmation not open yet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "HomeClosed.dc.html": {
+   "x": 3290,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Home · Confirmation closed",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PushBanner.dc.html": {
+   "x": 3760,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Alerts · Banner while using the app",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PushExplain.dc.html": {
+   "x": 4230,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Alerts · Before the phone asks",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "ContactSheet.dc.html": {
+   "x": 4700,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Home · Supervisor contact sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowEmpty.dc.html": {
+   "x": 5170,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Subscribe · Nothing for this university",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "FlowDaily.dc.html": {
+   "x": 5640,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Subscribe · One day, cash",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PayNoMethods.dc.html": {
+   "x": 6110,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Pay · No transfer details",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "PayExhausted.dc.html": {
+   "x": 6580,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Pay · Five attempts used",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "EditDetails.dc.html": {
+   "x": 7050,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Account · Edit my details",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "DeleteAccount.dc.html": {
+   "x": 7520,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "Account · Delete account",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "CardUnavailable.dc.html": {
+   "x": 7990,
+   "y": 16680,
+   "w": 390,
+   "h": 844,
+   "title": "My card · Unavailable",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "Coverage.dc.html": {
+   "x": 8460,
+   "y": 16680,
+   "w": 1200,
+   "h": 2150,
+   "title": "Coverage · Every other state and message",
+   "is_interactive": null,
+   "radius": null
+  },
+  "SupSignIn.dc.html": {
+   "x": 0,
+   "y": 19990,
+   "w": 390,
+   "h": 844,
+   "title": "Supervisor · Sign in",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupHome.dc.html": {
+   "x": 470,
+   "y": 19990,
+   "w": 390,
+   "h": 1100,
+   "title": "Supervisor · Home (today's numbers)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupHomeTomorrow.dc.html": {
+   "x": 940,
+   "y": 19990,
+   "w": 390,
+   "h": 1100,
+   "title": "Supervisor · Home (tomorrow, still confirming)",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupLineSheet.dc.html": {
+   "x": 1410,
+   "y": 19990,
+   "w": 390,
+   "h": 844,
+   "title": "Supervisor · Line sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupTrip.dc.html": {
+   "x": 1880,
+   "y": 19990,
+   "w": 390,
+   "h": 1190,
+   "title": "Supervisor · Trip manifest",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupTripSheet.dc.html": {
+   "x": 2350,
+   "y": 19990,
+   "w": 390,
+   "h": 844,
+   "title": "Supervisor · Trip sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupRider.dc.html": {
+   "x": 2820,
+   "y": 19990,
+   "w": 390,
+   "h": 844,
+   "title": "Supervisor · Rider sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupScan.dc.html": {
+   "x": 0,
+   "y": 21740,
+   "w": 390,
+   "h": 844,
+   "title": "Scan · Camera",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupScanOk.dc.html": {
+   "x": 470,
+   "y": 21740,
+   "w": 390,
+   "h": 844,
+   "title": "Scan · Boarded",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupScanStop.dc.html": {
+   "x": 940,
+   "y": 21740,
+   "w": 390,
+   "h": 844,
+   "title": "Scan · No valid subscription",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupScanStates.dc.html": {
+   "x": 1410,
+   "y": 21740,
+   "w": 1200,
+   "h": 940,
+   "title": "Scan · Every outcome",
+   "is_interactive": null,
+   "radius": null
+  },
+  "SupSend.dc.html": {
+   "x": 0,
+   "y": 23240,
+   "w": 390,
+   "h": 844,
+   "title": "Message · Who and what",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupSendConfirm.dc.html": {
+   "x": 470,
+   "y": 23240,
+   "w": 390,
+   "h": 844,
+   "title": "Message · Confirm sheet",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupSendCustom.dc.html": {
+   "x": 940,
+   "y": 23240,
+   "w": 390,
+   "h": 844,
+   "title": "Message · Free text",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupHomeSent.dc.html": {
+   "x": 1410,
+   "y": 23240,
+   "w": 390,
+   "h": 844,
+   "title": "Message · Sent",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupInbox.dc.html": {
+   "x": 1880,
+   "y": 23240,
+   "w": 390,
+   "h": 844,
+   "title": "Alerts · Inbox",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupProfile.dc.html": {
+   "x": 2350,
+   "y": 23240,
+   "w": 390,
+   "h": 950,
+   "title": "Account",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupMonthly.dc.html": {
+   "x": 2820,
+   "y": 23240,
+   "w": 390,
+   "h": 1440,
+   "title": "Account · Monthly summary",
+   "is_interactive": true,
+   "radius": 36
+  },
+  "SupStateLoading.dc.html": {
+   "x": 0,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · Loading skeleton",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupStateOffline.dc.html": {
+   "x": 470,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · Offline, cached",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupScanOffline.dc.html": {
+   "x": 940,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · Scanner offline",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupScanPermission.dc.html": {
+   "x": 1410,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · Camera not allowed",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupTripEmpty.dc.html": {
+   "x": 1880,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · No trips",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupStateNoLine.dc.html": {
+   "x": 2350,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · No line assigned",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupStateSuspended.dc.html": {
+   "x": 2820,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · Account suspended",
+   "is_interactive": null,
+   "radius": 36
+  },
+  "SupStateError.dc.html": {
+   "x": 3290,
+   "y": 25240,
+   "w": 390,
+   "h": 844,
+   "title": "State · Nothing cached",
+   "is_interactive": null,
+   "radius": 36
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "System.dc.html",
+  "Components.dc.html",
+  "PassStates.dc.html",
+  "SystemPlus.dc.html",
+  "ComponentsPlus.dc.html",
+  "NavOptions.dc.html",
+  "Platforms.dc.html",
+  "Splash.dc.html",
+  "Onboarding1.dc.html",
+  "Onboarding2.dc.html",
+  "Onboarding3.dc.html",
+  "Onboarding4.dc.html",
+  "Welcome.dc.html",
+  "SignIn.dc.html",
+  "SignUp.dc.html",
+  "SignUpStudy.dc.html",
+  "UniversitySheet.dc.html",
+  "CollegeSheet.dc.html",
+  "SignUpPhoto.dc.html",
+  "SignUpPassword.dc.html",
+  "SignInFace.dc.html",
+  "SignInTouch.dc.html",
+  "SignInPrompt.dc.html",
+  "SignInBioFailed.dc.html",
+  "BioEnable.dc.html",
+  "HomeRide.dc.html",
+  "HomeConfirmed.dc.html",
+  "HomeNew.dc.html",
+  "HomeInvite.dc.html",
+  "InviteSheet.dc.html",
+  "HomePending.dc.html",
+  "Card.dc.html",
+  "CardDetails.dc.html",
+  "CardInactive.dc.html",
+  "FlowCompany.dc.html",
+  "FlowLines.dc.html",
+  "FlowStation.dc.html",
+  "FlowPeriod.dc.html",
+  "FlowConfirm.dc.html",
+  "Pay.dc.html",
+  "PayUpload.dc.html",
+  "PayDone.dc.html",
+  "SubscriptionAwaiting.dc.html",
+  "SubscriptionReview.dc.html",
+  "Subscription.dc.html",
+  "SubscriptionExpired.dc.html",
+  "Receipt.dc.html",
+  "Invoice.dc.html",
+  "Inbox.dc.html",
+  "InboxDetail.dc.html",
+  "InboxEmpty.dc.html",
+  "Profile.dc.html",
+  "Help.dc.html",
+  "StateLoading.dc.html",
+  "StateOffline.dc.html",
+  "StatePartial.dc.html",
+  "StateError.dc.html",
+  "StateRejected.dc.html",
+  "RecapHome.dc.html",
+  "RecapCover.dc.html",
+  "RecapHours.dc.html",
+  "RecapDays.dc.html",
+  "RecapCalendar.dc.html",
+  "RecapStreak.dc.html",
+  "RecapTimes.dc.html",
+  "RecapReturn.dc.html",
+  "RecapStation.dc.html",
+  "RecapCollege.dc.html",
+  "RecapTitle.dc.html",
+  "RecapShare.dc.html",
+  "RecapPersonas.dc.html",
+  "RecapColleges.dc.html",
+  "RecapTitles.dc.html",
+  "RecapSystem.dc.html",
+  "RecapMini.dc.html",
+  "RecapDays3.dc.html",
+  "RateIOS.dc.html",
+  "RateAndroid.dc.html",
+  "UpdateAvailable.dc.html",
+  "UpdateRequired.dc.html",
+  "ForgotRequest.dc.html",
+  "ForgotReset.dc.html",
+  "ForcePassword.dc.html",
+  "WrongRole.dc.html",
+  "PhotoSource.dc.html",
+  "PhotoAdjust.dc.html",
+  "HomeNotOpen.dc.html",
+  "HomeClosed.dc.html",
+  "PushBanner.dc.html",
+  "PushExplain.dc.html",
+  "ContactSheet.dc.html",
+  "FlowEmpty.dc.html",
+  "FlowDaily.dc.html",
+  "PayNoMethods.dc.html",
+  "PayExhausted.dc.html",
+  "EditDetails.dc.html",
+  "DeleteAccount.dc.html",
+  "CardUnavailable.dc.html",
+  "Coverage.dc.html",
+  "SupSignIn.dc.html",
+  "SupHome.dc.html",
+  "SupHomeTomorrow.dc.html",
+  "SupLineSheet.dc.html",
+  "SupTrip.dc.html",
+  "SupTripSheet.dc.html",
+  "SupRider.dc.html",
+  "SupScan.dc.html",
+  "SupScanOk.dc.html",
+  "SupScanStop.dc.html",
+  "SupScanStates.dc.html",
+  "SupSend.dc.html",
+  "SupSendConfirm.dc.html",
+  "SupSendCustom.dc.html",
+  "SupHomeSent.dc.html",
+  "SupInbox.dc.html",
+  "SupProfile.dc.html",
+  "SupMonthly.dc.html",
+  "SupStateLoading.dc.html",
+  "SupStateOffline.dc.html",
+  "SupScanOffline.dc.html",
+  "SupScanPermission.dc.html",
+  "SupTripEmpty.dc.html",
+  "SupStateNoLine.dc.html",
+  "SupStateSuspended.dc.html",
+  "SupStateError.dc.html"
+ ],
+ "notes": {
+  "t0": {
+   "x": 0,
+   "y": -300,
+   "text": "01 · Foundations",
+   "kind": "title1",
+   "maxW": 8880
+  },
+  "t1": {
+   "x": 0,
+   "y": 1940,
+   "text": "02 · Entry & sign-up",
+   "kind": "title1",
+   "maxW": 8380
+  },
+  "t2": {
+   "x": 0,
+   "y": 3204,
+   "text": "03 · Home & my card",
+   "kind": "title1",
+   "maxW": 4620
+  },
+  "t3": {
+   "x": 0,
+   "y": 4584,
+   "text": "04 · Subscribe & pay",
+   "kind": "title1",
+   "maxW": 3680
+  },
+  "t4": {
+   "x": 0,
+   "y": 6084,
+   "text": "05 · Subscription & receipts",
+   "kind": "title1",
+   "maxW": 3144
+  },
+  "t5": {
+   "x": 0,
+   "y": 7644,
+   "text": "06 · Alerts & account",
+   "kind": "title1",
+   "maxW": 2270
+  },
+  "t6": {
+   "x": 0,
+   "y": 9064,
+   "text": "07 · States",
+   "kind": "title1",
+   "maxW": 2270
+  },
+  "s0": {
+   "x": -480,
+   "y": 0,
+   "w": 380,
+   "fill": "blue",
+   "text": "Direction: \"The Route\". Basak's own teal and petrol ink, matured: a calmer ground, tone instead of borders, Readex Pro kept. One route-rail motif is reused for the pass, the station list and progress."
+  },
+  "s1": {
+   "x": -480,
+   "y": 2240,
+   "w": 380,
+   "fill": "blue",
+   "text": "First launch: four onboarding pages built from the real components. The first says what Basak is — every transport company for your university in one place — then subscribe and pay, the daily ride and alerts, and the card. Then four short sign-up steps; a returning student signs in with Face ID or fingerprint."
+  },
+  "s2": {
+   "x": -480,
+   "y": 3504,
+   "w": 380,
+   "fill": "blue",
+   "text": "Home answers two questions: is my pass valid, and am I riding tomorrow? Dates and money are on the subscription tab. The card tab is what a supervisor reads off the student's phone: photo, validity, line, stop and today's ride on the face, everything else behind \"كل التفاصيل\"."
+  },
+  "s3": {
+   "x": -480,
+   "y": 4884,
+   "w": 380,
+   "fill": "blue",
+   "text": "The 5-screen wizard becomes one builder. Chosen rows collapse to a line and stay visible; tap any to change it. Line + station are one gesture. Review is a confirm sheet, not another page."
+  },
+  "s4": {
+   "x": -480,
+   "y": 6384,
+   "w": 380,
+   "fill": "blue",
+   "text": "The subscription tab is about time and money: period, validity, amount, receipt. Each status gets one card with one action. The route is not repeated here beyond one row."
+  },
+  "s5": {
+   "x": -480,
+   "y": 7944,
+   "w": 380,
+   "fill": "blue",
+   "text": "Alerts are a page behind the Home bell, not a tab: grouped by day, unread = dot + weight, no category toggles. Help is a sheet whose support channels come from configuration."
+  },
+  "s6": {
+   "x": -480,
+   "y": 9364,
+   "w": 380,
+   "fill": "blue",
+   "text": "Cache first. Offline is a slim strip plus a \"saved at\" stamp, never a blocked screen. Errors stay inside the section that failed; the card and pass keep working."
+  },
+  "t7": {
+   "x": 0,
+   "y": 10484,
+   "text": "08 · Term recap · one student, start to finish",
+   "kind": "title1",
+   "maxW": 5560
+  },
+  "s7": {
+   "x": -480,
+   "y": 10784,
+   "w": 380,
+   "fill": "blue",
+   "text": "A new feature, drawn for discussion. At the end of a term the student taps through a story about their own rides and shares the last page. Egyptian and self-mocking, tied to their college, stop and line. This row is one student, Sara: Engineering, 62 ride days."
+  },
+  "t8": {
+   "x": 0,
+   "y": 11976,
+   "text": "09 · Term recap · the system behind it",
+   "kind": "title1",
+   "maxW": 5980
+  },
+  "s8": {
+   "x": -480,
+   "y": 12276,
+   "w": 380,
+   "fill": "blue",
+   "text": "The recap is assembled from rules, so it holds for any student: nine different people, the voice of each college, and what happens with one ride, a hundred, no returns, no college, or a student who only comes three days a week."
+  },
+  "t9": {
+   "x": 0,
+   "y": 14976,
+   "text": "10 · Rating & update",
+   "kind": "title1",
+   "maxW": 2400
+  },
+  "s9": {
+   "x": -480,
+   "y": 15276,
+   "w": 380,
+   "fill": "blue",
+   "text": "Rating: one sheet at a good moment; its button hands over to the store's own review dialog (App Store on iPhone, Google Play on Android). No stars and no \"do you like it?\" of our own — both stores disallow that. Update: a sheet you can dismiss when it is optional, a full screen when it is required, and even then the card stays one tap away."
+  },
+  "t10": {
+   "x": 0,
+   "y": 16380,
+   "text": "11 · The rest · screens and states found in the app",
+   "kind": "title1",
+   "maxW": 9660
+  },
+  "s10": {
+   "x": -480,
+   "y": 16680,
+   "w": 380,
+   "fill": "blue",
+   "text": "The app's code was read against the canvas, and what was missing is here: password recovery, the forced password change, photo picking and cropping, the ride question when it is closed or not open, the supervisor contact sheet, the push explainer and banner, an empty catalogue, the one-day cash subscription, exhausted receipt attempts, missing transfer details, editing details, deleting the account, an unavailable card and a wrong-role account. The last board lists every other state and message with its exact words."
+  },
+  "t11": {
+   "x": 0,
+   "y": 19690,
+   "text": "Supervisor · 12 Sign in, today & trips",
+   "kind": "title1",
+   "maxW": 3210
+  },
+  "s11": {
+   "x": -480,
+   "y": 19990,
+   "w": 380,
+   "fill": "blue",
+   "text": "The supervisor app, same system. Four tabs that mirror the student bar: the filled one is the scanner (the student's is the card it reads). One line and one trip are chosen once and apply everywhere. Home is the numbers the buses are planned on: how many are going and how many are returning, per trip, today and tomorrow. Trips is the people on one trip."
+  },
+  "t12": {
+   "x": 0,
+   "y": 21440,
+   "text": "Supervisor · 13 Scan",
+   "kind": "title1",
+   "maxW": 2610
+  },
+  "s12": {
+   "x": -480,
+   "y": 21740,
+   "w": 380,
+   "fill": "blue",
+   "text": "One scanner, always showing which trip it is boarding. A successful scan returns to the camera by itself; only problems wait for a tap. A repeat scan is a calm notice, not an error. Offline scans are never presented as recorded."
+  },
+  "t13": {
+   "x": 0,
+   "y": 22940,
+   "text": "Supervisor · 14 Messages, summary & account",
+   "kind": "title1",
+   "maxW": 3210
+  },
+  "s13": {
+   "x": -480,
+   "y": 23240,
+   "w": 380,
+   "fill": "blue",
+   "text": "Sending is one path: who, what, confirm. Ready messages come from the server; a free-text message goes through the same confirm sheet. The monthly summary moves out of the tab bar into the account, where it is used once a month."
+  },
+  "t14": {
+   "x": 0,
+   "y": 24940,
+   "text": "Supervisor · 15 States",
+   "kind": "title1",
+   "maxW": 3680
+  },
+  "s14": {
+   "x": -480,
+   "y": 25240,
+   "w": 380,
+   "fill": "blue",
+   "text": "Cache first, as on the student side. The header and bell stay in every state. Messages say what happened and who can fix it; nothing sends the supervisor to the admin dashboard."
+  }
+ },
+ "designSystems": []
+}

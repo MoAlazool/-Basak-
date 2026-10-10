@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>ضبط الصورة</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+input,textarea{font:inherit;color:inherit}
+</style>
+</helmet>
+<div dir="rtl" style="width:390px;height:844px;background:#3A4F5C;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;display:flex;flex-direction:column;padding:60px 20px 34px;overflow:hidden">
+<div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;min-height:44px;color:#FFFFFF"><a href="Profile.dc.html" style="color:#FFFFFF;font-size:15px;font-weight:500;min-height:44px;display:flex;align-items:center">إلغاء</a><h1 style="margin:0;font-size:17px;line-height:26px;font-weight:600">ضبط الصورة</h1><span style="width:44px"></span></div><div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px"><div role="img" aria-label="الصورة داخل دائرة القص" style="width:300px;height:300px;border-radius:150px;overflow:hidden;box-shadow:0 0 0 2px #FFFFFF, 0 0 0 400px rgba(10,22,29,.72);background:#D6EBF5"><svg width="300" height="300" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="25" r="11" fill="#8DBFD6"></circle><path d="M10 66c0-14 10-23 22-23s22 9 22 23z" fill="#8DBFD6"></path></svg></div><p style="position:relative;z-index:1;margin:0;font-size:14px;line-height:22px;color:#DCE6EC;text-align:center;max-width:280px">حرّك الصورة وكبّرها بإصبعين حتى يظهر وجهك داخل الدائرة.</p></div><div style="position:relative;z-index:1"><a href="Profile.dc.html" style="height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;width:100%;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><span>اعتماد الصورة</span></a></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

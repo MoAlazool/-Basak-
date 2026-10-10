@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>اشتراك جديد · الفترة</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+</style>
+</helmet>
+<div dir="rtl" style="width:390px;height:844px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;display:flex;flex-direction:column;padding:60px 20px 0;overflow:hidden">
+
+<a href="HomeNew.dc.html" aria-label="إغلاق" style="width:44px;height:44px;border-radius:22px;background:#FFFFFF;color:#17384A;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</a>
+
+<div style="display:flex;flex-direction:column;gap:4px;padding:20px 0 24px">
+<h1 style="margin:0;font-size:28px;line-height:38px;font-weight:600">اشتراك جديد</h1>
+<p style="margin:0;font-size:15px;line-height:24px;color:#476273">إلى جامعة المنصورة الجديدة</p>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+
+<div style="background:#FFFFFF;border-radius:16px;padding:0 16px;min-height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<span style="width:24px;height:24px;border-radius:12px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+<div style="flex:1;min-width:0">
+<div style="font-size:11px;line-height:16px;color:#58707F">شركة النقل</div>
+<div style="font-size:15px;line-height:22px;font-weight:500">النورس للنقل</div>
+</div>
+<a href="FlowCompany.dc.html" style="min-height:44px;display:flex;align-items:center;padding:0 4px;font-size:14px;font-weight:600">تغيير</a>
+</div>
+
+<div style="background:#FFFFFF;border-radius:16px;padding:0 16px;min-height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<span style="width:24px;height:24px;border-radius:12px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+<div style="flex:1;min-width:0">
+<div style="font-size:11px;line-height:16px;color:#58707F">الخط والمحطة</div>
+<div style="font-size:15px;line-height:22px;font-weight:500">الزرقا · كوبري السرو</div>
+</div>
+<a href="FlowLines.dc.html" style="min-height:44px;display:flex;align-items:center;padding:0 4px;font-size:14px;font-weight:600">تغيير</a>
+</div>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;gap:12px;min-height:40px;padding:0 4px">
+<span style="width:24px;height:24px;border-radius:12px;box-shadow:inset 0 0 0 2px #00658D;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none">3</span>
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">الفترة</h2>
+</div>
+
+<div role="radiogroup" aria-label="فترة الاشتراك" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px">
+<sc-for list="{{periods}}" as="p" hint-placeholder-count="3">
+<button type="button" role="radio" aria-checked="{{p.on}}" onClick="{{p.pick}}" style="position:relative;border-radius:18px;padding:18px 6px 14px;display:flex;flex-direction:column;align-items:center;gap:4px;background:{{p.bg}};box-shadow:inset 0 0 0 2px {{p.ring}}">
+<sc-if value="{{p.save}}" hint-placeholder-val="{{false}}">
+<span style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;border-radius:10px;padding:1px 9px;background:#0A6B4A;color:#FFFFFF;font-size:11px;line-height:18px;font-weight:500">{{p.save}}</span>
+</sc-if>
+<span style="font-size:13px;line-height:20px;font-weight:500;color:{{p.labelC}}">{{p.title}}</span>
+<span style="font-size:20px;line-height:30px;font-weight:600">{{p.price}}</span>
+<span style="font-size:11px;line-height:16px;color:#58707F">ج.م</span>
+</button>
+</sc-for>
+</div>
+
+<p style="margin:0;padding:0 4px;font-size:13px;line-height:20px;color:#476273">{{dates}}</p>
+
+<button type="button" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;border-radius:16px;background:#E4ECF1;padding:0 16px;font-size:14px;line-height:22px">
+<span>أو يوم واحد، نقداً في الباص</span>
+<span style="font-weight:600">60 ج.م</span>
+</button>
+</section>
+
+</div>
+
+<div style="margin:auto -20px 0;background:#FFFFFF;border-radius:28px 28px 0 0;padding:16px 20px 34px;display:flex;align-items:center;gap:16px;box-shadow:0 -8px 32px -16px rgba(23,56,74,.18)">
+<a href="FlowConfirm.dc.html" style="flex:1;height:54px;border-radius:16px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600">مراجعة الاشتراك</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const picked = (this.state && this.state.picked) || 'first';
+const list = [
+{ id: 'first', title: 'الفصل الأول', price: '4,500', save: '', dates: 'من 20 سبتمبر 2026 إلى 14 يناير 2027' },
+{ id: 'second', title: 'الفصل الثاني', price: '4,500', save: '', dates: 'من 7 فبراير إلى 28 مايو 2027' },
+{ id: 'both', title: 'الفصلان معاً', price: '8,000', save: 'وفّر 1,000', dates: 'من 20 سبتمبر 2026 إلى 28 مايو 2027' }
+];
+const current = list.find((p) => p.id === picked) || list[0];
+return {
+total: current.price,
+dates: current.dates,
+periods: list.map((p) => {
+const on = p.id === picked;
+return {
+...p,
+on: on ? 'true' : 'false',
+bg: on ? '#E5F3FA' : '#FFFFFF',
+ring: on ? '#00658D' : 'transparent',
+labelC: on ? '#00658D' : '#476273',
+pick: () => this.setState({ picked: p.id })
+};
+})
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basak design system · Components</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+</style>
+</helmet>
+<div style="width:1200px;height:1760px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;padding:64px;display:flex;flex-direction:column;gap:40px">
+
+<header style="display:flex;align-items:flex-end;justify-content:space-between;gap:40px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#00658D;letter-spacing:.08em;text-transform:uppercase">Basak · Student app · 2026</div>
+<h1 style="margin:0;font-size:44px;line-height:54px;font-weight:600">Components</h1>
+</div>
+<p style="margin:0;max-width:440px;font-size:15px;line-height:24px;color:#476273">The building blocks behind every student screen. Each maps to one Flutter widget in <span style="font-weight:600">core/ui</span>; screens compose them and never set a colour or radius themselves.</p>
+</header>
+
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:40px;flex:1">
+
+<div style="display:flex;flex-direction:column;gap:36px">
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Buttons</h2>
+<div dir="rtl" style="display:flex;flex-direction:column;gap:10px">
+<button type="button" style="height:54px;border-radius:16px;background:#00658D;color:#FFFFFF;font-size:16px;font-weight:600">متابعة للدفع</button>
+<button type="button" style="height:54px;border-radius:16px;background:#E4ECF1;color:#17384A;font-size:16px;font-weight:500">لن أركب</button>
+<button type="button" style="height:54px;border-radius:16px;background:#E5F3FA;color:#00658D;font-size:16px;font-weight:600">اشترك في الفصل الثاني</button>
+<button type="button" disabled style="height:54px;border-radius:16px;background:#E4ECF1;color:#9DB0BB;font-size:16px;font-weight:600;cursor:default">إرسال للمراجعة</button>
+<div style="display:flex;gap:10px;align-items:center">
+<button type="button" style="height:44px;padding:0 16px;border-radius:14px;background:#FFFFFF;color:#17384A;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>
+<span>تنزيل PDF</span>
+</button>
+<button type="button" style="height:44px;padding:0 12px;color:#00658D;font-size:14px;font-weight:600">تغيير</button>
+<button type="button" style="height:44px;padding:0 12px;color:#B3261E;font-size:14px;font-weight:600">حذف الحساب</button>
+</div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Primary is teal, one per screen, pinned to the bottom. Quiet = sunken. Tonal = an optional next step. Text buttons for edit and destructive.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Inputs</h2>
+<div dir="rtl" style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column;gap:6px">
+<label for="c-name" style="font-size:13px;line-height:20px;font-weight:500;color:#476273">الاسم بالكامل</label>
+<input id="c-name" type="text" placeholder="كما في بطاقتك الجامعية" style="height:54px;border:0;border-radius:16px;background:#E4ECF1;padding:0 16px;font-size:15px;color:#17384A;outline:none">
+</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<label for="c-phone" style="font-size:13px;line-height:20px;font-weight:500;color:#00658D">رقم الهاتف</label>
+<input id="c-phone" type="tel" dir="ltr" value="010 2345 6789" style="height:54px;border:0;border-radius:16px;background:#FFFFFF;box-shadow:inset 0 0 0 2px #00658D;padding:0 16px;font-size:15px;color:#17384A;outline:none;text-align:right">
+</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<label for="c-pass" style="font-size:13px;line-height:20px;font-weight:500;color:#B3261E">كلمة المرور</label>
+<input id="c-pass" type="text" value="••••" style="height:54px;border:0;border-radius:16px;background:#FFFFFF;box-shadow:inset 0 0 0 2px #B3261E;padding:0 16px;font-size:15px;color:#17384A;outline:none">
+<div style="font-size:12px;line-height:18px;color:#B3261E">8 أحرف على الأقل.</div>
+</div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Filled, borderless at rest. Focus and error are a 2-px ring plus a label colour change; the error text replaces the helper, it never stacks under it.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Segmented control · chips · tags</h2>
+<div dir="rtl" style="display:flex;flex-direction:column;gap:12px">
+<div role="tablist" style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:4px;background:#E4ECF1;border-radius:14px;padding:4px">
+<button type="button" role="tab" aria-selected="true" style="height:40px;border-radius:10px;background:#FFFFFF;font-size:14px;font-weight:600;box-shadow:0 1px 2px rgba(23,56,74,.08)">الكل</button>
+<button type="button" role="tab" aria-selected="false" style="height:40px;border-radius:10px;font-size:14px;font-weight:500;color:#476273">غير المقروءة · 2</button>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button type="button" style="height:44px;padding:0 16px;border-radius:999px;background:#00658D;color:#FFFFFF;font-size:14px;font-weight:500">InstaPay</button>
+<button type="button" style="height:44px;padding:0 16px;border-radius:999px;background:#FFFFFF;color:#17384A;font-size:14px;font-weight:500;box-shadow:inset 0 0 0 1px #DCE6EC">فودافون كاش</button>
+<button type="button" style="height:44px;padding:0 16px;border-radius:999px;background:#FFFFFF;color:#17384A;font-size:14px;font-weight:500;box-shadow:inset 0 0 0 1px #DCE6EC">تحويل بنكي</button>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<span style="border-radius:10px;padding:3px 10px;background:#E3F4EC;color:#0A6B4A;font-size:12px;line-height:18px;font-weight:500">وفّر 1,000 ج.م</span>
+<span style="border-radius:10px;padding:3px 10px;background:#E4ECF1;color:#476273;font-size:12px;line-height:18px;font-weight:500">يومي متاح</span>
+<span style="border-radius:10px;padding:3px 10px;background:#E5F3FA;color:#00658D;font-size:12px;line-height:18px;font-weight:500">الفترة القادمة</span>
+</div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Segmented for two or three views of one list. Chips for a single choice among short options. Tags are read-only, at most one per card.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Choice tile</h2>
+<div dir="rtl" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px">
+<button type="button" aria-pressed="true" style="border-radius:16px;background:#E5F3FA;box-shadow:inset 0 0 0 2px #00658D;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:4px">
+<span style="font-size:13px;line-height:20px;font-weight:500;color:#00658D">الفصل الأول</span>
+<span style="font-size:17px;line-height:26px;font-weight:600">4,500</span>
+</button>
+<button type="button" aria-pressed="false" style="border-radius:16px;background:#FFFFFF;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:4px">
+<span style="font-size:13px;line-height:20px;font-weight:500;color:#476273">الفصل الثاني</span>
+<span style="font-size:17px;line-height:26px;font-weight:600">4,500</span>
+</button>
+<button type="button" aria-pressed="false" style="border-radius:16px;background:#FFFFFF;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:4px">
+<span style="font-size:13px;line-height:20px;font-weight:500;color:#476273">الفصلان معاً</span>
+<span style="font-size:17px;line-height:26px;font-weight:600">8,000</span>
+</button>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Any number of options: 2 sit side by side, 3 fill one row, 4 or more wrap three per row. Past the sheet's height the list scrolls and the button stays pinned.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Toast</h2>
+<div dir="rtl" style="display:flex;align-items:center;gap:10px;min-height:48px;border-radius:14px;background:#17384A;color:#FFFFFF;padding:0 16px;font-size:14px;line-height:22px;box-shadow:0 16px 40px -12px rgba(23,56,74,.28)">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5BD4A0" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+<span>تم نسخ عنوان InstaPay</span>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Ink for every toast; the icon carries success or failure. Replaces the green and red snackbars.</p>
+</section>
+
+</div>
+
+<div style="display:flex;flex-direction:column;gap:36px">
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Grouped rows</h2>
+<div dir="rtl" style="background:#FFFFFF;border-radius:20px;padding:0 18px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;border-bottom:1px solid #DCE6EC">
+<span style="font-size:14px;line-height:22px;color:#476273">الخط</span>
+<span style="font-size:15px;line-height:24px;font-weight:500">الزرقا</span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;border-bottom:1px solid #DCE6EC">
+<span style="font-size:14px;line-height:22px;color:#476273">محطة الصعود</span>
+<span style="font-size:15px;line-height:24px;font-weight:500">كوبري السرو</span>
+</div>
+<button type="button" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px">
+<span style="font-size:15px;line-height:24px;font-weight:500">الإيصال</span>
+<span style="display:flex;align-items:center;gap:6px;color:#58707F;font-size:14px">
+<span dir="ltr">26-7F3A9C2E</span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+</span>
+</button>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Label on the start side, value on the end side, no icon per row. A chevron appears only when the row navigates.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Line card</h2>
+<div dir="rtl" style="background:#FFFFFF;border-radius:20px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+<div>
+<div style="font-size:17px;line-height:26px;font-weight:600">الزرقا</div>
+<div style="font-size:13px;line-height:20px;color:#58707F">7 محطات</div>
+</div>
+<div style="flex:none;font-size:17px;line-height:26px;font-weight:600"><span style="font-size:12px;font-weight:400;color:#58707F">من</span> 4,500 <span style="font-size:12px;font-weight:400;color:#58707F">ج.م</span></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px">
+<div style="background:#F0F5F8;border-radius:12px;padding:8px 12px">
+<div style="font-size:11px;line-height:16px;color:#58707F">أول ذهاب</div>
+<div style="font-size:14px;line-height:22px;font-weight:500">6:15 ص</div>
+</div>
+<div style="background:#F0F5F8;border-radius:12px;padding:8px 12px">
+<div style="font-size:11px;line-height:16px;color:#58707F">آخر عودة</div>
+<div style="font-size:14px;line-height:22px;font-weight:500">5:30 م</div>
+</div>
+</div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Four facts in fixed positions so cards compare by eye: name, stop count, lowest price, first and last times. The destination is said once in the section title.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Builder row · chosen / open / locked</h2>
+<div dir="rtl" style="display:flex;flex-direction:column;gap:8px">
+<div style="background:#FFFFFF;border-radius:16px;padding:0 16px;min-height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<span style="width:22px;height:22px;border-radius:11px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+<div style="flex:1;min-width:0">
+<div style="font-size:11px;line-height:16px;color:#58707F">الخط والمحطة</div>
+<div style="font-size:15px;line-height:22px;font-weight:500">الزرقا · كوبري السرو</div>
+</div>
+<button type="button" style="height:44px;padding:0 4px;color:#00658D;font-size:14px;font-weight:600">تغيير</button>
+</div>
+<div style="border-radius:16px;padding:0 16px;min-height:56px;display:flex;align-items:center;gap:12px;box-shadow:inset 0 0 0 1.5px #00658D;background:#FFFFFF">
+<span style="width:22px;height:22px;border-radius:11px;box-shadow:inset 0 0 0 2px #00658D;color:#00658D;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">3</span>
+<div style="font-size:15px;line-height:22px;font-weight:600">الفترة</div>
+</div>
+<div style="border-radius:16px;padding:0 16px;min-height:56px;display:flex;align-items:center;gap:12px;background:#E4ECF1">
+<span style="width:22px;height:22px;border-radius:11px;box-shadow:inset 0 0 0 2px #9DB0BB;color:#58707F;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">3</span>
+<div style="font-size:15px;line-height:22px;color:#58707F">الفترة</div>
+</div>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Connection strip</h2>
+<div dir="rtl" style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:10px;min-height:44px;border-radius:14px;background:#FCF1DC;color:#8A5300;padding:0 14px;font-size:13px;line-height:20px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 5.2-2.7M19 12.9a10 10 0 0 0-2-1.5M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8a15 15 0 0 0-11.3-3.8M12 20h.01"></path></svg>
+<span style="flex:1">بدون إنترنت · بيانات 8:15 ص</span>
+<button type="button" style="height:44px;color:#17384A;font-size:13px;font-weight:600">إعادة المحاولة</button>
+</div>
+<div style="display:flex;align-items:center;gap:10px;min-height:44px;border-radius:14px;background:#E5F3FA;color:#00658D;padding:0 14px;font-size:13px;line-height:20px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
+<span>جارٍ التحديث…</span>
+</div>
+<div style="display:flex;align-items:center;gap:10px;min-height:44px;border-radius:14px;background:#E3F4EC;color:#0A6B4A;padding:0 14px;font-size:13px;line-height:20px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+<span>عاد الاتصال · البيانات محدّثة</span>
+</div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">One floating strip under the header, three states. "Back online" dismisses itself after two seconds.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Live alert banner (home, only while live)</h2>
+<div dir="rtl" style="background:#FFFFFF;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<span style="width:36px;height:36px;border-radius:12px;background:#E3F4EC;color:#0A6B4A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3"></rect><path d="M4 11h16M8 18v3M16 18v3M8 15h.01M16 15h.01"></path></svg></span>
+<div style="flex:1;min-width:0">
+<div style="font-size:14px;line-height:22px;font-weight:500">الباص تحرّك من موقف الزرقا</div>
+<div style="font-size:12px;line-height:18px;color:#58707F">قبل 4 دقائق</div>
+</div>
+</div>
+</section>
+
+</div>
+
+<div style="display:flex;flex-direction:column;gap:36px">
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Bottom sheet</h2>
+<div dir="rtl" style="background:#FFFFFF;border-radius:28px 28px 20px 20px;padding:10px 20px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 16px 40px -12px rgba(23,56,74,.28)">
+<span style="width:40px;height:4px;border-radius:2px;background:#C3D1DA;align-self:center"></span>
+<div>
+<div style="font-size:20px;line-height:30px;font-weight:600">محطة الصعود</div>
+<div style="font-size:13px;line-height:20px;color:#58707F">خط الزرقا</div>
+</div>
+<div style="height:64px;border-radius:16px;background:#F0F5F8"></div>
+<button type="button" style="height:54px;border-radius:16px;background:#00658D;color:#FFFFFF;font-size:16px;font-weight:600">تأكيد</button>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Every choice, detail and confirmation is a sheet: grabber, one-line title, content, at most one primary action. Swipe down always cancels.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Dialog · destructive only</h2>
+<div dir="rtl" style="background:#FFFFFF;border-radius:24px;padding:22px 20px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 16px 40px -12px rgba(23,56,74,.28)">
+<div style="font-size:17px;line-height:26px;font-weight:600">تسجيل الخروج؟</div>
+<div style="font-size:14px;line-height:22px;color:#476273">ستبقى بطاقتك محفوظة على هذا الهاتف حتى تسجّل الدخول بحساب آخر.</div>
+<div style="display:flex;justify-content:flex-end;gap:4px;padding-top:6px">
+<button type="button" style="height:44px;padding:0 14px;color:#476273;font-size:15px;font-weight:500">إلغاء</button>
+<button type="button" style="height:44px;padding:0 14px;color:#B3261E;font-size:15px;font-weight:600">خروج</button>
+</div>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Skeleton</h2>
+<div style="background:#FFFFFF;border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div style="height:12px;width:38%;border-radius:6px;background:#E4ECF1;align-self:flex-end"></div>
+<div style="height:20px;width:64%;border-radius:8px;background:#DCE6EC;align-self:flex-end"></div>
+<div style="height:48px;border-radius:14px;background:#E4ECF1"></div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Same shape as the loaded card, a slow 1.2 s shimmer, shown only when nothing is cached.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Empty state · inline error</h2>
+<div dir="rtl" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 16px;text-align:center">
+<span style="width:52px;height:52px;border-radius:18px;background:#E4ECF1;color:#476273;display:flex;align-items:center;justify-content:center;margin-bottom:6px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg></span>
+<div style="font-size:17px;line-height:26px;font-weight:600">لا توجد تنبيهات بعد</div>
+<div style="font-size:14px;line-height:22px;color:#476273">ستظهر هنا حركة الباص وحالة اشتراكك.</div>
+</div>
+<div dir="rtl" style="background:#FFFFFF;border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B3261E" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 2.5 20h19z"></path><path d="M12 10v4M12 17h.01"></path></svg>
+<span style="flex:1;font-size:14px;line-height:22px">تعذّر تحميل مواعيد الغد</span>
+<button type="button" style="height:44px;color:#00658D;font-size:14px;font-weight:600">إعادة المحاولة</button>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Empty: one neutral glyph, one line of title, one of help, at most one action. Errors live inside the section that failed.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:#476273">Tab bar</h2>
+<div dir="rtl" style="border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(23,56,74,.05)">
+<div aria-hidden="true" data-tabbar="1" style="height:84px;flex:none;padding:10px 16px;display:flex"><div style="flex:1;border-radius:32px;background:#FFFFFF;box-shadow:0 12px 32px -10px rgba(23,56,74,.32), inset 0 0 0 1px #DCE6EC;display:flex;align-items:center;padding:0 8px">
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:52px;color:#17384A;font-size:11px;line-height:16px;font-weight:600">
+<span style="height:32px;display:flex;align-items:center"><svg width="22" height="22" stroke-width="2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></span>
+<span>الرئيسية</span>
+</span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:52px;color:#58707F;font-size:11px;line-height:16px;font-weight:400">
+<span style="height:32px;display:flex;align-items:center"><svg width="22" height="22" stroke-width="1.75" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path><path d="M14 5v2M14 11v2M14 17v2"></path></svg></span>
+<span>اشتراكي</span>
+</span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:52px;color:#17384A;font-size:11px;line-height:16px;font-weight:500">
+<span style="width:52px;height:32px;border-radius:12px;background:#17384A;color:#FFFFFF;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" stroke-width="1.75" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"></path></svg></span>
+<span>بطاقتي</span>
+</span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:52px;color:#58707F;font-size:11px;line-height:16px;font-weight:400">
+<span style="height:32px;display:flex;align-items:center"><svg width="22" height="22" stroke-width="1.75" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></span>
+<span>حسابي</span>
+</span>
+</div>
+</div>
+</div>
+<p style="margin:0;font-size:12px;line-height:18px;color:#58707F">Four tabs in a floating pill, solid white. On scroll the labels fold away and the pill shrinks, but every tab stays one tap away. The card is the one filled item. Alerts live behind the bell on Home.</p>
+</section>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":1760}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

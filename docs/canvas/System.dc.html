@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basak design system · Tokens</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="width:1200px;height:1780px;background:#FFFFFF;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;padding:64px;display:flex;flex-direction:column;gap:44px">
+
+<header style="display:flex;align-items:flex-end;justify-content:space-between;gap:40px;padding-bottom:28px;border-bottom:1px solid #DCE6EC">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;line-height:20px;font-weight:500;color:#00658D;letter-spacing:.08em;text-transform:uppercase">Basak · Student app · 2026</div>
+<h1 style="margin:0;font-size:44px;line-height:54px;font-weight:600">The Route — tokens</h1>
+</div>
+<p style="margin:0;max-width:440px;font-size:15px;line-height:24px;color:#476273">Basak's own teal and petrol ink, carried over from today's app and its icon. Tone separates surfaces, colour is reserved for meaning, and one route-rail motif carries the pass, the stations and progress.</p>
+</header>
+
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:56px;flex:1">
+
+<div style="display:flex;flex-direction:column;gap:40px">
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Colour · surfaces and ink</h2>
+<div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:14px">
+<sc-for list="{{neutrals}}" as="c" hint-placeholder-count="8">
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="height:60px;border-radius:14px;background:{{c.hex}};box-shadow:inset 0 0 0 1px #DCE6EC"></div>
+<div style="font-size:13px;line-height:20px;font-weight:600">{{c.name}}</div>
+<div style="font-size:12px;line-height:16px;color:#476273">{{c.hex}}</div>
+<div style="font-size:12px;line-height:17px;color:#58707F">{{c.use}}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Colour · brand and status</h2>
+<div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:14px">
+<sc-for list="{{accents}}" as="c" hint-placeholder-count="8">
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="height:60px;border-radius:14px;background:{{c.hex}};box-shadow:inset 0 0 0 1px #DCE6EC"></div>
+<div style="font-size:13px;line-height:20px;font-weight:600">{{c.name}}</div>
+<div style="font-size:12px;line-height:16px;color:#476273">{{c.hex}}</div>
+<div style="font-size:12px;line-height:17px;color:#58707F">{{c.use}}</div>
+</div>
+</sc-for>
+</div>
+<p style="margin:0;font-size:13px;line-height:21px;color:#476273">Ink, teal and the soft teal tint are today's app colours, unchanged. Teal means "tappable or selected". Green, amber and red only ever mean a subscription or receipt state, and always travel with an icon or a label.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Status language</h2>
+<div dir="rtl" style="display:flex;flex-wrap:wrap;gap:10px">
+<sc-for list="{{statuses}}" as="s" hint-placeholder-count="6">
+<div style="display:flex;align-items:center;gap:8px;border-radius:999px;padding:6px 14px 6px 12px;font-size:13px;line-height:20px;font-weight:500;background:{{s.bg}};color:{{s.fg}}">
+<span style="width:8px;height:8px;border-radius:4px;background:{{s.dot}}"></span>
+<span>{{s.label}}</span>
+</div>
+</sc-for>
+</div>
+<p style="margin:0;font-size:13px;line-height:21px;color:#476273">Six states, six fixed labels, used identically on home, the subscription tab, the card and the inbox.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Radius</h2>
+<div style="display:flex;gap:18px;align-items:flex-end">
+<sc-for list="{{radii}}" as="r" hint-placeholder-count="6">
+<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+<div style="width:68px;height:68px;background:#E5F3FA;border-radius:{{r.css}}"></div>
+<div style="font-size:13px;line-height:18px;font-weight:600">{{r.v}}</div>
+<div style="font-size:12px;line-height:16px;color:#58707F">{{r.use}}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Elevation</h2>
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px;background:#F0F5F8;border-radius:20px;padding:22px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="height:64px;border-radius:16px;background:#E4ECF1"></div>
+<div style="font-size:13px;line-height:18px;font-weight:600">0 · Sunken</div>
+<div style="font-size:12px;line-height:17px;color:#58707F">Inputs, tracks. Tone only.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="height:64px;border-radius:16px;background:#FFFFFF;box-shadow:0 1px 2px rgba(23,56,74,.05)"></div>
+<div style="font-size:13px;line-height:18px;font-weight:600">1 · Card</div>
+<div style="font-size:12px;line-height:17px;color:#58707F">White on ground, no border.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="height:64px;border-radius:16px;background:#FFFFFF;box-shadow:0 16px 40px -12px rgba(23,56,74,.28)"></div>
+<div style="font-size:13px;line-height:18px;font-weight:600">2 · Floating</div>
+<div style="font-size:12px;line-height:17px;color:#58707F">Sheets, toasts only.</div>
+</div>
+</div>
+</section>
+
+</div>
+
+<div style="display:flex;flex-direction:column;gap:40px">
+
+<section style="display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Type · Readex Pro, Arabic first</h2>
+<div style="display:flex;flex-direction:column">
+<sc-for list="{{type}}" as="t" hint-placeholder-count="7">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:20px;padding:12px 0;border-bottom:1px solid #DCE6EC">
+<div style="display:flex;flex-direction:column;gap:2px;flex:none;width:170px">
+<div style="font-size:13px;line-height:18px;font-weight:600">{{t.name}}</div>
+<div style="font-size:12px;line-height:16px;color:#58707F">{{t.spec}}</div>
+</div>
+<div dir="rtl" style="flex:1;text-align:right;font-size:{{t.size}};line-height:{{t.lh}};font-weight:{{t.w}};color:{{t.color}}">{{t.sample}}</div>
+</div>
+</sc-for>
+</div>
+<p style="margin:0;font-size:13px;line-height:21px;color:#476273">Line heights stay generous for Arabic marks. Western digits everywhere (prices, times, phones, codes) so mixed strings never switch numeral systems. Titles are capped at one line: a station or period is the headline, a route never is.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Spacing · 4-point scale</h2>
+<div style="display:flex;gap:16px;align-items:flex-end">
+<sc-for list="{{space}}" as="s" hint-placeholder-count="8">
+<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+<div style="width:{{s.px}};height:{{s.px}};background:#00658D;border-radius:3px"></div>
+<div style="font-size:12px;line-height:16px;font-weight:600">{{s.v}}</div>
+</div>
+</sc-for>
+</div>
+<p style="margin:0;font-size:13px;line-height:21px;color:#476273">Screen gutter 20. Card padding 18–20. 16 between cards, 28 between sections. Touch targets 44 minimum, primary buttons 54.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">The route rail</h2>
+<div dir="rtl" style="background:#17384A;color:#FFFFFF;border-radius:20px;padding:20px;display:grid;grid-template-columns:10px 1fr;column-gap:14px">
+<div style="display:flex;flex-direction:column;align-items:center">
+<span style="height:8px"></span>
+<span style="width:10px;height:10px;border-radius:5px;border:2px solid #A8D8F0;flex:none"></span>
+<span style="width:2px;flex:1;background:#34596D"></span>
+</div>
+<div style="padding-bottom:12px">
+<div style="font-size:17px;line-height:26px;font-weight:600">كوبري السرو</div>
+<div style="font-size:12px;line-height:18px;color:#A9BCC8">محطة الصعود</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:center">
+<span style="width:2px;height:8px;background:#34596D"></span>
+<span style="width:10px;height:10px;border-radius:5px;background:#A8D8F0;flex:none"></span>
+</div>
+<div>
+<div style="font-size:17px;line-height:26px;font-weight:600">المنصورة الجديدة</div>
+<div style="font-size:12px;line-height:18px;color:#A9BCC8">الجامعة</div>
+</div>
+</div>
+<p style="margin:0;font-size:13px;line-height:21px;color:#476273">Start stop is a ring, destination is a filled dot. Stacked vertically so two long Arabic names never fight for one line. Same rail in the pass, the station sheet and the review.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:17px;line-height:26px;font-weight:600">Icons · Lucide, already bundled</h2>
+<div style="display:flex;gap:10px;flex-wrap:wrap;color:#17384A">
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path><path d="M14 5v2M14 11v2M14 17v2"></path></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"></path></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3"></rect><path d="M4 11h16M8 18v3M16 18v3M8 15h.01M16 15h.01"></path></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path><path d="M9 8h6M9 12h6"></path></svg></span>
+<span style="width:48px;height:48px;border-radius:14px;background:#F0F5F8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg></span>
+</div>
+<p style="margin:0;font-size:13px;line-height:21px;color:#476273">One weight (1.75), one size per context: 22 in navigation, 20 in rows, 14–16 inline. No icon bubbles on every row, no coloured icons for decoration. Directional icons mirror with the layout.</p>
+</section>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":1780}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+neutrals: [
+{ name: 'Ground', hex: '#F0F5F8', use: 'Every screen background' },
+{ name: 'Surface', hex: '#FFFFFF', use: 'Cards, sheets, nav' },
+{ name: 'Sunken', hex: '#E4ECF1', use: 'Inputs, tracks, quiet buttons' },
+{ name: 'Hairline', hex: '#DCE6EC', use: 'Dividers inside a card' },
+{ name: 'Ink', hex: '#17384A', use: 'Text, the pass, the card tab' },
+{ name: 'Ink 2', hex: '#476273', use: 'Secondary text' },
+{ name: 'Ink 3', hex: '#58707F', use: 'Captions, inactive tabs' },
+{ name: 'Ink raised', hex: '#214B61', use: 'Chips on the pass' }
+],
+accents: [
+{ name: 'Teal', hex: '#00658D', use: 'Primary button, selection, links' },
+{ name: 'Teal tint', hex: '#E5F3FA', use: 'Selected fill, tonal button' },
+{ name: 'Sky', hex: '#A8D8F0', use: 'Accent on ink' },
+{ name: 'Mint', hex: '#5BD4A0', use: 'Active dot on ink' },
+{ name: 'Success', hex: '#0A6B4A', use: 'On tint #E3F4EC' },
+{ name: 'Warning', hex: '#8A5300', use: 'On tint #FCF1DC' },
+{ name: 'Danger', hex: '#B3261E', use: 'On tint #FCEBE9' },
+{ name: 'Neutral', hex: '#476273', use: 'On tint #E4ECF1' }
+],
+statuses: [
+{ label: 'نشط', bg: '#E3F4EC', fg: '#0A6B4A', dot: '#0A6B4A' },
+{ label: 'قيد المراجعة', bg: '#FCF1DC', fg: '#8A5300', dot: '#8A5300' },
+{ label: 'بانتظار الدفع', bg: '#E5F3FA', fg: '#00658D', dot: '#00658D' },
+{ label: 'إيصال مرفوض', bg: '#FCEBE9', fg: '#B3261E', dot: '#B3261E' },
+{ label: 'يبدأ قريباً', bg: '#E5F3FA', fg: '#00658D', dot: '#00658D' },
+{ label: 'منتهٍ', bg: '#E4ECF1', fg: '#476273', dot: '#476273' }
+],
+radii: [
+{ v: '10', css: '10px', use: 'Tags' },
+{ v: '14', css: '14px', use: 'Small buttons' },
+{ v: '16', css: '16px', use: 'Buttons, inputs' },
+{ v: '20', css: '20px', use: 'Cards' },
+{ v: '28', css: '28px', use: 'Pass, sheets' },
+{ v: 'Full', css: '34px', use: 'Chips, avatars' }
+],
+type: [
+{ name: 'Display', spec: '28 / 38 · 600', size: '28px', lh: '38px', w: 600, color: '#17384A', sample: 'اشتراكي' },
+{ name: 'Title', spec: '22 / 32 · 600', size: '22px', lh: '32px', w: 600, color: '#17384A', sample: 'هل ستركب غداً؟' },
+{ name: 'Headline', spec: '17 / 26 · 600', size: '17px', lh: '26px', w: 600, color: '#17384A', sample: 'محطة الصعود' },
+{ name: 'Body', spec: '15 / 24 · 400', size: '15px', lh: '24px', w: 400, color: '#17384A', sample: 'تراجع الشركة الإيصال وسيصلك إشعار.' },
+{ name: 'Label', spec: '13 / 20 · 500', size: '13px', lh: '20px', w: 500, color: '#476273', sample: 'رحلة الغد · الاثنين 12 أكتوبر' },
+{ name: 'Caption', spec: '12 / 18 · 400', size: '12px', lh: '18px', w: 400, color: '#58707F', sample: 'آخر تحديث 8:15 ص' },
+{ name: 'Amount', spec: '34 / 44 · 600', size: '34px', lh: '44px', w: 600, color: '#17384A', sample: '4,500 ج.م' }
+],
+space: [
+{ v: '4', px: '4px' }, { v: '8', px: '8px' }, { v: '12', px: '12px' }, { v: '16', px: '16px' },
+{ v: '20', px: '20px' }, { v: '24', px: '24px' }, { v: '32', px: '32px' }, { v: '40', px: '40px' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

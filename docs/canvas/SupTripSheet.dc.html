@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>المشرف · اختيار الرحلة</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}a:hover{color:#004F6E}
+input,textarea{font:inherit;color:inherit}
+</style>
+</helmet>
+<div dir="rtl" style="width:390px;height:844px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;position:relative;overflow:hidden">
+<div aria-hidden="true" style="padding:60px 20px 0;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:28px;line-height:38px;font-weight:600">الرحلات</div>
+<div style="height:170px;border-radius:24px;background:#FFFFFF"></div><div style="height:300px;border-radius:20px;background:#FFFFFF"></div>
+</div>
+<div aria-hidden="true" style="position:absolute;inset:0;background:rgba(23,56,74,.48)"></div>
+
+<section role="dialog" aria-label="اختيار الرحلة" style="position:absolute;left:0;right:0;bottom:0;background:#FFFFFF;border-radius:28px 28px 0 0;padding:10px 20px 34px;display:flex;flex-direction:column;gap:16px;">
+<span aria-hidden="true" style="width:40px;height:4px;border-radius:2px;background:#C3D1DA;align-self:center"></span>
+<h1 style="margin:0;padding-top:4px;font-size:22px;line-height:32px;font-weight:600">الرحلة</h1>
+<div role="tablist" aria-label="الاتجاه" style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:4px;background:#E4ECF1;border-radius:14px;padding:4px"><button type="button" role="tab" aria-selected="true" style="height:40px;border-radius:10px;font-size:14px;font-weight:600;background:#FFFFFF;color:#17384A;box-shadow:0 1px 2px rgba(23,56,74,.05)">الذهاب · 5</button><button type="button" role="tab" aria-selected="false" style="height:40px;border-radius:10px;font-size:14px;font-weight:400;background:transparent;color:#476273;">العودة · 6</button></div>
+<div role="radiogroup" aria-label="رحلات الذهاب اليوم" style="display:flex;flex-direction:column;gap:6px">
+<button type="button" role="radio" aria-checked="false" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;border-radius:14px;text-align:right;background:#F0F5F8;;color:#58707F">
+<span style="width:76px;font-size:16px;line-height:26px;font-weight:600;flex:none">6:15 ص</span>
+<span style="flex:1;min-width:0;font-size:13px;line-height:20px;color:#476273">مضى موعدها</span>
+<span style="font-size:13px;line-height:20px;color:#476273;flex:none">12 طالباً</span>
+<span style="width:22px;height:22px;border-radius:11px;box-shadow:inset 0 0 0 2px #9DB0BB;flex:none"></span>
+</button>
+<button type="button" role="radio" aria-checked="true" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;border-radius:14px;text-align:right;background:#E5F3FA;box-shadow:inset 0 0 0 2px #00658D;color:#17384A">
+<span style="width:76px;font-size:16px;line-height:26px;font-weight:600;flex:none">7:00 ص</span>
+<span style="flex:1;min-width:0;font-size:13px;line-height:20px;color:#476273">الآن</span>
+<span style="font-size:13px;line-height:20px;color:#476273;flex:none">38 طالباً</span>
+<span style="width:22px;height:22px;border-radius:11px;background:#00658D;color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+</button>
+<button type="button" role="radio" aria-checked="false" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;border-radius:14px;text-align:right;background:#F0F5F8;;color:#17384A">
+<span style="width:76px;font-size:16px;line-height:26px;font-weight:600;flex:none">7:45 ص</span>
+<span style="flex:1;min-width:0;font-size:13px;line-height:20px;color:#476273">بعد 27 دقيقة</span>
+<span style="font-size:13px;line-height:20px;color:#476273;flex:none">27 طالباً</span>
+<span style="width:22px;height:22px;border-radius:11px;box-shadow:inset 0 0 0 2px #9DB0BB;flex:none"></span>
+</button>
+<button type="button" role="radio" aria-checked="false" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;border-radius:14px;text-align:right;background:#F0F5F8;;color:#17384A">
+<span style="width:76px;font-size:16px;line-height:26px;font-weight:600;flex:none">8:30 ص</span>
+<span style="flex:1;min-width:0;font-size:13px;line-height:20px;color:#476273"></span>
+<span style="font-size:13px;line-height:20px;color:#476273;flex:none">21 طالباً</span>
+<span style="width:22px;height:22px;border-radius:11px;box-shadow:inset 0 0 0 2px #9DB0BB;flex:none"></span>
+</button>
+<button type="button" role="radio" aria-checked="false" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;border-radius:14px;text-align:right;background:#F0F5F8;;color:#17384A">
+<span style="width:76px;font-size:16px;line-height:26px;font-weight:600;flex:none">9:15 ص</span>
+<span style="flex:1;min-width:0;font-size:13px;line-height:20px;color:#476273"></span>
+<span style="font-size:13px;line-height:20px;color:#476273;flex:none">9 طلاب</span>
+<span style="width:22px;height:22px;border-radius:11px;box-shadow:inset 0 0 0 2px #9DB0BB;flex:none"></span>
+</button>
+</div>
+<a href="SupTrip.dc.html" style="height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px;padding:0 18px;background:#00658D;color:#FFFFFF;font-weight:600;"><span>عرض الرحلة</span></a>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
