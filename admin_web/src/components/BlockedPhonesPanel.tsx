@@ -1,6 +1,6 @@
 import React from 'react';
 import { Ban } from 'lucide-react';
-import { useBlockActions, type BlockedPhone } from '../lib/blockedPhones';
+import { blockedBy, useBlockActions, type BlockedPhone } from '../lib/blockedPhones';
 import { useGuard } from '../lib/guard';
 import { notifyDone, notifyError } from '../lib/toasts';
 
@@ -11,7 +11,7 @@ import { notifyDone, notifyError } from '../lib/toasts';
  */
 export const BlockedPhonesPanel: React.FC<{ list: BlockedPhone[] }> = ({ list }) => {
   const guard = useGuard();
-  const { unblock } = useBlockActions();
+  const { unblock } = useBlockActions(null);
   if (list.length === 0) return null;
 
   const onUnblock = (entry: BlockedPhone) => guard(`unblock:${entry.phone}`, async () => {
@@ -41,7 +41,7 @@ export const BlockedPhonesPanel: React.FC<{ list: BlockedPhone[] }> = ({ list })
                 {!entry.has_account && <span className="mr-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">الحساب محذوف</span>}
               </p>
               <p className="text-xs text-slate-500">
-                حُظر في {new Date(entry.blocked_at).toLocaleDateString('ar-EG')}{entry.reason ? ` • ${entry.reason}` : ''}
+                حظره {blockedBy(entry)} في {new Date(entry.blocked_at).toLocaleDateString('ar-EG')}{entry.reason ? ` • ${entry.reason}` : ''}
               </p>
             </div>
             <button onClick={() => void onUnblock(entry)}

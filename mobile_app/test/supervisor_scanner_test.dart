@@ -65,13 +65,15 @@ ScannedStudentDetails _student(String name, {String? status = 'active', bool cac
 
 const _vote = RideVote(isRiding: true, isReturning: true, departureTime: '07:00:00', returnTime: '15:30:00');
 
-CheckInResult _result(CheckInOutcome outcome, {ScannedStudentDetails? student, DateTime? at}) => CheckInResult(
+CheckInResult _result(CheckInOutcome outcome, {ScannedStudentDetails? student, DateTime? at, bool blocked = false}) =>
+    CheckInResult(
       outcome: outcome,
       direction: 'departure',
       checkedInAt: at,
       rideVote: _vote,
       hasRideVote: true,
       student: student,
+      blocked: blocked,
     );
 
 void main() {
@@ -187,6 +189,34 @@ void main() {
     expect(countPill(tester), '0', reason: 'nothing was boarded');
     expect(find.byKey(const Key('scan-last')), findsNothing);
   }
+
+  testWidgets('a blocked student: boarded as anyone, their details shown, and plainly said to be blocked', (tester) async {
+    repo.answer = _result(CheckInOutcome.checkedIn,
+        student: _student('سارة أحمد محمود'), at: DateTime(2026, 10, 11, 7, 23), blocked: true);
+    await tester.pumpWidget(app(tab));
+    await scan(tester);
+    expect(find.byKey(const Key('scan-blocked')), findsOneWidget);
+    expect(find.text(ScanResultSheet.blockedTitle), findsOneWidget);
+    expect(find.text('تم تسجيل الصعود'), findsOneWidget, reason: 'not refused');
+    expect(find.text('سارة أحمد محمود'), findsOneWidget);
+    expect(find.text('محظور من إدارة باصك'), findsOneWidget);
+    expect(find.text('كوبري السرو'), findsOneWidget, reason: 'the rest of the details as for anyone');
+    expect(haptics, ['HapticFeedbackType.mediumImpact', 'HapticFeedbackType.heavyImpact']);
+
+    // It waits for the supervisor instead of closing itself.
+    expect(find.text('يعود للمسح تلقائياً'), findsNothing);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text(ScanResultSheet.blockedTitle), findsOneWidget);
+    await tester.tap(find.text(ScanResultSheet.next));
+    await tester.pumpAndSettle();
+    expect(find.text(ScanResultSheet.blockedTitle), findsNothing);
+  });
+
+  test('the server says whether the scanned student is blocked; older servers say nothing', () {
+    expect(CheckInResult.fromJson({'result': 'checked_in', 'blocked': true}).blocked, isTrue);
+    expect(CheckInResult.fromJson({'result': 'checked_in', 'blocked': false}).blocked, isFalse);
+    expect(CheckInResult.fromJson({'result': 'checked_in'}).blocked, isFalse);
+  });
 
   testWidgets('already on board: a notice, not an error', (tester) async {
     repo.answer = _result(CheckInOutcome.alreadyCheckedIn,

@@ -135,6 +135,8 @@ class ScannerViewState extends ConsumerState<ScannerView> {
       case CheckInOutcome.offlineLookup:
         HapticFeedback.heavyImpact();
     }
+    // A blocked student is felt as well as seen, whatever the outcome.
+    if (result.blocked) HapticFeedback.heavyImpact();
     if (!mounted) return;
     setState(() {
       _checking = false;
