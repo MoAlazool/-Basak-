@@ -377,6 +377,19 @@ class AuthRepository {
     }
   }
 
+  /// The platform's WhatsApp number for the reset code (country code first,
+  /// digits only), or null when there is none or it cannot be read: the button
+  /// that opens the chat is then not shown. No sign-in needed.
+  Future<String?> supportWhatsApp() async {
+    try {
+      final number = await _client.rpc(SupabaseRpcs.getSupportWhatsApp).timeout(const Duration(seconds: 10));
+      final digits = (number as String?)?.trim() ?? '';
+      return RegExp(r'^[1-9][0-9]{7,14}$').hasMatch(digits) ? digits : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Forgot password, step 1 (no sign-in): asks the student's bus company to
   /// verify them. The answer is the same whether or not the number exists.
   Future<void> requestPasswordReset(String phone) async {

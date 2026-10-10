@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Save, Smartphone } from 'lucide-react';
+import { MessageCircle, Save, Smartphone } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Topbar } from '../components/Topbar';
 import { SkeletonForm } from '../components/Skeleton';
@@ -11,8 +11,10 @@ import {
   draftChanged, draftFromRow, draftProblem, PLATFORMS, platformName, toSave, WHATS_NEW_MAX,
   type AppVersionDraft, type AppVersionRow, type Platform,
 } from '../lib/appVersions';
+import { readableWhatsApp, whatsappDigits, whatsappLink } from '../lib/supportWhatsApp';
 
 const versionsKey = keys.platform('appVersions');
+const whatsappKey = keys.platform('supportWhatsApp');
 const COLUMNS = 'platform, min_version, latest_version, whats_new, store_url, updated_at';
 
 /**
@@ -27,7 +29,7 @@ export const AppVersionsPage: React.FC = () => {
   const rows = page.data ?? [];
   return (
     <div className="space-y-6">
-      <Topbar title="إصدارات التطبيق" subtitle="متى يطلب التطبيق من المستخدم التحديث، وما الذي يقوله له." />
+      <Topbar title="إعدادات التطبيق" subtitle="متى يطلب التطبيق من المستخدم التحديث، وما الذي يقوله له، ورقم واتساب الدعم." />
       {page.error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر التحميل: {page.error}</div>}
       <div className="rounded-2xl border border-slate-100 bg-white p-5 text-xs leading-6 text-slate-600 shadow-sm">
         <p><span className="font-bold text-slate-700">أقل إصدار مسموح:</span> من يستخدم إصداراً أقدم منه يرى شاشة «حدّث التطبيق للمتابعة» ولا يستطيع المتابعة قبل التحديث. تبقى بطاقة الطالب متاحة له.</p>
@@ -41,6 +43,7 @@ export const AppVersionsPage: React.FC = () => {
           ))}
         </div>
       )}
+      <SupportWhatsAppCard />
     </div>
   );
 };
@@ -121,6 +124,64 @@ const PlatformCard: React.FC<{ platform: Platform; row: AppVersionRow | undefine
           <Save className="h-4 w-4" /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
       </div>
+    </div>
+  );
+};
+
+/**
+ * The platform's WhatsApp number: students who forgot their password open a
+ * chat with it from the app's "enter the code" screen, to be given the code.
+ * Empty hides that button.
+ */
+const SupportWhatsAppCard: React.FC = () => {
+  const client = useQueryClient();
+  const guard = useGuard();
+  const page = usePageData(whatsappKey, () => unwrap<string | null>(supabase.rpc('get_support_whatsapp')), { staleTime: STALE.reference });
+  const saved = page.data ?? '';
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  // The editable copy follows what is saved, whenever that changes.
+  useEffect(() => { setDraft(saved ? readableWhatsApp(saved) : ''); }, [saved]);
+
+  const digits = whatsappDigits(draft);
+  const changed = digits !== null && digits !== saved;
+
+  const save = () => guard('save', async () => {
+    if (digits === null) return;
+    setSaving(true);
+    const { data, error } = await supabase.rpc('save_support_whatsapp', { p_phone: digits });
+    setSaving(false);
+    if (error) { notifyError('تعذر حفظ رقم واتساب', error.message); return; }
+    client.setQueryData(whatsappKey, (data as string | null) ?? null);
+    notifyDone(data ? 'تم حفظ رقم واتساب الدعم' : 'تم إخفاء زر واتساب من التطبيق');
+  });
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+      <h2 className="flex items-center gap-2 text-base font-bold text-slate-700">
+        <MessageCircle className="h-5 w-5 text-emerald-600" /> واتساب استعادة كلمة المرور
+      </h2>
+      <p className="mt-1 text-xs leading-6 text-slate-500">
+        في شاشة «أدخل الرمز» يظهر للطالب زر «اطلب الرمز على واتساب» يفتح محادثة مع هذا الرقم ومعها رقم هاتفه. اتركه فارغاً لإخفاء الزر.
+      </p>
+      {page.error && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">تعذر التحميل: {page.error}</p>}
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <label className="min-w-[220px] flex-1 text-xs font-semibold text-slate-600">
+          رقم واتساب
+          <input dir="ltr" type="tel" value={draft} disabled={page.loading} onChange={(e) => setDraft(e.target.value)}
+            placeholder="01012345678" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-left font-mono text-sm" />
+        </label>
+        {saved && !changed && (
+          <a href={whatsappLink(saved)} target="_blank" rel="noreferrer" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600">
+            جرّب المحادثة
+          </a>
+        )}
+        <button disabled={saving || !changed} onClick={() => void save()}
+          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-50">
+          <Save className="h-4 w-4" /> {saving ? 'جاري الحفظ...' : 'حفظ'}
+        </button>
+      </div>
+      {digits === null && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">اكتب رقم واتساب صحيحاً، مثل 01012345678.</p>}
     </div>
   );
 };
