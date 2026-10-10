@@ -11,20 +11,16 @@ class NavItem {
   final IconData activeIcon;
   final String label;
 
-  /// The one filled tab: its icon sits in an ink pill (the student's card,
-  /// the supervisor's scanner).
-  final bool filled;
-
   const NavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
-    this.filled = false,
   });
 }
 
 /// The floating tab bar of both shells: a solid white pill, 16 from the edges.
-/// When [collapsed] (the page was scrolled down) the labels fold away and the
+/// An ink pill sits behind the selected tab's icon and slides to whichever tab
+/// is chosen. When [collapsed] (the page was scrolled down) the labels fold away and the
 /// pill drops from 64 to 52; every tab stays one tap away.
 class FloatingGlassNavBar extends StatelessWidget {
   final int currentIndex;
@@ -81,7 +77,6 @@ class FloatingGlassNavBar extends StatelessWidget {
           icon: LucideIcons.qrCode,
           activeIcon: LucideIcons.qrCode,
           label: 'بطاقتي',
-          filled: true,
         ),
         NavItem(
           icon: LucideIcons.user,
@@ -94,7 +89,7 @@ class FloatingGlassNavBar extends StatelessWidget {
   static List<NavItem> get supervisorNavItems => const [
         NavItem(icon: LucideIcons.home, activeIcon: LucideIcons.home, label: 'الرئيسية'),
         NavItem(icon: LucideIcons.route, activeIcon: LucideIcons.route, label: 'الرحلات'),
-        NavItem(icon: LucideIcons.scanLine, activeIcon: LucideIcons.scanLine, label: 'مسح', filled: true),
+        NavItem(icon: LucideIcons.scanLine, activeIcon: LucideIcons.scanLine, label: 'مسح'),
         NavItem(icon: LucideIcons.user, activeIcon: LucideIcons.user, label: 'حسابي'),
       ];
 
@@ -125,10 +120,36 @@ class FloatingGlassNavBar extends StatelessWidget {
               border: Border.all(color: colors.hairline),
               boxShadow: BasakShadow.floating,
             ),
-            child: Row(
-              children: [
-                for (var index = 0; index < items.length; index++) Expanded(child: _tab(context, index, t)),
-              ],
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final slot = box.maxWidth / items.length;
+                // The icons sit at the top of a column that is centred in the
+                // bar; the label under them is what folds away.
+                final label = (1 - t) * (BasakSpace.s4 + MediaQuery.textScalerOf(context).scale(_labelLine));
+                final top = (box.maxHeight - _iconBox - label) / 2;
+                return Stack(
+                  children: [
+                    AnimatedPositionedDirectional(
+                      duration: animationDuration,
+                      curve: BasakMotion.pageCurve,
+                      start: slot * currentIndex + (slot - _indicatorWidth) / 2,
+                      top: top,
+                      width: _indicatorWidth,
+                      height: _iconBox,
+                      child: DecoratedBox(
+                        key: const Key('nav-indicator'),
+                        decoration:
+                            BoxDecoration(color: colors.ink, borderRadius: BasakRadius.all(BasakRadius.tile)),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        for (var index = 0; index < items.length; index++) Expanded(child: _tab(context, index, t)),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -136,27 +157,26 @@ class FloatingGlassNavBar extends StatelessWidget {
     );
   }
 
+  static const double _indicatorWidth = 52;
+  static const double _iconBox = 32;
+  static const double _labelLine = 16;
+
   Widget _tab(BuildContext context, int index, double t) {
     final colors = context.colors;
     final item = items[index];
     final isSelected = index == currentIndex;
-    final strong = isSelected || item.filled;
 
-    final icon = item.filled
-        ? Container(
-            width: 52,
-            height: 32,
-            decoration: BoxDecoration(color: colors.ink, borderRadius: BasakRadius.all(BasakRadius.tile)),
-            child: Icon(isSelected ? item.activeIcon : item.icon, size: 20, color: colors.onInk),
-          )
-        : SizedBox(
-            height: 32,
-            child: Icon(
-              isSelected ? item.activeIcon : item.icon,
-              size: 22,
-              color: isSelected ? colors.ink : colors.ink3,
-            ),
-          );
+    // White on the ink pill once it arrives; the tab it leaves fades back.
+    final icon = SizedBox(
+      height: _iconBox,
+      child: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: isSelected ? colors.onInk : colors.ink3),
+        duration: animationDuration,
+        curve: BasakMotion.pageCurve,
+        builder: (context, color, _) =>
+            Icon(isSelected ? item.activeIcon : item.icon, size: isSelected ? 20 : 22, color: color),
+      ),
+    );
 
     return BasakPressable(
       onTap: () => onTabSelected(index),
@@ -183,10 +203,8 @@ class FloatingGlassNavBar extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.text.tab.copyWith(
-                          color: strong ? colors.ink : colors.ink3,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : (item.filled ? FontWeight.w500 : FontWeight.w400),
+                          color: isSelected ? colors.ink : colors.ink3,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                         ),
                       ),
                     ),

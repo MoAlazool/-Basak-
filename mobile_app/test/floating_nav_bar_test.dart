@@ -150,6 +150,32 @@ void main() {
     }
   });
 
+  testWidgets('the ink pill sits behind the selected tab and slides to the one that is chosen',
+      (tester) async {
+    await tester.pumpWidget(_app());
+    final items = FloatingGlassNavBar.supervisorNavItems;
+    Rect pill() => tester.getRect(find.byKey(const Key('nav-indicator')));
+    double centre(int index) => tester.getCenter(find.byIcon(items[index].icon)).dx;
+
+    expect(pill().center.dx, moreOrLessEquals(centre(0), epsilon: .5));
+    expect(pill().size, const Size(52, 32));
+
+    await tester.tap(find.text(items[2].label));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 175));
+    // On its way: between the two tabs (RTL, so the third tab is to the left).
+    expect(pill().center.dx, lessThan(centre(0)));
+    expect(pill().center.dx, greaterThan(centre(2)));
+    await tester.pumpAndSettle();
+    expect(pill().center.dx, moreOrLessEquals(centre(2), epsilon: .5));
+    expect(pill().center.dy, moreOrLessEquals(tester.getCenter(find.byIcon(items[2].icon)).dy, epsilon: .5));
+
+    // Collapsed, it stays behind the same icon.
+    await tester.drag(find.byKey(const Key('body')), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(pill().center, within(distance: .5, from: tester.getCenter(find.byIcon(items[2].icon))));
+  });
+
   testWidgets('horizontal scrolls and pages too short to scroll leave the bar alone',
       (tester) async {
     await tester.pumpWidget(_app());

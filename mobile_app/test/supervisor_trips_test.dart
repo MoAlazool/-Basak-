@@ -330,10 +330,9 @@ void main() {
   });
 
   group('the shell', () {
-    test('four tabs: الرئيسية · الرحلات · مسح (filled) · حسابي — الملخص is a page under حسابي', () {
+    test('four tabs: الرئيسية · الرحلات · مسح · حسابي — الملخص is a page under حسابي', () {
       final items = FloatingGlassNavBar.supervisorNavItems;
       expect(items.map((i) => i.label), ['الرئيسية', 'الرحلات', 'مسح', 'حسابي']);
-      expect(items.map((i) => i.filled), [false, false, true, false]);
       expect(SupervisorMainScreen.scanTab, 2);
     });
 
