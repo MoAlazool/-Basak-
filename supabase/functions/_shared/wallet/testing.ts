@@ -98,7 +98,7 @@ export function fakeImaging() {
     if (!name.startsWith('photo')) return Promise.reject(new Error('not a still image'));
     return Promise.resolve({
       png: (side: number) => Promise.resolve(text.encode(`png ${side} of ${name}`)),
-      jpeg: () => Promise.resolve(text.encode(`jpeg of ${name}`)),
+      strip: (colour: string) => Promise.resolve(text.encode(`strip ${colour} of ${name}`)),
     });
   };
   return { decoded: () => decoded, restore: () => { imaging.square = real; } };
