@@ -11,6 +11,7 @@ import { useGuard } from '../lib/guard';
 import { notifyDone, notifyError } from '../lib/toasts';
 import { SkeletonForm } from '../components/Skeleton';
 import { VoteSettingsCard } from '../components/VoteSettingsCard';
+import { CompanyIdentityCard } from '../components/CompanyIdentityCard';
 import { optionName, reasonText, type SaleRow } from '../lib/saleOptions';
 
 interface Term {
@@ -217,10 +218,11 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
   return (
     <div className="space-y-6">
       {companyId ? (
-        <Topbar title="إعدادات الشركة" subtitle={`مواعيد الفصول والاشتراكات وتأكيد الرحلة الخاصة بـ ${companyName}`} />
+        <Topbar title="إعدادات الشركة" subtitle={`هوية ${companyName} ومواعيد فصولها واشتراكاتها وتأكيد رحلتها`} />
       ) : (
         <Topbar title="الإعدادات الافتراضية" subtitle="ما تبدأ به كل شركة جديدة. تغييرها لا يمس الشركات القائمة." />
       )}
+      {companyId && <CompanyIdentityCard companyId={companyId} companyName={companyName} />}
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">تعذر التحميل: {error}</div>}
 
       {page.loading && <div className="space-y-6"><SkeletonForm fields={3} /><SkeletonForm fields={1} /><SkeletonForm fields={2} /></div>}
@@ -373,7 +375,7 @@ const SettingsView: React.FC<{ companyId: string | null; companyName: string }> 
               <h2 className="text-base font-bold text-slate-700">بيانات الشركة على الإيصال</h2>
               <p className="mt-1 text-xs text-slate-500">
                 تُطبع على إيصال الاشتراك (PDF) الذي يحمّله الطالب بعد اعتماد الدفع. كلها اختيارية؛ السجل التجاري والرقم الضريبي يظهران فقط إذا كتبتهما.
-                الشعار يُؤخذ من تصميم بطاقة المحفظة.
+                الشعار هو شعار «هوية الشركة» أعلى هذه الصفحة.
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500">هاتف الشركة

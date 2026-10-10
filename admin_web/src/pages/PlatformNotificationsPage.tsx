@@ -6,6 +6,7 @@ import { count } from '../components/StatsRow';
 import type { PlatformPush, StatusFilter } from '../lib/notifications';
 import { usePlatformNotificationActions, usePlatformNotificationHistory } from '../lib/notificationsData';
 import { usePlatformCompanies } from '../lib/reference';
+import { usePlatformBrands } from '../lib/overview';
 import { PlatformComposer } from '../components/notifications/PlatformComposer';
 import { History } from '../components/notifications/History';
 
@@ -67,6 +68,7 @@ export const PlatformNotificationsPage: React.FC = () => {
   const history = usePlatformNotificationHistory(filter, companyId);
   const actions = usePlatformNotificationActions();
   const companies = usePlatformCompanies().data ?? [];
+  const brands = usePlatformBrands();
 
   return (
     <div className="space-y-6">
@@ -74,7 +76,7 @@ export const PlatformNotificationsPage: React.FC = () => {
 
       <PushStatus push={history.push} loading={history.loading} />
       <PlatformComposer />
-      <History filter={filter} onFilter={setFilter} history={history} actions={actions}
+      <History filter={filter} onFilter={setFilter} history={history} actions={actions} brands={brands}
         filters={(
           <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} aria-label="الشركة"
             className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 focus:border-blue-500 focus:outline-none">

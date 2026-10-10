@@ -43,7 +43,10 @@ CREATE FUNCTION rf.day(p_offset integer) RETURNS text LANGUAGE sql STABLE AS
 -- As postgres: what is stored, whatever the caller may read.
 CREATE FUNCTION rf.specialisation(p_name text) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER AS
   $$ SELECT specialisation FROM public.students WHERE id = rf.id(p_name) $$;
-CREATE FUNCTION rf.capacity(p_name text) RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER AS
+-- VOLATILE on purpose: a STABLE function reads with the snapshot of the statement
+-- that calls it, so in "set(...) = 50 AND rf.capacity(...) = 50" it would still see
+-- the value from before the set.
+CREATE FUNCTION rf.capacity(p_name text) RETURNS integer LANGUAGE sql VOLATILE SECURITY DEFINER AS
   $$ SELECT bus_capacity FROM public.lines WHERE id = rf.id(p_name) $$;
 CREATE FUNCTION rf.sub(p_name text) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS
   $$ SELECT id FROM public.subscriptions WHERE student_id = rf.id(p_name) ORDER BY created_at DESC LIMIT 1 $$;
@@ -292,10 +295,14 @@ BEGIN
   PERFORM rf.ok('C7 and reads both rows, with who saved it',
     (SELECT count(*) FROM public.app_versions) = 2
       AND (SELECT updated_by FROM public.app_versions WHERE platform = 'ios') = rf.id('AS'));
+  -- The saves first, then the read in its own statement: get_app_version is STABLE,
+  -- so read in the same statement it would not see what was just saved.
+  v := jsonb_build_object(
+    'ok', rf.code($q$SELECT public.save_app_version('android', '2.9.0', '2.10.0')$q$),
+    'refused', rf.code($q$SELECT public.save_app_version('android', '2.10.0', '2.9.0')$q$));
   PERFORM rf.ok('C8 versions compare by number: 2.9.0 may be the minimum of 2.10.0, not the other way round',
-    rf.code($q$SELECT public.save_app_version('android', '2.9.0', '2.10.0')$q$) IS NULL
-      AND rf.code($q$SELECT public.save_app_version('android', '2.10.0', '2.9.0')$q$) = '23514'
-      AND public.get_app_version('android')->>'min_version' = '2.9.0');
+    v->>'ok' IS NULL AND v->>'refused' = '23514'
+      AND public.get_app_version('android')->>'min_version' = '2.9.0', v::text);
   PERFORM rf.ok('C9 refused: a version that is not numbers and dots, a fourth line, a line over 120 characters, a link that is not https, an unknown platform',
     rf.code($q$SELECT public.save_app_version('android', 'v2', '2.0.0')$q$) = '23514'
       AND rf.code($q$SELECT public.save_app_version('android', '1.0.0', '2.0.0', ARRAY['a', 'b', 'c', 'd'])$q$) = '23514'

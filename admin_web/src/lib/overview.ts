@@ -1,10 +1,13 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { keys, queryClient, unwrap } from './query';
+import { withBranding, type CompanyBrand, type SavedBranding } from './branding';
 
 /** The numbers of one company, as computed by the database (company_overview). */
 export interface CompanyNumbers {
-  company: { id: string; name: string; status: 'active' | 'suspended' | 'archived'; created_at: string };
+  /** With the company's logo and emblem folders (lib/branding.ts); absent from a database that does not know them yet. */
+  company: { id: string; name: string; status: 'active' | 'suspended' | 'archived'; created_at: string } & CompanyBrand;
   baseline: string | null;
   members: number;
   active_subscriptions: number;
@@ -59,6 +62,36 @@ export function usePlatformOverview() {
     queryFn: () => unwrap<PlatformNumbers>(supabase.rpc('platform_overview')),
   });
   return { data: query.data ?? null, loading: query.isPending, error: query.error?.message ?? '', refresh: () => query.refetch() };
+}
+
+/**
+ * A company's marks, from the overview the workspace frame already reads: the
+ * sidebar, the company bar and the identity card ask for nothing of their own.
+ */
+export const useCompanyBrand = (companyId: string): CompanyBrand | null => useCompanyOverview(companyId).data?.company ?? null;
+
+/**
+ * Every company's marks by id, for the platform's lists. Read from the platform
+ * overview when it is already known (it is the platform's first page), asked
+ * for once when it is not, and never re-read just for the pictures.
+ */
+export function usePlatformBrands(): Record<string, CompanyBrand> {
+  const { data } = useQuery({
+    queryKey: keys.platform('overview'),
+    queryFn: () => unwrap<PlatformNumbers>(supabase.rpc('platform_overview')),
+    staleTime: Infinity,
+  });
+  return useMemo(() => Object.fromEntries((data?.per_company ?? []).map((row) => [row.company.id, row.company])), [data]);
+}
+
+/**
+ * Shows a saved identity everywhere at once: in the company's own numbers (the
+ * sidebar, the company bar, the identity card) and in the platform's list.
+ */
+export function applySavedBranding(saved: SavedBranding) {
+  queryClient.setQueryData<CompanyNumbers>(keys.company(saved.company_id, 'overview'), (numbers) => (numbers ? withBranding(numbers, saved) : numbers));
+  queryClient.setQueryData<PlatformNumbers>(keys.platform('overview'), (numbers) => (numbers
+    ? { ...numbers, per_company: numbers.per_company.map((row) => withBranding(row, saved)) } : numbers));
 }
 
 /** Warms a company's overview before its workspace is opened (hovering its card). */

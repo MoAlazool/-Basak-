@@ -54,7 +54,7 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
     return Scaffold(
       backgroundColor: colors.ground,
       body: MediaQuery.withClampedTextScaling(
-        maxScaleFactor: 1.3,
+        maxScaleFactor: basakMaxTextScale,
         child: SafeArea(
           bottom: false,
           child: Center(

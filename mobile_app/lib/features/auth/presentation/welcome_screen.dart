@@ -16,7 +16,7 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: Scaffold(
         backgroundColor: context.colors.ground,
         body: SafeArea(

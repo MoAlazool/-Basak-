@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/supabase_tables.dart';
+import '../../../../core/media/company_brand.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../../../../core/network/network_errors.dart';
 import '../../../../core/network/perf_trace.dart';
@@ -34,6 +35,9 @@ class StudentPassDetails {
   final String? endDate;
   final String? companyName;
 
+  /// The company's logo and emblem (none in a pass saved before they were read).
+  final CompanyBrand companyBrand;
+
   /// The return trip's start time behind each return stop time (see
   /// SubscriptionModel.returnStartTimes): the time a student is shown.
   final Map<String, String> returnStartTimes;
@@ -57,6 +61,7 @@ class StudentPassDetails {
       this.startDate,
       this.endDate,
       this.companyName,
+      this.companyBrand = CompanyBrand.none,
       this.returnStartTimes = const {},
       this.isOfflineCache = false});
 
@@ -80,6 +85,8 @@ class StudentPassDetails {
         'start_date': startDate,
         'end_date': endDate,
         'company_name': companyName,
+        'company_logo_path': companyBrand.logoPath,
+        'company_emblem_path': companyBrand.emblemPath,
         'return_start_times': returnStartTimes,
       };
 
@@ -102,6 +109,10 @@ class StudentPassDetails {
         startDate: json['start_date'] as String?,
         endDate: json['end_date'] as String?,
         companyName: json['company_name'] as String?,
+        companyBrand: CompanyBrand(
+          logoPath: json['company_logo_path'] as String?,
+          emblemPath: json['company_emblem_path'] as String?,
+        ),
         returnStartTimes: {
           for (final entry in (json['return_start_times'] as Map? ?? const {}).entries)
             entry.key.toString(): entry.value.toString(),
@@ -198,6 +209,7 @@ class StudentQrRepository {
         startDate: current?.startDate,
         endDate: current?.endDate,
         companyName: current?.companyName,
+        companyBrand: current?.companyBrand ?? CompanyBrand.none,
         returnStartTimes: current?.returnStartTimes ?? const {},
         isOfflineCache: OfflineCache.offlineSince.value != null,
       );

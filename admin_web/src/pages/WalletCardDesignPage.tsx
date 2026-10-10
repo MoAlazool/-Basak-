@@ -339,7 +339,7 @@ export const WalletCardDesignPage: React.FC = () => {
               <h2 className="flex items-center gap-2 text-base font-bold text-slate-700">
                 <Building2 className="h-5 w-5 text-blue-600" /> هوية الشركة: {settings.company_name}
               </h2>
-              <ArtworkField label="شعار الشركة" hint="يظهر أعلى البطاقة بجوار اسم الشركة. يفضّل PNG بخلفية شفافة. بدون شعار يظهر الاسم فقط."
+              <ArtworkField label="شعار الشركة" hint="هو نفسه شعار «هوية الشركة» في إعدادات الشركة: تغييره هنا يغيّره هناك. يظهر أعلى البطاقة بجوار اسم الشركة. يفضّل PNG بخلفية شفافة. بدون شعار يظهر الاسم فقط."
                 preview={logoPreview} onPick={pick(setLogoChange)} onRemove={() => setLogoChange(null)} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-bold text-slate-700">

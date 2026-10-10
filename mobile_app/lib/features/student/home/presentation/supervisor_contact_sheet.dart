@@ -112,12 +112,6 @@ class SupervisorContactSheet extends StatelessWidget {
     }
   }
 
-  Future<void> _copy(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: dialable(phone)));
-    if (!context.mounted) return;
-    BasakToast.show(_close(context), 'تم نسخ الرقم');
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -181,11 +175,11 @@ class SupervisorContactSheet extends StatelessWidget {
               ),
               const SizedBox(width: BasakSpace.s8),
               Expanded(
-                child: ActionTile(
+                // The sheet stays: the tile itself says the number was copied.
+                child: CopyTile(
                   key: const Key('supervisor-copy'),
-                  icon: LucideIcons.copy,
                   label: 'نسخ الرقم',
-                  onTap: () => _copy(context),
+                  value: dialable(phone),
                 ),
               ),
             ],

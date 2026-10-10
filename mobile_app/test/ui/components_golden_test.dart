@@ -205,7 +205,7 @@ final _scenes = <_Scene>[
         padding: const EdgeInsetsDirectional.all(BasakSpace.s16),
         color: context.colors.ink,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          InkOutlineButton(label: 'كل التفاصيل', icon: LucideIcons.idCard, onPressed: () {}),
+          InkOutlineButton(label: 'التفاصيل', icon: LucideIcons.rotate3d, onPressed: () {}),
           _gap(),
           EmptyState(
             onInk: true,
@@ -328,7 +328,7 @@ final _scenes = <_Scene>[
   _Scene(
     'toast',
     (context) => _column(const [
-      BasakToastBody(message: 'تم نسخ عنوان InstaPay'),
+      BasakToastBody(message: 'تم حفظ جهة الاتصال.'),
       BasakToastBody(message: 'تعذّر إرسال الإيصال. حاول مرة أخرى.', kind: BasakToastKind.failure),
       BasakToastBody(message: 'تم إرسال الإشعار إلى 38 طالباً.', kind: BasakToastKind.info),
     ]),
@@ -801,7 +801,7 @@ final _scenes = <_Scene>[
           const SizedBox(width: BasakSpace.s8),
           Expanded(child: ActionTile(icon: LucideIcons.userRoundPlus, label: 'حفظ الرقم', onTap: () {})),
           const SizedBox(width: BasakSpace.s8),
-          Expanded(child: ActionTile(icon: LucideIcons.copy, label: 'نسخ الرقم', onTap: () {})),
+          const Expanded(child: CopyTile(label: 'نسخ الرقم', value: '01012345678')),
         ]),
         SheetLink(label: 'ليس الآن', onTap: () {}),
       ]),
@@ -1037,6 +1037,40 @@ final _scenes = <_Scene>[
     ]),
   ),
   _Scene(
+    'copy_boxes',
+    (context) => _column(const [
+      BasakCard(
+        padding: EdgeInsetsDirectional.all(BasakSpace.s6),
+        child: CopyRow(label: 'عنوان InstaPay', value: 'elnawras@instapay'),
+      ),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: CopyButton(label: 'نسخ المبلغ', value: '4500', variant: BasakButtonVariant.surface, expand: false),
+      ),
+      CopyButton(label: 'نسخ الرقم', value: '01012345678', size: BasakButtonSize.medium),
+      CopyButton(label: 'نسخ الرقم', value: null, size: BasakButtonSize.medium),
+    ]),
+  ),
+  _Scene(
+    'school_and_logo',
+    (context) => _column([
+      const BasakCard(child: SchoolLine(college: 'الهندسة', university: 'جامعة المنصورة')),
+      const BasakCard(
+        child: SchoolLine(
+          college: 'كلية الحاسبات والمعلومات والذكاء الاصطناعي',
+          university: 'جامعة المنصورة الجديدة الأهلية للعلوم والتكنولوجيا',
+        ),
+      ),
+      Row(children: [
+        CompanyLogo(name: 'شركة النورس للنقل'),
+        const SizedBox(width: BasakSpace.s12),
+        CompanyLogo(name: 'المستقبل', size: 56),
+        const SizedBox(width: BasakSpace.s12),
+        CompanyLogo(name: 'Delta Bus', size: 32, radius: BasakRadius.tile),
+      ]),
+    ]),
+  ),
+  _Scene(
     'splash_rail',
     (context) => _column(const [
       Center(child: SplashRail(progress: 0)),
@@ -1051,8 +1085,8 @@ final _scenes = <_Scene>[
     (context) => _column([
       MoneyText('4,500 ج.م', style: context.text.amount, unitSize: 16),
       PayeeCard(name: 'شركة النورس للنقل', method: 'تحويل بنكي · البنك الأهلي المصري', fields: [
-        CopyField(label: 'رقم الحساب', value: '0123 4567 8901 234', onCopy: () {}),
-        CopyField(label: 'IBAN', value: 'EG00 0003 0000 0000 0000 0000 000', onCopy: () {}),
+        CopyField(label: 'رقم الحساب', value: '0123 4567 8901 234'),
+        CopyField(label: 'IBAN', value: 'EG00 0003 0000 0000 0000 0000 000'),
       ]),
       const Disclosure(
         icon: LucideIcons.info,

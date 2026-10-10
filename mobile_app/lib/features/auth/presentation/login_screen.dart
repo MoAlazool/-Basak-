@@ -25,7 +25,7 @@ class LoginScreen extends ConsumerStatefulWidget {
     this.supervisor = false,
     this.notice,
     this.biometric,
-    this.onBiometric,
+    this.onBiometricFallback,
   });
 
   /// "طالب جديد؟ إنشاء حساب".
@@ -44,9 +44,17 @@ class LoginScreen extends ConsumerStatefulWidget {
   final String? notice;
 
   /// What the phone offers for the sign-in stored on it: the square button
-  /// beside «دخول». Null: no button.
+  /// beside «دخول». Null: no button. A tap asks the phone and signs in from
+  /// here, with nothing to type.
   final BiometricKind? biometric;
-  final VoidCallback? onBiometric;
+
+  /// The stored sign-in cannot be used (the phone's biometrics changed, the
+  /// session ended, the phone locked its check): the line to say, and whether
+  /// the button may stay.
+  final void Function(BiometricFallback reason)? onBiometricFallback;
+
+  /// Said beside the fields when the server could not be reached.
+  static const offlineMessage = 'تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مرة أخرى.';
 
   /// What a refused sign-in says, under the password field.
   static const wrongCredentialsMessage = 'رقم الهاتف أو كلمة المرور غير صحيحة.';
@@ -67,6 +75,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   /// A failure that is no field's fault (no connection).
   String? _failure;
+
+  /// The phone's check is up, or its sign-in is on its way to the server.
+  bool _biometricBusy = false;
+
+  /// The phone did not recognise its owner: said above the buttons, amber.
+  bool _notRecognised = false;
 
   bool get _supervisor => widget.supervisor;
 
@@ -147,6 +161,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  /// The square button: the phone's own check, then straight into the app.
+  /// What can go wrong is said here, on the form that is the way round it.
+  Future<void> _biometricSignIn() async {
+    if (_biometricBusy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _biometricBusy = true;
+      _notRecognised = false;
+      _failure = null;
+    });
+    final result = await ref.read(biometricSignInProvider).signIn();
+    if (!mounted) return;
+    switch (result) {
+      case BiometricSignInResult.signedIn:
+        return; // the app replaces the whole entry
+      case BiometricSignInResult.notRecognised:
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _biometricBusy = false;
+          _notRecognised = true;
+        });
+      case BiometricSignInResult.offline:
+        setState(() {
+          _biometricBusy = false;
+          _failure = LoginScreen.offlineMessage;
+        });
+      case BiometricSignInResult.usePassword:
+        setState(() => _biometricBusy = false);
+        _passwordFocus.requestFocus();
+      case BiometricSignInResult.lockedOut:
+      case BiometricSignInResult.changed:
+      case BiometricSignInResult.expired:
+        setState(() => _biometricBusy = false);
+        widget.onBiometricFallback?.call(result.fallback!);
+    }
+  }
+
   String _message(Object error) {
     final message = error.toString().toLowerCase();
     if (message.contains('invalid_credentials') ||
@@ -161,7 +212,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         message.contains('network is unreachable') ||
         message.contains('connection refused') ||
         message.contains('clientexception')) {
-      return 'تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مرة أخرى.';
+      return LoginScreen.offlineMessage;
     }
     return 'تعذر تسجيل الدخول الآن. حاول مرة أخرى.';
   }
@@ -193,7 +244,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
-    final loading = ref.watch(authStateProvider).isLoading;
+    // One sign-in at a time: the password's, or the phone's.
+    final loading = ref.watch(authStateProvider).isLoading || _biometricBusy;
 
     final remember = CheckRow(
       key: const Key('login-remember'),
@@ -306,24 +358,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ],
           ),
         if (_failure != null) InlineError(message: _failure!),
+        if (_notRecognised && widget.biometric != null)
+          Semantics(
+            liveRegion: true,
+            child: InfoNote(
+              biometricNotRecognisedLine(supervisor: _supervisor),
+              key: const Key('login-biometric-line'),
+            ),
+          ),
         Row(
           children: [
             Expanded(
               child: BasakButton(
                 key: const Key('login-submit'),
                 label: 'دخول',
-                loading: loading,
-                onPressed: _submit,
+                loading: loading && !_biometricBusy,
+                onPressed: _biometricBusy ? null : _submit,
               ),
             ),
-            // Only where a sign-in is stored on this phone for this kind of account.
+            // Only where a sign-in is stored on this phone for this kind of
+            // account. After «دخول» in reading order: at its left in Arabic.
             if (widget.biometric != null) ...[
               const SizedBox(width: BasakSpace.s8),
               GroundSquareButton(
                 key: const Key('login-biometric'),
                 icon: widget.biometric!.icon,
-                label: widget.biometric!.settingLabel,
-                onPressed: loading ? null : widget.onBiometric,
+                label: widget.biometric!.signInLabel,
+                loading: _biometricBusy,
+                onPressed: loading ? null : _biometricSignIn,
               ),
             ],
           ],

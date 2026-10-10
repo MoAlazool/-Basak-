@@ -264,6 +264,111 @@ void main() {
       expect(find.byType(ReturningSignInScreen), findsOneWidget);
     });
 
+    group('the square button beside «دخول»', () {
+      /// The ordinary sign-in of a phone that has a sign-in stored.
+      Future<void> form(WidgetTester tester, _Phone phone) async {
+        await storeSignIn(phone.fake);
+        await _entry(tester, phone);
+        await _tap(tester, 'returning-password');
+        expect(find.byKey(const ValueKey('login')), findsOneWidget);
+      }
+
+      testWidgets('is there with the phone\'s own glyph, after «دخول» in reading order, and large enough to hit',
+          (tester) async {
+        final phone = _Phone();
+        await form(tester, phone);
+        final button = find.byKey(const Key('login-biometric'));
+        expect(find.descendant(of: button, matching: find.byIcon(LucideIcons.scanFace)), findsOneWidget);
+        expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
+        expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+        // Arabic reads from the right: «دخول» first, the glyph at its left.
+        expect(tester.getCenter(button).dx, lessThan(tester.getCenter(find.byKey(const Key('login-submit'))).dx));
+        expect(
+          tester.getSemantics(find.bySemanticsLabel('الدخول بـ Face ID')),
+          matchesSemantics(label: 'الدخول بـ Face ID', isButton: true, isEnabled: true, hasEnabledState: true,
+              hasTapAction: true),
+        );
+        expect(phone.device.prompts, 0, reason: 'the phone is asked on a tap, never by itself');
+      });
+
+      testWidgets('a tap asks the phone and signs in from the form, with nothing typed', (tester) async {
+        final phone = _Phone();
+        await form(tester, phone);
+        await _tapToSignIn(tester, 'login-biometric');
+        expect(phone.device.prompts, 1);
+        expect(phone.restored, ['refresh-1']);
+        expect(find.byType(ReturningSignInScreen), findsNothing, reason: 'no other screen on the way');
+        expect(find.byKey(const ValueKey('login')), findsOneWidget);
+      });
+
+      testWidgets('closed or not recognised: said above the buttons, and the button tries again', (tester) async {
+        final phone = _Phone(checks: [BiometricCheck.notRecognised, BiometricCheck.passed]);
+        await form(tester, phone);
+        await _tap(tester, 'login-biometric');
+        expect(find.byKey(const Key('login-biometric-line')), findsOneWidget);
+        expect(find.text('لم يتعرّف الهاتف عليك. حاول مرة أخرى، أو ادخل بكلمة المرور.'), findsOneWidget);
+        expect(phone.restored, isEmpty);
+        expect(phone.fake.token, 'refresh-1', reason: 'nothing was lost');
+
+        await _tapToSignIn(tester, 'login-biometric');
+        expect(find.byKey(const Key('login-biometric-line')), findsNothing);
+        expect(phone.restored, ['refresh-1']);
+      });
+
+      testWidgets('a session the server ended: one clear line, the fields, and no button any more',
+          (tester) async {
+        final phone = _Phone()..restoreError = const AuthException('Invalid Refresh Token', statusCode: '400');
+        await form(tester, phone);
+        await _tap(tester, 'login-biometric');
+        expect(find.text('انتهت جلستك على هذا الهاتف. ادخل بكلمة المرور مرة واحدة لتفعيله من جديد.'),
+            findsOneWidget);
+        expect(find.byKey(const Key('login-biometric')), findsNothing);
+        expect(find.byKey(const Key('login-password')), findsOneWidget);
+        expect(phone.fake.enabled, isFalse);
+      });
+
+      testWidgets('a face or finger added since: dropped, said, and the button is gone', (tester) async {
+        final phone = _Phone();
+        await form(tester, phone);
+        phone.device.current = const BiometricOffer(kind: BiometricKind.faceId, enrolled: 'face', mark: 'state-2');
+        await _tap(tester, 'login-biometric');
+        expect(find.text('تغيّر Face ID في هاتفك، فأوقفنا الدخول به. ادخل بكلمة المرور مرة واحدة لتفعيله من جديد.'),
+            findsOneWidget);
+        expect(find.byKey(const Key('login-biometric')), findsNothing);
+        expect(phone.device.prompts, 0);
+        expect(phone.revoked, ['refresh-1']);
+      });
+
+      testWidgets('biometrics removed from the phone: the same, with nothing to prompt', (tester) async {
+        final phone = _Phone();
+        await form(tester, phone);
+        phone.device.current = null;
+        await _tap(tester, 'login-biometric');
+        expect(find.byKey(const Key('login-notice')), findsOneWidget);
+        expect(find.byKey(const Key('login-biometric')), findsNothing);
+        expect(phone.fake.enabled, isFalse);
+      });
+
+      testWidgets('locked out by the phone: said, and the button stays for when the phone lets go',
+          (tester) async {
+        final phone = _Phone(checks: [BiometricCheck.lockedOut]);
+        await form(tester, phone);
+        await _tap(tester, 'login-biometric');
+        expect(find.text('أوقف هاتفك التحقق مؤقتاً بعد عدة محاولات. ادخل بكلمة المرور.'), findsOneWidget);
+        expect(find.byKey(const Key('login-biometric')), findsOneWidget);
+        expect(phone.fake.token, 'refresh-1');
+      });
+
+      testWidgets('no connection: said on the form, nothing lost', (tester) async {
+        final phone = _Phone()..restoreError = Exception('SocketException: Failed host lookup');
+        await form(tester, phone);
+        await _tap(tester, 'login-biometric');
+        expect(find.text('تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مرة أخرى.'), findsOneWidget);
+        expect(find.byKey(const Key('login-biometric')), findsOneWidget);
+        expect(phone.fake.token, 'refresh-1');
+      });
+    });
+
     testWidgets('«حساب آخر» forgets the stored sign-in and opens the welcome screen', (tester) async {
       final phone = _Phone();
       await storeSignIn(phone.fake);
@@ -394,6 +499,60 @@ void main() {
       expect(phone.fake.enabled, isFalse);
       expect(find.text('لم يتم تفعيل الدخول بـ Face ID. حاول مرة أخرى.'), findsOneWidget);
       await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('asked once per account on a shared phone, whoever was asked last', (tester) async {
+      final phone = await open(tester);
+      await _tap(tester, 'biometric-offer-later');
+      // Someone else signs in on this phone and is asked too.
+      await phone.fake.vault.markOffered('student-2');
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(BiometricOfferHost)));
+      container.read(biometricOfferPendingProvider.notifier).state = true;
+      await tester.pump();
+      await tester.pump(BiometricOfferHost.delay);
+      await tester.pumpAndSettle();
+      expect(find.byType(BasakSheetFrame), findsNothing, reason: 'the first account already answered');
+    });
+
+    testWidgets('not offered to an account that already switched it on', (tester) async {
+      _size(tester);
+      final phone = _Phone()..signedIn = true;
+      await storeSignIn(phone.fake);
+      await tester.pumpWidget(phone.app(const BiometricOfferHost(child: Scaffold(body: Text('الرئيسية')))));
+      ProviderScope.containerOf(tester.element(find.byType(BiometricOfferHost)))
+          .read(biometricOfferPendingProvider.notifier)
+          .state = true;
+      await tester.pump();
+      await tester.pump(BiometricOfferHost.delay);
+      await tester.pumpAndSettle();
+      expect(find.byType(BasakSheetFrame), findsNothing);
+    });
+
+    testWidgets('waits for the app: a host that comes up after another screen still asks', (tester) async {
+      // A forced password change stands in for the app; the offer is asked
+      // once the app itself is up.
+      _size(tester);
+      final phone = _Phone()..signedIn = true;
+      final gate = ValueNotifier(true);
+      addTearDown(gate.dispose);
+      await tester.pumpWidget(phone.app(ValueListenableBuilder<bool>(
+        valueListenable: gate,
+        builder: (context, blocked, _) => blocked
+            ? const Scaffold(body: Text('كلمة مرور جديدة'))
+            : const BiometricOfferHost(child: Scaffold(body: Text('الرئيسية'))),
+      )));
+      ProviderScope.containerOf(tester.element(find.text('كلمة مرور جديدة')))
+          .read(biometricOfferPendingProvider.notifier)
+          .state = true;
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.byType(BasakSheetFrame), findsNothing, reason: 'never over the password change');
+
+      gate.value = false;
+      await tester.pump();
+      await tester.pump(BiometricOfferHost.delay);
+      await tester.pumpAndSettle();
+      expect(find.text('دخول أسرع بـ Face ID؟'), findsOneWidget);
     });
 
     testWidgets('never on a phone with nothing enrolled, and never without a password sign-in', (tester) async {

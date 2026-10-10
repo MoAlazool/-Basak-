@@ -3,6 +3,7 @@
 /// duration of its own.
 library;
 
+export '../media/company_brand.dart';
 export 'account.dart';
 export 'app_prompts.dart';
 export 'arabic_count.dart';
@@ -12,6 +13,8 @@ export 'basak_sheet.dart';
 export 'basak_tab_bar.dart';
 export 'biometric.dart';
 export 'choices.dart';
+export 'company_logo.dart';
+export 'copy.dart';
 export 'entry.dart';
 export 'facts.dart';
 export 'feedback.dart';

@@ -314,6 +314,16 @@ abstract final class BasakMotion {
   /// One toast at a time.
   static const toast = Duration(seconds: 3);
 
+  /// How long a copied box says «تم النسخ» before it is itself again.
+  static const copied = Duration(milliseconds: 1400);
+
+  /// The tab bar's lens: quick, lands a little past its tab and settles.
+  static const lensSpring = SpringDescription(mass: 1, stiffness: 260, damping: 25);
+
+  /// The student's card turning over.
+  static const flip = Duration(milliseconds: 460);
+  static const Curve flipCurve = Curves.easeInOutCubic;
+
   /// The skeleton's slow pulse.
   static const skeleton = Duration(milliseconds: 1200);
 
@@ -332,6 +342,30 @@ abstract final class BasakShadow {
 
   static const floating = [
     BoxShadow(color: Color(0x4717384A), offset: Offset(0, 16), blurRadius: 40, spreadRadius: -12),
+  ];
+}
+
+/// Basak's glass: the tab bar and the lens on it. A white veil over a blur,
+/// strong enough that ink text reads on it over the ground and over the ink
+/// of the card (`ink2` is 5.2 : 1 at the least, over ink); the lens is the
+/// brand's ink, lit from above. Nothing else in the app is see-through.
+abstract final class BasakGlassStyle {
+  static const double blur = 18;
+
+  static const veilTop = Color(0xE0FFFFFF); // white at 88%
+  static const veilBottom = Color(0xEBFFFFFF); // white at 92%, where the labels are
+  static const edgeLit = Color(0xF2FFFFFF);
+  static const edgeMid = Color(0x66FFFFFF);
+  static const edgeShade = Color(0x1F17384A); // ink at 12%
+
+  static const lensTop = BasakPalette.inkRaised;
+  static const lensBottom = BasakPalette.ink;
+  static const lensSheen = Color(0x38FFFFFF); // white at 22%
+  static const lensSheenEnd = Color(0x00FFFFFF);
+  static const lensRim = Color(0x73A8D8F0); // sky at 45%
+  static const lensRimEnd = Color(0x0AA8D8F0);
+  static const lensShadow = [
+    BoxShadow(color: Color(0x4D17384A), offset: Offset(0, 4), blurRadius: 10, spreadRadius: -2),
   ];
 }
 

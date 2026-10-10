@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:basak_mobile/core/media/company_brand.dart';
 import 'package:basak_mobile/core/media/signed_url_cache.dart';
 import 'package:basak_mobile/core/storage/offline_cache.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
@@ -111,6 +112,41 @@ void main() {
       'app_version': 1,
     });
     expect(announced, 0, reason: 'nothing changed on the server, so nothing is read or drawn again');
+  });
+
+  test('(e2) the account page: the company\'s mark is one small read, once, and none from the saved copy',
+      () async {
+    final world = SupervisorWorld();
+    var c = world.open();
+    await watchHome(c);
+    expect(world.log.calls.containsKey('companies.brand'), isFalse, reason: 'Home does not name the company');
+    world.log.reset();
+
+    // The account page is the one place the company is named with its mark.
+    c.listen(supervisorCompanyBrandProvider('company-1'), (_, __) {});
+    expect(await c.read(supervisorCompanyBrandProvider('company-1').future), CompanyBrand.none);
+    expect(world.log.calls, {'companies.brand': 1});
+    // Leaving the page and coming back reads nothing.
+    await c.read(supervisorCompanyBrandProvider('company-1').future);
+    expect(world.log.calls, {'companies.brand': 1}, reason: 'kept for the session');
+
+    // The next run: shown from the phone at once, and checked once behind it.
+    const emblem = '0b6f3c1e-8a2d-4e5f-9c7b-1d2e3f4a5b6c/emblem/2';
+    world.server.company = {'id': 'company-1', 'name': 'النورس للنقل', 'logo_path': null, 'emblem_path': emblem};
+    c.dispose();
+    OfflineCache.resetSession();
+    world.log.reset();
+    c = world.open();
+    c.listen(supervisorCompanyBrandProvider('company-1'), (_, __) {});
+    expect(await c.read(supervisorCompanyBrandProvider('company-1').future), CompanyBrand.none,
+        reason: 'the saved copy first: nothing waits for the network');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(world.log.calls, {'companies.brand': 1});
+
+    // A server without the row (or a refusal) is the name alone, never an error.
+    world.server.company = null;
+    final other = world.open();
+    expect(await other.read(supervisorCompanyBrandProvider('company-2').future), CompanyBrand.none);
   });
 
   test('(f) the trips tab: one read per trip list, none on coming back', () async {

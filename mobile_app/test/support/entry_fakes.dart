@@ -82,10 +82,16 @@ class FakeEntryRepository extends AuthRepository {
 }
 
 /// The app's frame around one entry screen, with [repo] behind it.
-Widget entryApp(Widget home, FakeEntryRepository repo, {List<Override> overrides = const []}) => ProviderScope(
+Widget entryApp(
+  Widget home,
+  FakeEntryRepository repo, {
+  List<Override> overrides = const [],
+  AuthNotifier Function(FakeEntryRepository repo)? auth,
+}) =>
+    ProviderScope(
       overrides: [
         authRepositoryProvider.overrideWithValue(repo),
-        authStateProvider.overrideWith((ref) => AuthNotifier(repo)),
+        authStateProvider.overrideWith((ref) => auth?.call(repo) ?? AuthNotifier(repo)),
         activeUniversitiesProvider.overrideWith((ref) async => entryUniversities),
         ...overrides,
       ],

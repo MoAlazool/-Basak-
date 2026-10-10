@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/supabase_tables.dart';
+import '../../../core/media/company_brand.dart';
 import '../../../core/media/signed_url_cache.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/storage/offline_cache.dart';
@@ -18,6 +19,9 @@ abstract class SupervisorGateway {
 
   /// The supervisor's own row: where their photo is stored.
   Future<Map<String, dynamic>?> photoRow(String userId);
+
+  /// The supervisor's own company: its name and where its logo and emblem are.
+  Future<Map<String, dynamic>?> companyRow(String companyId);
 }
 
 class SupabaseSupervisorGateway implements SupervisorGateway {
@@ -34,6 +38,19 @@ class SupabaseSupervisorGateway implements SupervisorGateway {
   @override
   Future<Map<String, dynamic>?> photoRow(String userId) =>
       _client.from('supervisors').select('profile_image_url').eq('id', userId).maybeSingle();
+
+  @override
+  Future<Map<String, dynamic>?> companyRow(String companyId) async {
+    Future<Map<String, dynamic>?> read(String columns) =>
+        _client.from('companies').select(columns).eq('id', companyId).maybeSingle();
+    try {
+      return await read('id,name,logo_path,emblem_path');
+    } on PostgrestException catch (error) {
+      // A database without the emblem yet: the logo alone, as before.
+      if (error.code != '42703') rethrow;
+      return read('id,name,logo_path');
+    }
+  }
 }
 
 /// Supervisor backend: every call goes through SECURITY DEFINER RPCs that are
@@ -149,6 +166,11 @@ class SupervisorRepository {
     final path = (row as Map?)?['profile_image_url'] as String?;
     return path == null || path.isEmpty ? null : path;
   }
+
+  /// The logo and emblem of the supervisor's company: from the saved copy at
+  /// once, and asked of the server once behind it.
+  Future<CompanyBrand> getCompanyBrand(String companyId) async => CompanyBrand.fromJson(
+      await OfflineCache.readThrough('supervisor.company.$companyId', () => _gateway.companyRow(companyId)));
 }
 
 final supervisorRepoProvider = Provider((ref) => SupervisorRepository());
@@ -190,6 +212,18 @@ final supervisorPhotoUrlProvider = FutureProvider<String?>((ref) async {
     return await SignedUrlCache.urlOrOffline('supervisor-avatars', path);
   } catch (_) {
     return null;
+  }
+});
+
+/// The supervisor's company's logo and emblem, kept for the session. Read
+/// only by the account page, where the company is named; with no answer (or a
+/// refusal) the company is its name alone.
+final supervisorCompanyBrandProvider = FutureProvider.family<CompanyBrand, String>((ref, companyId) async {
+  ref.watch(sessionUserIdProvider);
+  try {
+    return await ref.watch(supervisorRepoProvider).getCompanyBrand(companyId);
+  } catch (_) {
+    return CompanyBrand.none;
   }
 });
 

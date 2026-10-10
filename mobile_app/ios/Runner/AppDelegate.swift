@@ -52,6 +52,19 @@ import UserNotifications
       }
     }
 
+    // The glass tab bar turns solid when the phone asks for less transparency
+    // (Settings > Accessibility > Display): Flutter does not pass that on.
+    let accessibility = FlutterMethodChannel(
+      name: "basak/accessibility", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    accessibility.setMethodCallHandler { call, result in
+      switch call.method {
+      case "reduceTransparency":
+        result(UIAccessibility.isReduceTransparencyEnabled)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     // Notifications: the unread count on the app icon, and the way to this
     // app's page in Settings when notifications were switched off there.
     let notifications = FlutterMethodChannel(
@@ -136,7 +149,8 @@ final class AddPassButtonView: NSObject, FlutterPlatformView {
   private let button: PKAddPassButton
 
   init(frame: CGRect) {
-    button = PKAddPassButton(addPassButtonStyle: .black)
+    // Outlined: the card's page is dark, and a plain black button sinks into it.
+    button = PKAddPassButton(addPassButtonStyle: .blackOutline)
     button.frame = frame
     // Taps are handled on the Flutter side, which requests the pass first.
     button.isUserInteractionEnabled = false

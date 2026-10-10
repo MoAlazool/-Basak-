@@ -48,6 +48,8 @@ class ReceiptCard extends StatelessWidget {
     final text = context.text;
     String? filled(String? value) => (value ?? '').trim().isEmpty ? null : value!.trim();
     final method = filled(r.paymentMethod);
+    // A receipt keeps the logo it was issued under (a logo folder).
+    final brand = CompanyBrand(logoPath: r.companyLogoPath);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -77,11 +79,34 @@ class ReceiptCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: BasakSpace.s10),
-              MoneyText(money(r.amount), style: text.amount, unitSize: 16),
-              const SizedBox(height: BasakSpace.s10),
-              Text(
-                [day(r.approvedAt), if (method != null) method].join(' · '),
-                style: text.bodySmall.copyWith(color: colors.ink2),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MoneyText(money(r.amount), style: text.amount, unitSize: 16),
+                        const SizedBox(height: BasakSpace.s10),
+                        Text(
+                          [day(r.approvedAt), if (method != null) method].join(' · '),
+                          style: text.bodySmall.copyWith(color: colors.ink2),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Whose receipt it is: the company's logo, when it has one.
+                  if (brand.hasMark) ...[
+                    const SizedBox(width: BasakSpace.s12),
+                    CompanyLogo(
+                      key: const Key('receipt-company-logo'),
+                      name: r.companyName,
+                      brand: brand,
+                      size: 56,
+                      radius: BasakRadius.small,
+                    ),
+                  ],
+                ],
               ),
             ],
           ),

@@ -397,7 +397,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
             );
           }
           return MediaQuery.withClampedTextScaling(
-            maxScaleFactor: 1.3,
+            maxScaleFactor: basakMaxTextScale,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -564,6 +564,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
               CompanyRow(
                 key: Key('company-${company.id}'),
                 name: company.name,
+                brand: company.brand,
                 caption: _linesLabel(company.lines.length),
                 onTap: () => _choose(draft.pickCompany(catalog, company.id)),
               ),
@@ -587,7 +588,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           if (company.lines.isEmpty) ...[
             _gap,
             InlineError(
-              message: 'لا توجد رحلات متاحة لجامعتك على هذا الخط.',
+              message: 'لا توجد خطوط متاحة لجامعتك لدى هذه الشركة.',
               retryLabel: 'تحديث',
               onRetry: () => ref.invalidate(saleCatalogProvider),
             ),
@@ -798,7 +799,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         ]);
       }
       return MediaQuery.withClampedTextScaling(
-        maxScaleFactor: 1.3,
+        maxScaleFactor: basakMaxTextScale,
         child: ColoredBox(
           color: context.colors.ground,
           child: SafeArea(

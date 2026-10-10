@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../media/company_brand.dart';
 import '../theme/app_icons.dart';
 import 'basak_button.dart';
+import 'company_logo.dart';
 import 'basak_page.dart';
 import 'pay.dart';
 import 'status_chip.dart';
@@ -55,7 +57,16 @@ class CompanyRow extends StatelessWidget {
   final String caption;
   final VoidCallback? onTap;
 
-  const CompanyRow({super.key, required this.name, required this.caption, required this.onTap});
+  /// The company's logo and emblem; without them the tile is its initial.
+  final CompanyBrand brand;
+
+  const CompanyRow({
+    super.key,
+    required this.name,
+    required this.caption,
+    required this.onTap,
+    this.brand = CompanyBrand.none,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -71,15 +82,24 @@ class CompanyRow extends StatelessWidget {
         padding: const EdgeInsetsDirectional.all(BasakSpace.s16),
         child: Row(
           children: [
+            // The company's mark in the tile; its initial until it is there,
+            // and for a company that has none.
             ExcludeSemantics(
-              child: Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: colors.avatarTint, borderRadius: BasakRadius.all(BasakRadius.small)),
-                child: Text(initial,
-                    textScaler: TextScaler.noScaling,
-                    style: text.headline.copyWith(fontSize: 18, color: colors.teal)),
+              child: CompanyLogo(
+                name: name,
+                brand: brand,
+                size: 48,
+                radius: BasakRadius.small,
+                placeholder: Container(
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration:
+                      BoxDecoration(color: colors.avatarTint, borderRadius: BasakRadius.all(BasakRadius.small)),
+                  child: Text(initial,
+                      textScaler: TextScaler.noScaling,
+                      style: text.headline.copyWith(fontSize: 18, color: colors.teal)),
+                ),
               ),
             ),
             const SizedBox(width: BasakSpace.s14),

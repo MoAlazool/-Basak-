@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Shell } from '../components/Shell';
 import { SkeletonPage, SkeletonShell } from '../components/Skeleton';
 import { WorkspaceBar } from '../components/WorkspaceBar';
+import { CompanyMark } from '../components/CompanyMark';
 import { supabase } from '../lib/supabase';
 import { keys, queryClient, STALE, usePageData } from '../lib/query';
 import type { CompanyOption } from '../lib/reference';
@@ -109,7 +110,8 @@ async function countResetRequests(companyId: string): Promise<number> {
  */
 const WorkspaceShell: React.FC<{ companyId: string; companyName: string; onLogout: () => void; children: React.ReactNode }> =
   ({ companyId, companyName, onLogout, children }) => {
-    const receipts = useCompanyOverview(companyId).data?.pending_receipts ?? 0;
+    const overview = useCompanyOverview(companyId).data;
+    const receipts = overview?.pending_receipts ?? 0;
     // Under the list's own key prefix, so the live topic refreshes both together.
     const requests = usePageData(keys.company(companyId, 'resetRequests', 'count'), () => countResetRequests(companyId)).data ?? 0;
     useEffect(() => {
@@ -120,6 +122,7 @@ const WorkspaceShell: React.FC<{ companyId: string; companyName: string; onLogou
     }, [receipts, requests]);
     return (
       <Shell items={workspaceNav(companyId)} areaLabel={companyName} onLogout={onLogout} banner={<WorkspaceBar />}
+        mark={<CompanyMark name={companyName} brand={overview?.company} />}
         badges={{ receipts, requests }}>
         {children}
       </Shell>

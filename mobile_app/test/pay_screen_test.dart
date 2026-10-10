@@ -113,8 +113,16 @@ void main() {
       await tester.tap(find.text('نسخ المبلغ'));
       await tester.pump();
       expect(copied, ['4500']);
-      expect(find.text('تم النسخ'), findsWidgets);
-      await toastGone(tester);
+      // The button itself says so, and no toast comes up for a copy.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.descendant(of: find.byKey(const Key('amount-copy')), matching: find.text('تم النسخ')),
+          findsOneWidget);
+      expect(find.text('نسخ المبلغ'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      await tester.pump(BasakMotion.copied);
+      await frames(tester);
+      expect(find.text('نسخ المبلغ'), findsOneWidget);
+      expect(find.text('تم النسخ'), findsNothing);
 
       // A bank: its account and its IBAN, each with its own copy.
       await tester.tap(find.text('البنك الأهلي'));
@@ -127,7 +135,16 @@ void main() {
       await tester.tap(find.text('نسخ').last);
       await tester.pump();
       expect(copied.last, 'EG00 0003 0000 0000 0000 0000 000');
-      await toastGone(tester);
+      // The IBAN's own row turns green; the account's row above it does not.
+      await tester.pump(const Duration(milliseconds: 300));
+      final rows = tester.widgetList<CopyRow>(find.byType(CopyRow)).toList();
+      expect(rows.map((row) => row.label), ['رقم الحساب', 'IBAN']);
+      expect(find.descendant(of: find.byType(CopyRow).last, matching: find.text('تم النسخ')), findsOneWidget);
+      expect(find.descendant(of: find.byType(CopyRow).first, matching: find.text('تم النسخ')), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      await tester.pump(BasakMotion.copied);
+      await frames(tester);
+      expect(find.text('نسخ'), findsNWidgets(2));
 
       await tester.tap(find.text('فودافون كاش'));
       await frames(tester);

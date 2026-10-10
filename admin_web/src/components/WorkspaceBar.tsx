@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Building2 } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import { CompanyMark } from './CompanyMark';
+import { useCompanyBrand } from '../lib/overview';
 import { usePlatformCompanies } from '../lib/reference';
 import { companyStatusLabel, useAdminScope, useCompany } from '../lib/adminScope';
 
@@ -16,6 +18,8 @@ export const WorkspaceBar: React.FC = () => {
   const isPlatformAdmin = admin.role === 'super_admin';
   // The cached lookup the platform pages already use: nothing is asked again per workspace.
   const companies = usePlatformCompanies(isPlatformAdmin).data ?? [];
+  // From the overview the frame already reads: no request of its own.
+  const brand = useCompanyBrand(company.id);
 
   if (!isPlatformAdmin && company.status === 'active') return null;
 
@@ -28,7 +32,7 @@ export const WorkspaceBar: React.FC = () => {
         </Link>
       )}
       <span className="inline-flex items-center gap-1.5 font-extrabold text-[#1F2937]">
-        <Building2 className="h-4 w-4 text-[#3E8FBF]" /> {company.name}
+        <CompanyMark name={company.name} brand={brand} size="xs" /> {company.name}
       </span>
       {company.status !== 'active' && (
         <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">{companyStatusLabel[company.status]}</span>

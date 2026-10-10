@@ -1,3 +1,4 @@
+import '../../../../core/media/company_brand.dart';
 import '../../lines/models/line_model.dart';
 
 class SubscriptionModel {
@@ -37,6 +38,9 @@ class SubscriptionModel {
   final String? studentUniversity;
   final String? companyName;
 
+  /// The company's logo and emblem, as far as the server sent them.
+  final CompanyBrand companyBrand;
+
   /// Semester / annual period (configured centrally in academic_terms).
   final String? periodCode;
   final int? academicYear;
@@ -72,6 +76,7 @@ class SubscriptionModel {
     this.universityName,
     this.studentUniversity,
     this.companyName,
+    this.companyBrand = CompanyBrand.none,
     this.periodCode,
     this.academicYear,
     this.periodLabel,
@@ -213,6 +218,9 @@ class SubscriptionModel {
       universityName: university?['name'] as String?,
       studentUniversity: (json['student'] as Map?)?['university'] as String?,
       companyName: (line?['companies'] as Map?)?['name'] as String?,
+      // Absent from a copy saved before the app read them, and from a
+      // suspended company (it embeds as null): no picture, the initial.
+      companyBrand: CompanyBrand.fromJson(line?['companies']),
       periodCode: json['period_code'] as String?,
       academicYear: (json['academic_year'] as num?)?.toInt(),
       periodLabel: json['period_label'] as String?,

@@ -516,6 +516,10 @@ class SettingRow {
 
   /// A control at the end of the row instead of a glyph (a switch).
   final Widget? trailing;
+
+  /// A small picture before the value, part of the fact it states (the
+  /// company's mark beside its name).
+  final Widget? mark;
   final Key? key;
 
   const SettingRow({
@@ -527,6 +531,7 @@ class SettingRow {
     this.onTap,
     this.external = false,
     this.trailing,
+    this.mark,
     this.key,
   });
 }
@@ -594,6 +599,7 @@ class SettingRows extends StatelessWidget {
                       style: valueStyle,
                     ),
             ),
+            if (row.mark != null) ...[const SizedBox(width: BasakSpace.s8), row.mark!],
             if (row.locked) ...[
               const SizedBox(width: BasakSpace.s6),
               Icon(LucideIcons.lock, size: 14, color: colors.ink3, semanticLabel: 'لا يمكن تغييرها'),
@@ -1011,7 +1017,7 @@ class BasakDialogFrame extends StatelessWidget {
         );
 
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: Dialog(
         backgroundColor: Colors.transparent,
         elevation: 0,

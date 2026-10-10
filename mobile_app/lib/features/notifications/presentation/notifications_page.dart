@@ -125,7 +125,19 @@ class NotificationsPage extends ConsumerStatefulWidget {
             children: [
               Row(
                 children: [
-                  ToneTile(style.icon, tone: style.tone, size: 44),
+                  // Who it is from: the company's own mark for what its
+                  // management or a supervisor sent, the kind's glyph otherwise.
+                  if (n.fromCompany && n.companyBrand.hasMark)
+                    CompanyLogo(
+                      key: const Key('alert-company-logo'),
+                      name: n.companyName,
+                      brand: n.companyBrand,
+                      size: 44,
+                      radius: BasakRadius.tile,
+                      placeholder: ToneTile(style.icon, tone: style.tone, size: 44),
+                    )
+                  else
+                    ToneTile(style.icon, tone: style.tone, size: 44),
                   const SizedBox(width: BasakSpace.s12),
                   Expanded(
                     child: Column(
@@ -287,7 +299,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         )
       else if (shown.isEmpty)
         _gutter(EmptyState(
-            icon: LucideIcons.search, title: 'لا توجد نتائج', message: 'لا يوجد إشعار يطابق "$_query".'))
+            icon: LucideIcons.search, title: 'لا توجد نتائج', message: 'لا يوجد إشعار يطابق «$_query».'))
       else ...[
         for (final day in groupNotificationsByDay(shown, now))
           _gutter(GroupSection(
@@ -303,7 +315,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     return Scaffold(
       backgroundColor: colors.ground,
       body: MediaQuery.withClampedTextScaling(
-        maxScaleFactor: 1.3,
+        maxScaleFactor: basakMaxTextScale,
         child: SafeArea(
           bottom: false,
           child: Center(

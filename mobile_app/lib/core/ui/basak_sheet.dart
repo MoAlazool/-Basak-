@@ -88,7 +88,7 @@ class BasakSheetFrame extends StatelessWidget {
     final safe = media.padding.bottom;
 
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
+      maxScaleFactor: basakMaxTextScale,
       child: Padding(
         // The sheet rides above the keyboard.
         padding: EdgeInsets.only(bottom: media.viewInsets.bottom),

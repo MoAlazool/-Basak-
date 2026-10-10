@@ -38,8 +38,8 @@ Future<void> _fonts() async {
   await (FontLoader('Lucide')..addFont(file('lucide.ttf'))).load();
 }
 
-Future<void> _shot(WidgetTester tester, String name) async {
-  await tester.pumpAndSettle();
+Future<void> _shot(WidgetTester tester, String name, {bool settle = true}) async {
+  if (settle) await tester.pumpAndSettle();
   await tester.runAsync(() async {
     final boundary = _key.currentContext!.findRenderObject() as RenderRepaintBoundary;
     final image = await boundary.toImage(pixelRatio: 2);
@@ -243,10 +243,15 @@ void main() {
     for (final size in const [phone, Size(360, 640)]) {
       await card(tester, size, pass('active'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('card-details-open')));
+      // Turning, then on its back.
+      await tester.tap(find.byKey(const Key('card-flip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      await _shot(tester, 'card-turning-${size.height.toInt()}', settle: false);
+      await tester.pumpAndSettle();
       await _shot(tester, 'card-details-${size.height.toInt()}');
-      expect(find.byKey(const Key('card-details')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('card-details-close')));
+      expect(find.byKey(const Key('card-back')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('card-flip')));
       await tester.pumpAndSettle();
     }
   }, skip: _dir == null);

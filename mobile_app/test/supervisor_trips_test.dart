@@ -132,9 +132,16 @@ void main() {
     await tester.pumpAndSettle();
     final copied = calls.where((c) => c.method == 'Clipboard.setData').single;
     expect((copied.arguments as Map)['text'], '01098765432');
+    // The sheet stays and the button says it: no toast for a copy.
+    expect(find.byType(RiderSheet), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('rider-copy')), matching: find.text('تم النسخ')), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    await tester.pump(BasakMotion.copied);
+    await tester.pumpAndSettle();
+    expect(inSheet('نسخ الرقم'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
     expect(find.byType(RiderSheet), findsNothing);
-    expect(find.text('تم نسخ الرقم'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 4));
 
     // Someone who boarded says when.
     await tester.tap(find.text('ندى إبراهيم خليل'));

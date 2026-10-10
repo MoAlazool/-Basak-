@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/ui/ui.dart';
@@ -71,12 +70,6 @@ class RiderSheet extends StatelessWidget {
     return page;
   }
 
-  Future<void> _copy(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: SupervisorContactSheet.dialable(phone)));
-    if (!context.mounted) return;
-    BasakToast.show(_close(context), 'تم نسخ الرقم');
-  }
-
   @override
   Widget build(BuildContext context) {
     final hasPhone = SupervisorContactSheet.dialable(phone).isNotEmpty;
@@ -142,13 +135,12 @@ class RiderSheet extends StatelessWidget {
               ),
               const SizedBox(width: BasakSpace.s8),
               Expanded(
-                child: BasakButton(
+                // The sheet stays: the button itself says the number was copied.
+                child: CopyButton(
                   key: const Key('rider-copy'),
                   label: 'نسخ الرقم',
-                  icon: LucideIcons.copy,
-                  variant: BasakButtonVariant.secondary,
+                  value: hasPhone ? SupervisorContactSheet.dialable(phone) : null,
                   size: BasakButtonSize.medium,
-                  onPressed: hasPhone ? () => _copy(context) : null,
                 ),
               ),
             ],

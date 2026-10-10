@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 
 import '../../../../core/network/network_errors.dart';
-import '../../../../core/network/supabase_service.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/ui/ui.dart';
 import '../../../../core/widgets/skeleton.dart';
@@ -38,9 +37,10 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
   /// The company's logo for the PDF, when it can be loaded quickly. The
   /// receipt is complete without it, so being offline never blocks the PDF.
   Future<Uint8List?> _companyLogo(String? folder) async {
-    if (folder == null || folder.isEmpty) return null;
+    // The one rule for a company picture's address (and its guard).
+    final url = CompanyBrand.logoFileUrl(folder);
+    if (url == null) return null;
     try {
-      final url = SupabaseService.client.storage.from('wallet-assets').getPublicUrl('$folder/master.png');
       final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close().timeout(const Duration(seconds: 6));

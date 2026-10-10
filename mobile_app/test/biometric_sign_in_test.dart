@@ -357,6 +357,45 @@ void main() {
       device.current = null;
       expect(await flow.offerFor('student-2'), isNull);
     });
+
+    test('everyone asked on a shared phone is remembered, not only the last one', () async {
+      final fake = FakeVault();
+      final flow = BiometricSignIn(device: FakeBiometricDevice(), vault: fake.vault, restore: (_) async {});
+
+      await flow.markOffered('student-1');
+      await flow.markOffered('student-2');
+      expect(await flow.offerFor('student-1'), isNull, reason: 'asked before the second account was');
+      expect(await flow.offerFor('student-2'), isNull);
+      expect(await flow.offerFor('student-3'), isNotNull);
+
+      // Asked again later: still one entry each.
+      await flow.markOffered('student-1');
+      expect(fake.store.values[BiometricVault.offeredKey], 'student-2,student-1');
+
+      // Only ids are kept, and only the last few.
+      for (var i = 0; i < 20; i++) {
+        await flow.markOffered('other-$i');
+      }
+      expect(fake.store.values[BiometricVault.offeredKey]!.split(','), hasLength(BiometricVault.offeredLimit));
+      expect(await fake.vault.wasOffered('other-19'), isTrue);
+    });
+
+    test('the single id an earlier version wrote still counts as asked', () async {
+      final fake = FakeVault();
+      fake.store.values[BiometricVault.offeredKey] = 'student-1';
+      expect(await fake.vault.wasOffered('student-1'), isTrue);
+      expect(await fake.vault.wasOffered('student-2'), isFalse);
+      await fake.vault.markOffered('student-2');
+      expect(await fake.vault.wasOffered('student-1'), isTrue);
+    });
+
+    test('not offered to an account that already has it switched on', () async {
+      final fake = FakeVault();
+      final flow = BiometricSignIn(device: FakeBiometricDevice(), vault: fake.vault, restore: (_) async {});
+      await storeSignIn(fake);
+      fake.store.values.remove(BiometricVault.offeredKey);
+      expect(await flow.offerFor(saraDraft.userId), isNull);
+    });
   });
 
   group('signing out', () {

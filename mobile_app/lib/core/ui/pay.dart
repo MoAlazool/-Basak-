@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_icons.dart';
 import 'basak_button.dart';
 import 'basak_page.dart';
+import 'copy.dart';
 import 'facts.dart';
 import 'pass_card.dart';
 import 'status_chip.dart';
@@ -315,13 +316,13 @@ class OfferCard extends StatelessWidget {
 class CopyField {
   final String label;
   final String value;
-  final VoidCallback onCopy;
 
-  const CopyField({required this.label, required this.value, required this.onCopy});
+  const CopyField({required this.label, required this.value});
 }
 
 /// Who is paid, and how: the account's holder and the method, then only the
-/// values to copy, each with its own "نسخ".
+/// values to copy, each a [CopyRow]: a tap on it copies, and the row itself
+/// says so.
 class PayeeCard extends StatelessWidget {
   final String name;
   final String method;
@@ -334,54 +335,33 @@ class PayeeCard extends StatelessWidget {
     final colors = context.colors;
     final text = context.text;
     final initial = name.trim().isEmpty ? '' : name.trim().characters.first;
+    // The rows stand 6 from the card's edge and carry the other 10 themselves,
+    // so a copied row is a green box with air around it.
     return BasakCard(
-      padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16),
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s6),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 64),
-            child: Row(
-              children: [
-                ExcludeSemantics(
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration:
-                        BoxDecoration(color: colors.avatarTint, borderRadius: BasakRadius.all(BasakRadius.tile)),
-                    child: Text(initial,
-                        textScaler: TextScaler.noScaling,
-                        style: text.rowTitle.copyWith(color: colors.teal, height: 1)),
-                  ),
-                ),
-                const SizedBox(width: BasakSpace.s12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.body.copyWith(fontWeight: FontWeight.w600, height: 22 / 15)),
-                        Text(method, style: text.caption.copyWith(color: colors.ink3)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          for (final field in fields) ...[
-            Divider(height: 1, thickness: 1, color: colors.hairline),
-            ConstrainedBox(
+          Padding(
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s10),
+            child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 64),
               child: Row(
                 children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration:
+                          BoxDecoration(color: colors.avatarTint, borderRadius: BasakRadius.all(BasakRadius.tile)),
+                      child: Text(initial,
+                          textScaler: TextScaler.noScaling,
+                          style: text.rowTitle.copyWith(color: colors.teal, height: 1)),
+                    ),
+                  ),
+                  const SizedBox(width: BasakSpace.s12),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s10),
@@ -389,35 +369,24 @@ class PayeeCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(field.label, style: text.caption.copyWith(color: colors.ink3)),
-                          // A number reads left to right, at the start edge.
-                          SizedBox(
-                            width: double.infinity,
-                            child: Text(
-                              field.value,
-                              maxLines: 1,
+                          Text(name,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              textDirection: TextDirection.ltr,
-                              textAlign:
-                                  Directionality.of(context) == TextDirection.rtl ? TextAlign.end : TextAlign.start,
-                              style: text.rowTitle.copyWith(height: 24 / 16),
-                            ),
-                          ),
+                              style: text.body.copyWith(fontWeight: FontWeight.w600, height: 22 / 15)),
+                          Text(method, style: text.caption.copyWith(color: colors.ink3)),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: BasakSpace.s12),
-                  BasakButton(
-                    label: 'نسخ',
-                    icon: LucideIcons.copy,
-                    onPressed: field.onCopy,
-                    variant: BasakButtonVariant.secondary,
-                    size: BasakButtonSize.small,
-                    expand: false,
-                  ),
                 ],
               ),
+            ),
+          ),
+          for (final field in fields) ...[
+            Divider(height: 1, thickness: 1, indent: BasakSpace.s10, endIndent: BasakSpace.s10, color: colors.hairline),
+            Padding(
+              padding: const EdgeInsetsDirectional.symmetric(vertical: BasakSpace.s4),
+              child: CopyRow(label: field.label, value: field.value),
             ),
           ],
         ],

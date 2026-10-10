@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'status_chip.dart';
@@ -54,6 +56,151 @@ class PhotoRing extends StatelessWidget {
   }
 }
 
+/// A card with two sides, turned over about its upright axis. [turn] runs
+/// from 0 (the face) to 1 (the back); whoever owns it animates it. The face
+/// decides the size and the back is laid out in the same box, so the card
+/// does not change shape as it turns.
+///
+/// Only the side on show can be tapped or read by a screen reader. At rest
+/// nothing is transformed, so the face (a QR code) is drawn exactly as it is.
+/// With [fade] the sides fade into each other instead of turning: what the
+/// phone's "reduce motion" asks for.
+class CardFlip extends StatelessWidget {
+  final double turn;
+  final bool fade;
+  final Widget front;
+  final Widget back;
+
+  /// A tap anywhere on the card. Not announced: the screen gives a button of
+  /// its own for the same thing.
+  final VoidCallback? onTap;
+
+  /// The colour of the shadow the card throws while it is off the page.
+  final Color? shadow;
+
+  const CardFlip({
+    super.key,
+    required this.turn,
+    required this.front,
+    required this.back,
+    this.fade = false,
+    this.onTap,
+    this.shadow,
+  });
+
+  /// How strongly the far edge recedes.
+  static const double _perspective = .0012;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = turn.clamp(0.0, 1.0);
+    final showBack = t >= .5;
+    final turning = !fade && t > 0 && t < 1;
+    // 0 flat on the page, 1 edge-on.
+    final lift = turning ? math.sin(math.pi * t) : 0.0;
+
+    Widget side(Widget child, {required bool shown, required double opacity}) => IgnorePointer(
+          ignoring: !shown,
+          child: ExcludeSemantics(excluding: !shown, child: Opacity(opacity: opacity, child: child)),
+        );
+
+    Widget card = Stack(
+      children: [
+        side(front, shown: !showBack, opacity: fade ? (1 - 2 * t).clamp(0.0, 1.0) : (showBack ? 0 : 1)),
+        if (t > 0)
+          Positioned.fill(
+            child: side(
+              // Seen from behind while the card turns: turned back to read true.
+              turning ? Transform(alignment: Alignment.center, transform: Matrix4.rotationY(math.pi), child: back) : back,
+              shown: showBack,
+              opacity: fade ? (2 * t - 1).clamp(0.0, 1.0) : (showBack ? 1 : 0),
+            ),
+          ),
+      ],
+    );
+
+    if (turning) {
+      card = Transform(
+        key: const Key('card-turn'),
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..setEntry(3, 2, _perspective)
+          ..rotateY(math.pi * t)
+          ..scaleByDouble(1 - .04 * lift, 1 - .04 * lift, 1, 1),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BasakRadius.all(BasakRadius.sheet),
+            boxShadow: [
+              BoxShadow(
+                color: (shadow ?? context.colors.ink).withValues(alpha: .5 * lift),
+                blurRadius: 28 * lift,
+                offset: Offset(0, 14 * lift),
+              ),
+            ],
+          ),
+          child: card,
+        ),
+      );
+    }
+
+    return RepaintBoundary(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: onTap,
+        child: card,
+      ),
+    );
+  }
+}
+
+/// A student's college and university under their name. On one line, with a
+/// dot between them, when both fit; otherwise each on a line of its own, the
+/// college first. Neither is ever cut to make room for the other, and the two
+/// never run into each other.
+class SchoolLine extends StatelessWidget {
+  final String? college;
+  final String? university;
+
+  /// Defaults to the quiet label under a name.
+  final TextStyle? style;
+
+  const SchoolLine({super.key, this.college, this.university, this.style});
+
+  /// Between the two on one line: a middle dot with air on both sides.
+  static const separator = ' · ';
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = [college, university].map((s) => (s ?? '').trim()).where((s) => s.isNotEmpty).toList();
+    if (parts.isEmpty) return const SizedBox.shrink();
+    final style =
+        this.style ?? context.text.label.copyWith(color: context.colors.ink3, fontWeight: FontWeight.w400);
+
+    Text line(String value, {int maxLines = 1}) =>
+        Text(value, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: style);
+
+    if (parts.length == 1) return line(parts.single, maxLines: 2);
+    final joined = parts.join(separator);
+    return LayoutBuilder(builder: (context, box) {
+      final painter = TextPainter(
+        text: TextSpan(text: joined, style: style),
+        maxLines: 1,
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final fits = painter.width <= box.maxWidth;
+      painter.dispose();
+      if (fits) return line(joined);
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [for (final part in parts) line(part)],
+      );
+    });
+  }
+}
+
 /// Label over value, two columns: the four facts on the face of the card.
 class FactGrid extends StatelessWidget {
   final List<(String label, String value)> facts;
@@ -61,7 +208,11 @@ class FactGrid extends StatelessWidget {
   /// Tighter, one line per value: the card on a short phone.
   final bool dense;
 
-  const FactGrid({super.key, required this.facts, this.dense = false});
+  /// A small picture before a fact's value, by the fact's label (the
+  /// company's mark beside its name).
+  final Map<String, Widget> marks;
+
+  const FactGrid({super.key, required this.facts, this.dense = false, this.marks = const {}});
 
   @override
   Widget build(BuildContext context) {
@@ -73,10 +224,24 @@ class FactGrid extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(f.$1, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.caption.copyWith(color: colors.ink3)),
-            Text(f.$2,
-                maxLines: dense ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                style: text.body.copyWith(fontWeight: FontWeight.w500)),
+            if (marks[f.$1] == null)
+              Text(f.$2,
+                  maxLines: dense ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.body.copyWith(fontWeight: FontWeight.w500))
+            else
+              Row(
+                children: [
+                  marks[f.$1]!,
+                  const SizedBox(width: BasakSpace.s8),
+                  Expanded(
+                    child: Text(f.$2,
+                        maxLines: dense ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.body.copyWith(fontWeight: FontWeight.w500)),
+                  ),
+                ],
+              ),
           ],
         );
 
@@ -85,14 +250,18 @@ class FactGrid extends StatelessWidget {
       children: [
         for (var i = 0; i < facts.length; i += 2) ...[
           if (i > 0) SizedBox(height: dense ? BasakSpace.s4 : BasakSpace.s10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: fact(facts[i])),
-              const SizedBox(width: BasakSpace.s16),
-              Expanded(child: i + 1 < facts.length ? fact(facts[i + 1]) : const SizedBox.shrink()),
-            ],
-          ),
+          // A last fact without a neighbour takes the whole row.
+          if (i + 1 == facts.length)
+            Align(alignment: AlignmentDirectional.centerStart, child: fact(facts[i]))
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: fact(facts[i])),
+                const SizedBox(width: BasakSpace.s16),
+                Expanded(child: fact(facts[i + 1])),
+              ],
+            ),
         ],
       ],
     );

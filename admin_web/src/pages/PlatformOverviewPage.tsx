@@ -3,6 +3,7 @@ import { Skeleton } from '../components/Skeleton';
 import { Link } from 'react-router-dom';
 import { Building2, Bus, FileCheck2, Users, Wallet } from 'lucide-react';
 import { Topbar } from '../components/Topbar';
+import { CompanyMark } from '../components/CompanyMark';
 import { count, egp, StatsRow } from '../components/StatsRow';
 import { WeeklyRidersChart } from '../components/WeeklyRidersChart';
 import { TopLinesPanel } from '../components/TopLinesPanel';
@@ -92,7 +93,9 @@ export const PlatformOverviewPage: React.FC = () => {
               {rows.map((row) => (
                 <tr key={row.company.id} className="hover:bg-slate-50/70">
                   <td className="p-3">
-                    <span className="font-bold text-slate-800">{row.company.name}</span>
+                    <span className="inline-flex items-center gap-2 align-middle font-bold text-slate-800">
+                      <CompanyMark name={row.company.name} brand={row.company} size="sm" />{row.company.name}
+                    </span>
                     {row.company.status !== 'active' && (
                       <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-800">{companyStatusLabel[row.company.status]}</span>
                     )}

@@ -8,6 +8,8 @@ interface NavProps {
   items: NavItem[];
   /** Shown under the brand: which area or company these pages belong to. */
   areaLabel: string;
+  /** A company's own mark: its workspace is then headed by the company, not by the product. */
+  mark?: React.ReactNode;
   onLogout: () => void;
   /** Things waiting for the admin, by badge name (see NavItem.badge). */
   badges?: Partial<Record<NonNullable<NavItem['badge']>, number>>;
@@ -22,7 +24,7 @@ const Badge: React.FC<{ count?: number; className?: string }> = ({ count, classN
     </span>
   );
 
-export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout, badges = {} }) => (
+export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, mark, onLogout, badges = {} }) => (
   <aside
     className="sticky top-0 h-screen w-[72px] lg:w-[230px] flex flex-col justify-between py-5 px-3 z-30 flex-shrink-0 overflow-y-auto"
     style={{
@@ -35,10 +37,10 @@ export const Sidebar: React.FC<NavProps> = ({ items, areaLabel, onLogout, badges
   >
     <div>
       <div className="flex items-center gap-3 px-2 py-3 mb-4 border-b border-white/40">
-        <BasakLogo className="h-10 w-10 min-w-[40px]" />
+        {mark ?? <BasakLogo className="h-10 w-10 min-w-[40px]" />}
         <div className="hidden lg:block min-w-0">
-          <h1 className="text-base font-extrabold text-[#1F2937] leading-tight">باصك</h1>
-          <p className="truncate text-[11px] font-medium text-[#5B6B7A]" title={areaLabel}>{areaLabel}</p>
+          <h1 className="truncate text-base font-extrabold text-[#1F2937] leading-tight" title={mark ? areaLabel : undefined}>{mark ? areaLabel : 'باصك'}</h1>
+          <p className="truncate text-[11px] font-medium text-[#5B6B7A]" title={mark ? undefined : areaLabel}>{mark ? 'باصك' : areaLabel}</p>
         </div>
       </div>
 

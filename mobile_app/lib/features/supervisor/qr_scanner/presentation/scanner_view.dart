@@ -229,7 +229,7 @@ class ScannerViewState extends ConsumerState<ScannerView> {
       value: BasakChrome.onDark(colors.scanBase),
       child: Material(
         color: colors.scanBase,
-        child: MediaQuery.withClampedTextScaling(maxScaleFactor: 1.3, child: body),
+        child: MediaQuery.withClampedTextScaling(maxScaleFactor: basakMaxTextScale, child: body),
       ),
     );
   }
@@ -332,7 +332,7 @@ class ScannerViewState extends ConsumerState<ScannerView> {
                             Text(
                               'ضع رمز الطالب داخل الإطار',
                               textAlign: TextAlign.center,
-                              style: context.text.body.copyWith(color: colors.hairline),
+                              style: context.text.body.copyWith(color: colors.onInk2),
                             ),
                           ],
                         ),
