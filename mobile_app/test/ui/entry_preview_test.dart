@@ -219,7 +219,9 @@ void main() {
       await _show(tester, size, const ForgotPasswordScreen(initialPhone: '010 2345 6789'));
       await _shot(tester, 'forgot_request_$tag');
       await _tap(tester, 'forgot-have-code');
-      await tester.enterText(_input('forgot-code'), '4827');
+      await tester.enterText(_input('forgot-code'), '482716');
+      await _shot(tester, 'forgot_code_$tag');
+      await _tap(tester, 'forgot-verify');
       await tester.enterText(_input('forgot-password'), 'abcdefg1');
       await _shot(tester, 'forgot_reset_$tag');
     });

@@ -639,23 +639,37 @@ void main() {
       expect(find.text('ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.'), findsOneWidget);
     });
 
-    testWidgets('step 2 takes the six digits and the new password, then goes back with the phone', (tester) async {
+    testWidgets('step 2 checks the six digits before the new password has a page of its own', (tester) async {
       await open(tester, phone: '01012345678');
       await _tap(tester, 'forgot-have-code');
       expect(repo.resetRequests, isEmpty, reason: 'a code in hand needs no new request');
       expect(find.text('أدخل الرمز'), findsOneWidget);
+      expect(find.byKey(const Key('forgot-password')), findsNothing, reason: 'the new password comes after the code');
 
-      // Off until there is a whole code and both passwords.
-      await _tap(tester, 'forgot-reset-submit');
-      expect(repo.resets, isEmpty);
+      // Off until there is a whole code.
       await _type(tester, 'forgot-code', '4827');
-      await _type(tester, 'forgot-password', 'NewPass12');
-      await _type(tester, 'forgot-confirm', 'NewPass1');
-      await _tap(tester, 'forgot-reset-submit');
-      expect(repo.resets, isEmpty);
+      await _tap(tester, 'forgot-verify');
+      expect(repo.verifications, isEmpty);
 
       await _type(tester, 'forgot-code', '٤٨٢٧١٦');
+      await _tap(tester, 'forgot-verify');
+      expect(repo.verifications.single, (phone: '01012345678', code: '482716'));
+      expect(find.text('كلمة مرور جديدة'), findsOneWidget);
+      expect(find.byKey(const Key('forgot-code')), findsNothing);
+    });
+
+    testWidgets('step 3 takes the new password, then goes back with the phone', (tester) async {
+      await open(tester, phone: '01012345678');
+      await _tap(tester, 'forgot-have-code');
+      await _type(tester, 'forgot-code', '482716');
+      await _tap(tester, 'forgot-verify');
+
+      // Off until both passwords are there.
+      await _tap(tester, 'forgot-reset-submit');
+      expect(repo.resets, isEmpty);
+      await _type(tester, 'forgot-password', 'NewPass12');
       expect(find.text('متوسطة'), findsOneWidget);
+      await _type(tester, 'forgot-confirm', 'NewPass1');
       await _tap(tester, 'forgot-reset-submit');
       expect(find.text(passwordMismatchMessage), findsOneWidget);
       expect(repo.resets, isEmpty);
@@ -687,21 +701,35 @@ void main() {
       expect(ForgotPasswordScreen.whatsappMessage('0101'), 'مرحباً، نسيت كلمة المرور في تطبيق باصك وأحتاج رمز الاستعادة.');
     });
 
-    testWidgets('what the server refuses is shown, and the request can be sent again', (tester) async {
+    testWidgets('a code the server refuses stays on its page; the request can be sent again; back goes step by step',
+        (tester) async {
       await open(tester, phone: '01012345678');
       await _tap(tester, 'forgot-have-code');
-      repo.resetError = Exception('الرمز غير صحيح أو انتهت صلاحيته.');
+      repo.verifyError = Exception('الرمز غير صحيح. المحاولات المتبقية: 4.');
       await _type(tester, 'forgot-code', '111111');
-      await _type(tester, 'forgot-password', 'NewPass12');
-      await _type(tester, 'forgot-confirm', 'NewPass12');
-      await _tap(tester, 'forgot-reset-submit');
-      expect(find.widgetWithText(InlineError, 'الرمز غير صحيح أو انتهت صلاحيته.'), findsOneWidget);
+      await _tap(tester, 'forgot-verify');
+      expect(find.widgetWithText(InlineError, 'الرمز غير صحيح. المحاولات المتبقية: 4.'), findsOneWidget);
+      expect(find.byKey(const Key('forgot-password')), findsNothing);
       expect(result, 'unset');
 
       await _tap(tester, 'forgot-resend');
       expect(repo.resetRequests, ['01012345678']);
 
-      // Back leaves the code step for the phone step, not the whole screen.
+      // A right code, then the server refuses the change itself (the code ran out meanwhile).
+      repo.verifyError = null;
+      repo.resetError = Exception('انتهت صلاحية الرمز. اطلب رمزاً جديداً من إدارة شركتك.');
+      await _type(tester, 'forgot-code', '222222');
+      await _tap(tester, 'forgot-verify');
+      await _type(tester, 'forgot-password', 'NewPass12');
+      await _type(tester, 'forgot-confirm', 'NewPass12');
+      await _tap(tester, 'forgot-reset-submit');
+      expect(find.widgetWithText(InlineError, 'انتهت صلاحية الرمز. اطلب رمزاً جديداً من إدارة شركتك.'), findsOneWidget);
+      expect(result, 'unset');
+
+      // Back: the password to the code, the code to the phone, not the whole screen.
+      await tester.tap(find.byType(BasakIconButton));
+      await tester.pumpAndSettle();
+      expect(find.text('أدخل الرمز'), findsOneWidget);
       await tester.tap(find.byType(BasakIconButton));
       await tester.pumpAndSettle();
       expect(find.text('استعادة كلمة المرور'), findsOneWidget);

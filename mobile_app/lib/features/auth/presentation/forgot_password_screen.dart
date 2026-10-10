@@ -15,7 +15,9 @@ import 'password_strength.dart';
 ///    bus company in the admin dashboard.
 /// 2. The company admin verifies the student by phone and gives them a
 ///    6-digit one-time code (valid 30 minutes, 5 tries).
-/// 3. The student enters the code and a new password, then signs in with it.
+/// 3. The student enters the code, which the server checks (a wrong one is one
+///    of its 5 tries)...
+/// 4. ...and only then, on a page of its own, the new password.
 /// Until codes come by SMS, the code step also offers a chat with the
 /// platform's WhatsApp (set on the dashboard; no number, no button).
 /// Pops with the phone number once the password has been changed.
@@ -36,13 +38,16 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
   ConsumerState<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
+/// Where the student is: their phone, the code, the new password.
+enum _Step { phone, code, password }
+
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   late final _phone = TextEditingController(text: widget.initialPhone);
   final _code = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   final _confirmFocus = FocusNode();
-  bool _codeStep = false;
+  _Step _step = _Step.phone;
   bool _busy = false;
   bool _hide = true;
   String? _phoneError;
@@ -78,6 +83,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   String get _codeDigits => AuthRepository.toLatinDigits(_code.text.trim());
 
+  void _go(_Step step) => setState(() {
+        _step = step;
+        _failure = null;
+      });
+
   bool _validPhone() {
     final valid = RegExp(r'^01[0125][0-9]{8}$').hasMatch(AuthRepository.normalizeEgyptianPhone(_phone.text));
     setState(() {
@@ -93,7 +103,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     setState(() => _busy = true);
     try {
       await ref.read(authRepositoryProvider).requestPasswordReset(_phone.text);
-      if (mounted) setState(() => _codeStep = true);
+      if (mounted) _go(_Step.code);
     } catch (error) {
       if (mounted) setState(() => _failure = _clean(error));
     } finally {
@@ -103,22 +113,43 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   void _haveCode() {
     FocusScope.of(context).unfocus();
-    if (_validPhone()) setState(() => _codeStep = true);
+    if (_validPhone()) _go(_Step.code);
+  }
+
+  /// The code is checked by the server before the new-password page opens.
+  Future<void> _verify() async {
+    FocusScope.of(context).unfocus();
+    if (_busy) return;
+    if (!RegExp(r'^\d{6}$').hasMatch(_codeDigits)) {
+      setState(() => _codeError = 'أدخل الرمز المكون من 6 أرقام.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _codeError = null;
+      _failure = null;
+    });
+    try {
+      await ref.read(authRepositoryProvider).verifyResetCode(phone: _phone.text, code: _codeDigits);
+      if (mounted) _go(_Step.password);
+    } catch (error) {
+      if (mounted) setState(() => _failure = _clean(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _reset() async {
     FocusScope.of(context).unfocus();
     if (_busy) return;
-    final codeError = RegExp(r'^\d{6}$').hasMatch(_codeDigits) ? null : 'أدخل الرمز المكون من 6 أرقام.';
     final passwordError = _password.text.length < passwordMinLength ? passwordTooShortMessage : null;
     final confirmError = _confirm.text != _password.text ? passwordMismatchMessage : null;
     setState(() {
-      _codeError = codeError;
       _passwordError = passwordError;
       _confirmError = confirmError;
       _failure = null;
     });
-    if (codeError != null || passwordError != null || confirmError != null) return;
+    if (passwordError != null || confirmError != null) return;
 
     setState(() => _busy = true);
     try {
@@ -151,26 +182,31 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     }
   }
 
+  /// One step back: the password to the code, the code to the phone, then out.
   void _back() {
     if (_busy) return;
-    if (_codeStep) {
-      setState(() {
-        _codeStep = false;
-        _failure = null;
-      });
-    } else {
-      Navigator.of(context).maybePop();
+    switch (_step) {
+      case _Step.password:
+        _go(_Step.code);
+      case _Step.code:
+        _go(_Step.phone);
+      case _Step.phone:
+        Navigator.of(context).maybePop();
     }
   }
 
   @override
   Widget build(BuildContext context) => PopScope(
-        // Back leaves the code step for the phone step before it leaves the screen.
-        canPop: !_codeStep,
+        // Back goes one step back before it leaves the screen.
+        canPop: _step == _Step.phone,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _back();
         },
-        child: _codeStep ? _codePage() : _phonePage(),
+        child: switch (_step) {
+          _Step.phone => _phonePage(),
+          _Step.code => _codePage(),
+          _Step.password => _passwordPage(),
+        },
       );
 
   Widget _phonePage() => EntryPage(
@@ -214,49 +250,70 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         ],
       );
 
-  Widget _codePage() {
-    final strength = passwordStrength(_password.text);
-    final ready = _codeDigits.length == 6 && _password.text.isNotEmpty && _confirm.text.isNotEmpty;
-    return EntryPage(
-      key: const ValueKey('forgot-reset'),
-      onBack: _back,
-      title: 'أدخل الرمز',
-      subtitle: 'ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.',
-      actions: [
-        if (_whatsapp != null)
+  Widget _codePage() => EntryPage(
+        key: const ValueKey('forgot-code-step'),
+        onBack: _back,
+        title: 'أدخل الرمز',
+        subtitle: 'ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.',
+        actions: [
+          if (_whatsapp != null)
+            BasakButton(
+              key: const Key('forgot-whatsapp'),
+              label: 'اطلب الرمز على واتساب',
+              variant: BasakButtonVariant.tonal,
+              icon: LucideIcons.messageCircle,
+              onPressed: _busy ? null : _openWhatsApp,
+            ),
           BasakButton(
-            key: const Key('forgot-whatsapp'),
-            label: 'اطلب الرمز على واتساب',
-            variant: BasakButtonVariant.tonal,
-            icon: LucideIcons.messageCircle,
-            onPressed: _busy ? null : _openWhatsApp,
+            key: const Key('forgot-verify'),
+            label: 'تأكيد الرمز',
+            loading: _busy,
+            onPressed: _codeDigits.length == 6 ? _verify : null,
           ),
+          EntryLink(key: const Key('forgot-resend'), label: 'إعادة إرسال الطلب', onTap: _busy ? null : _request),
+        ],
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CodeField(
+                key: const Key('forgot-code'),
+                controller: _code,
+                hasError: _codeError != null || _failure != null,
+                semanticLabel: 'رمز الاستعادة',
+                onChanged: (_) => setState(() {
+                  _codeError = null;
+                  _failure = null;
+                }),
+              ),
+              if (_codeError != null) ...[
+                const SizedBox(height: BasakSpace.s6),
+                FieldNote(_codeError!),
+              ],
+            ],
+          ),
+          if (_failure != null) InlineError(message: _failure!),
+        ],
+      );
+
+  Widget _passwordPage() {
+    final strength = passwordStrength(_password.text);
+    final ready = _password.text.isNotEmpty && _confirm.text.isNotEmpty;
+    return EntryPage(
+      key: const ValueKey('forgot-password-step'),
+      onBack: _back,
+      title: 'كلمة مرور جديدة',
+      subtitle: 'الرمز صحيح. اختر كلمة المرور التي ستدخل بها من الآن.',
+      actions: [
         BasakButton(
           key: const Key('forgot-reset-submit'),
           label: 'تعيين كلمة المرور',
           loading: _busy,
           onPressed: ready ? _reset : null,
         ),
-        EntryLink(key: const Key('forgot-resend'), label: 'إعادة إرسال الطلب', onTap: _busy ? null : _request),
       ],
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CodeField(
-              key: const Key('forgot-code'),
-              controller: _code,
-              hasError: _codeError != null,
-              semanticLabel: 'رمز الاستعادة',
-              onChanged: (_) => setState(() => _codeError = null),
-            ),
-            if (_codeError != null) ...[
-              const SizedBox(height: BasakSpace.s6),
-              FieldNote(_codeError!),
-            ],
-          ],
-        ),
         AutofillGroup(
           child: GroupedFields(children: [
             GroupedField(
@@ -285,6 +342,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               textInputAction: TextInputAction.done,
               autofillHints: const [AutofillHints.newPassword],
               onChanged: (_) => setState(() => _confirmError = null),
+              onSubmitted: (_) => _reset(),
             ),
           ]),
         ),
