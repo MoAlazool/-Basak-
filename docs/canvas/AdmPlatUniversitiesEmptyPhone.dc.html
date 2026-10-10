@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>إدارة المنصة · Universities</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:#00658D;text-decoration:none}
+table{font:inherit;color:inherit}
+th{font-weight:inherit}
+input,textarea{font:inherit;color:inherit}
+</style>
+</helmet>
+<div data-root dir="rtl" style="width:390px;height:844px;background:#F0F5F8;font-family:'Readex Pro','Segoe UI',Tahoma,sans-serif;color:#17384A;display:flex;flex-direction:column;position:relative;overflow:hidden">
+
+<header style="height:56px;flex:none;background:#FFFFFF;border-bottom:1px solid #DCE6EC;display:flex;align-items:center;gap:4px;padding:0 4px;position:sticky;top:0;z-index:3">
+<button type="button" aria-label="فتح القائمة" title="فتح القائمة" style="width:48px;height:48px;border-radius:10px;background:transparent;color:#17384A;display:inline-flex;align-items:center;justify-content:center;flex:none;position:relative;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+<h1 style="margin:0;flex:1;min-width:0;font-size:17px;line-height:26px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">الجامعات والكليات</h1>
+<button type="button" aria-label="ابحث عن طالب" title="ابحث عن طالب" style="width:48px;height:48px;border-radius:10px;background:transparent;color:#17384A;display:inline-flex;align-items:center;justify-content:center;flex:none;position:relative;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.300-4.300"></path></svg></button>
+</header>
+
+<main style="flex:1;padding:16px 16px 24px;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:12px"><p style="margin:0;font-size:14px;line-height:22px;color:#476273">القائمة التي يختار منها الطالب جامعته وكليته عند التسجيل، وتختار منها الشركات وجهات خطوطها.</p></div>
+<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:32px 16px;background:#FFFFFF;border-radius:16px;box-shadow:0 1px 2px rgba(23,56,74,.05);">
+<span aria-hidden="true" style="width:56px;height:56px;border-radius:28px;background:#E5F3FA;color:#00658D;display:flex;align-items:center;justify-content:center;margin-bottom:8px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;"><path d="m2 9 10-5 10 5-10 5zM6 11v5c0 1.5 3 3 6 3s6-1.500 6-3v-5M22 9v6"></path></svg></span>
+<div style="font-size:16px;line-height:24px;font-weight:600">لا جامعات بعد</div>
+<div style="font-size:14px;line-height:22px;color:#476273;max-width:420px">أضف الجامعات التي تذهب إليها الباصات، ثم كليات كل جامعة. بدونها لا يستطيع طالب أن يسجّل ولا شركة أن تنشئ خطاً.</div>
+<div style="margin-top:12px;display:flex;gap:8px;align-self:stretch;flex-direction:column"><button type="button" style="height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;line-height:20px;font-weight:600;padding:0 16px;background:#00658D;color:#FFFFFF;white-space:nowrap;flex:none;width:100%;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;"><path d="M12 5v14M5 12h14"></path></svg><span>إضافة جامعة</span></button></div>
+</div>
+</main>
+
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
