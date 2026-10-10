@@ -17,6 +17,8 @@ import { Users, Plus, Trash2, Search, GraduationCap, Phone, AlertCircle, KeyRoun
 import { ResetStudentPasswordDialog } from '../components/ResetStudentPasswordDialog';
 import { PasswordResetRequests } from '../components/PasswordResetRequests';
 import { MembershipRequests } from '../components/MembershipRequests';
+import { BlockedBadge, BlockStudentButton } from '../components/BlockStudentButton';
+import { blockedLookup, useBlockedPhones } from '../lib/blockedPhones';
 
 const StudentAvatar: React.FC<{ url?: string; name: string }> = ({ url, name }) =>
   url ? <img src={url} alt={name} width={32} height={32} loading="lazy" decoding="async" className="ml-2 inline-block h-8 w-8 rounded-full object-cover align-middle" /> : null;
@@ -55,6 +57,8 @@ const lineServesUniversity = (line: LineOption, universityId: string | undefined
 
 export const StudentsPage: React.FC = () => {
   const admin = useAdminScope();
+  // Blocking is the platform admin's: only they read who is blocked.
+  const isBlocked = blockedLookup(useBlockedPhones(admin.role === 'super_admin').data);
   const company = useCompany();
   const selectedCompanyId = company.id;
   const [departureTripId, setDepartureTripId] = useState('');
@@ -532,6 +536,7 @@ export const StudentsPage: React.FC = () => {
                       <td className="p-4 font-bold text-slate-800">
                         {s.profile_image_url && <StudentAvatar url={avatarUrls[s.profile_image_url]} name={s.full_name} />}
                         {s.full_name}
+                        {isBlocked(s) && <BlockedBadge />}
                       </td>
                       <td className="p-4 text-slate-600 font-mono text-xs">
                         <span className="inline-flex items-center gap-1.5">
@@ -607,6 +612,7 @@ export const StudentsPage: React.FC = () => {
                         >
                           <UserMinus className="h-4 w-4" />
                         </button>
+                        {admin.role === 'super_admin' && <BlockStudentButton student={s} blocked={isBlocked(s)} className="mr-3" />}
                         {admin.role === 'super_admin' && (
                           <button
                             onClick={() => void handleDeleteStudent(s.id, s.full_name)}

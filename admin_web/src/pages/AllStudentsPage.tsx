@@ -10,6 +10,9 @@ import { usePlatformCompanies } from '../lib/reference';
 import { rememberApplied } from '../lib/recentChanges';
 import { useGuard } from '../lib/guard';
 import { notifyError } from '../lib/toasts';
+import { BlockedBadge, BlockStudentButton } from '../components/BlockStudentButton';
+import { BlockedPhonesPanel } from '../components/BlockedPhonesPanel';
+import { blockedLookup, useBlockedPhones } from '../lib/blockedPhones';
 
 interface Membership { company_id: string; company: string; status: 'active' | 'removed'; joined_at: string; }
 interface PlatformStudent {
@@ -45,6 +48,9 @@ export const AllStudentsPage: React.FC = () => {
 
   const client = useQueryClient();
   const guard = useGuard();
+  // Only the platform admin has this page, and blocking is theirs.
+  const blocked = useBlockedPhones(true);
+  const isBlocked = blockedLookup(blocked.data);
   const variant = !!(filters.search || filters.companyId || filters.membership || pageIndex);
   const page = usePageData(keys.platform('students', { ...filters, pageIndex }), () =>
     unwrap<{ total: number; rows: PlatformStudent[] }>(supabase.rpc('platform_students', {
@@ -84,6 +90,8 @@ export const AllStudentsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <Topbar title="كل الطلاب" subtitle="كل الحسابات على المنصة وعضوياتها في الشركات" />
+
+      <BlockedPhonesPanel list={blocked.data ?? []} />
 
       {(corrections.data?.length ?? 0) > 0 && (
         <div className="glass-panel overflow-hidden">
@@ -141,12 +149,12 @@ export const AllStudentsPage: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-right text-sm">
               <thead className="bg-slate-50/60 text-[12px] text-slate-500">
-                <tr><th className="p-3 font-bold">الطالب</th><th className="p-3 font-bold">الهاتف</th><th className="p-3 font-bold">الجامعة</th><th className="p-3 font-bold">الشركات</th><th className="p-3 font-bold">اشتراكات سارية</th><th className="p-3 font-bold">تاريخ التسجيل</th></tr>
+                <tr><th className="p-3 font-bold">الطالب</th><th className="p-3 font-bold">الهاتف</th><th className="p-3 font-bold">الجامعة</th><th className="p-3 font-bold">الشركات</th><th className="p-3 font-bold">اشتراكات سارية</th><th className="p-3 font-bold">تاريخ التسجيل</th><th className="p-3 font-bold"><span className="sr-only">إجراء</span></th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map((student) => (
                   <tr key={student.id} className="hover:bg-slate-50/70">
-                    <td className="p-3 font-bold text-slate-800">{student.full_name}</td>
+                    <td className="p-3 font-bold text-slate-800">{student.full_name}{isBlocked(student) && <BlockedBadge />}</td>
                     <td className="p-3 font-mono text-xs text-slate-600" dir="ltr">{student.phone}</td>
                     <td className="p-3 text-slate-600">{student.university}</td>
                     <td className="p-3">
@@ -163,6 +171,7 @@ export const AllStudentsPage: React.FC = () => {
                     </td>
                     <td className="p-3">{student.active_subscriptions.toLocaleString('ar-EG')}</td>
                     <td className="p-3 text-xs text-slate-400">{new Date(student.created_at).toLocaleDateString('ar-EG')}</td>
+                    <td className="p-3 text-left"><BlockStudentButton student={student} blocked={isBlocked(student)} /></td>
                   </tr>
                 ))}
               </tbody>

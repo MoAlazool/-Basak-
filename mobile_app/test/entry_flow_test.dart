@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, User;
 
 import 'package:basak_mobile/core/ui/ui.dart';
 import 'package:basak_mobile/core/widgets/photo_adjust_screen.dart';
@@ -548,6 +548,17 @@ void main() {
       // Typing again takes the complaint away.
       await _type(tester, 'login-password', 'another');
       expect(find.text('رقم الهاتف أو كلمة المرور غير صحيحة.'), findsNothing);
+    });
+
+    testWidgets('an account the platform blocked is told so, not that the password is wrong', (tester) async {
+      await open(tester);
+      repo.signInError = const AuthException('User is banned', code: 'user_banned', statusCode: '400');
+      await _tap(tester, 'welcome-signin');
+      await _type(tester, 'login-identifier', '01012345678');
+      await _type(tester, 'login-password', 'right-pass');
+      await _tap(tester, 'login-submit');
+      expect(find.textContaining(LoginScreen.blockedMessage), findsOneWidget);
+      expect(find.text(LoginScreen.wrongCredentialsMessage), findsNothing);
     });
 
     testWidgets('«تذكّر رقمي» works as before: the number comes back, only when it was asked for', (tester) async {
