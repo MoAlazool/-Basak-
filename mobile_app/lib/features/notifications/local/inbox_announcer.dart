@@ -82,6 +82,9 @@ class InboxAnnouncer {
     Future<bool> Function(AppNotification notification)? showSystem,
   }) : showSystem = showSystem ?? LocalNotifier.showInbox;
 
+  /// What a phone without push already shows by itself, at its own time.
+  static const plannedOnPhone = {'subscription.expiring', 'subscription.expired'};
+
   /// At most this many system notifications at once; the rest are in the inbox.
   static const systemAtOnce = 3;
 
@@ -100,8 +103,14 @@ class InboxAnnouncer {
   Future<void> _announce(String userId, List<AppNotification> items) async {
     final arrivals = newArrivals(items, await store.read(userId));
     await store.write(userId, arrivals.seen);
-    final fresh = arrivals.fresh;
-    if (fresh.isEmpty || pushReaches()) return;
+    if (pushReaches()) return;
+    // The subscription's two dates are shown by the phone itself on the day
+    // (SubscriptionReminders): the server's copy in the inbox is not a second one.
+    final fresh = [
+      for (final n in arrivals.fresh)
+        if (!plannedOnPhone.contains(n.type)) n,
+    ];
+    if (fresh.isEmpty) return;
     if (!inForeground()) {
       // Oldest first, so the newest ends on top of the tray.
       for (final notification in fresh.take(systemAtOnce).toList().reversed) {
