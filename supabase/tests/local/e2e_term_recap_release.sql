@@ -225,5 +225,16 @@ SELECT tr.ok('still one notification for company A',
              (SELECT count(*) = 1 FROM public.notifications n WHERE n.company_id = '7f000000-0000-4000-8000-00000000c00a'));
 SELECT tr.ok('another term is not published', (SELECT NOT EXISTS (SELECT 1 FROM public.term_recap_releases WHERE academic_year = 2026 AND period_code = 'second')));
 
+-- 20261121000001: each change of what students see is told to their phones.
+SELECT tr.ok('publishing, stopping and publishing again each reach every line''s topic once',
+             (SELECT count(DISTINCT m.topic) >= 1 AND count(*) = 3 * count(DISTINCT m.topic)
+              FROM realtime.messages m WHERE m.payload->>'table' = 'term_recap_releases' AND m.topic LIKE 'line:%'),
+             (SELECT count(*) || ' messages on ' || count(DISTINCT m.topic) || ' line topics'
+              FROM realtime.messages m WHERE m.payload->>'table' = 'term_recap_releases' AND m.topic LIKE 'line:%'));
+UPDATE public.term_recap_releases SET message = 'كلمة جديدة' WHERE academic_year = 2026 AND period_code = 'first';
+SELECT tr.ok('a change that students do not see (the message alone) is not announced',
+             (SELECT count(*) = 3 * count(DISTINCT m.topic)
+              FROM realtime.messages m WHERE m.payload->>'table' = 'term_recap_releases' AND m.topic LIKE 'line:%'));
+
 SELECT n, step, ok, detail FROM tr.results ORDER BY n;
 ROLLBACK;

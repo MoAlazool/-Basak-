@@ -124,12 +124,16 @@ class SyncScope extends ConsumerStatefulWidget {
     // The platform tells students a recap is out with a notification: Home's
     // banner asks again when one arrives (a small read), and when its saved
     // copy turned out stale.
-    if (role == UserRole.student && (tables.contains('notifications') || tables.contains('recap'))) {
+    if (role == UserRole.student &&
+        (tables.contains('notifications') || tables.contains('recap') || tables.contains('term_recap_releases'))) {
       invalidate(termRecapProvider);
     }
     if (tables.contains('notification_preferences')) invalidate(notificationPreferencesProvider);
     if (tables.contains('notification_templates')) invalidate(quickTemplatesProvider);
-    const ownScreens = {'notifications', 'notification_preferences', 'notification_templates', 'recap'};
+    // 'term_recap_releases': the platform published the recap or took it back.
+    const ownScreens = {
+      'notifications', 'notification_preferences', 'notification_templates', 'recap', 'term_recap_releases',
+    };
     if (tables.every(ownScreens.contains)) return;
     if (role == UserRole.student) {
       final subscription = tables.contains('subscriptions');

@@ -208,6 +208,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   }
 
   Future<void> _handleRefresh() async {
+    // The platform may have published the term's recap, or taken it back.
+    ref.invalidate(termRecapProvider);
     ref.invalidate(currentSubscriptionProvider);
     ref.invalidate(lineSupervisorsProvider);
     final user = ref.read(authStateProvider).user;
