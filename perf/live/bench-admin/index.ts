@@ -115,6 +115,30 @@ Deno.serve(async (request: Request) => {
       });
       return json({ action: 'delete', ...r, seconds: (performance.now() - started) / 1000 });
     }
+    if (body.action === 'sessions') {
+      // Real sign-ins for the load test: a fresh random password per account (never
+      // stored or returned), then the normal password grant of /auth/v1/token.
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+      if (!anonKey) return json({ error: 'not_configured' }, 500);
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.slice(0, 400) : [];
+      const out: { id: string; token: string; expires_at: number }[] = [];
+      const r = await pool(ids, async (id) => {
+        if (id === PLATFORM_ADMIN) throw new Error('refusing');
+        const { data: u, error: ge } = await service.auth.admin.getUserById(id);
+        if (ge || !u.user?.email?.endsWith(`@${DOMAIN}`)) throw new Error('not a benchmark account');
+        const password = crypto.randomUUID() + crypto.randomUUID();
+        const { error: ue } = await service.auth.admin.updateUserById(id, { password });
+        if (ue) throw ue;
+        const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+          method: 'POST', headers: { apikey: anonKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: u.user.email, password }),
+        });
+        const s = await res.json();
+        if (!res.ok || !s.access_token) throw new Error(`sign-in ${res.status} ${s.error_code ?? s.msg ?? ''}`);
+        out.push({ id, token: s.access_token, expires_at: s.expires_at });
+      });
+      return json({ action: 'sessions', ...r, sessions: out, seconds: (performance.now() - started) / 1000 });
+    }
     if (body.action === 'count') {
       return json({ action: 'count', bench_accounts: (await benchUsers(service)).length });
     }
