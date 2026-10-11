@@ -3,6 +3,7 @@
 // weeks, so a recap published in the middle of a term never appeared.)
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:basak_mobile/features/auth/models/user_role.dart';
 import 'package:basak_mobile/core/storage/offline_cache.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
 import 'package:basak_mobile/features/student/recap/recap_engine.dart';
@@ -117,6 +118,15 @@ void main() {
       final repo = TermRecapRepository(fetch: (_) async => null, releases: () async => throw Exception('42P01'));
       expect(await repo.anyPublished(), isFalse);
     });
+  });
+
+  test('the platform publishing or stopping tells the phone: the banner is asked again, and nothing else', () {
+    final stale = <Object>[];
+    SyncScope.invalidateFor(stale.add, const {'term_recap_releases'}, UserRole.student, 'u1');
+    expect(stale, [termRecapProvider]);
+    final supervisor = <Object>[];
+    SyncScope.invalidateFor(supervisor.add, const {'term_recap_releases'}, UserRole.supervisor, 'u1');
+    expect(supervisor, isEmpty);
   });
 
   test('a saved recap that turned out stale re-reads the recap only, not everything', () {
