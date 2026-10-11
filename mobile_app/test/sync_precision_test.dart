@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:basak_mobile/features/student/recap/recap_repository.dart';
 import 'package:basak_mobile/core/storage/offline_cache.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
@@ -82,9 +83,11 @@ void main() {
       expect(stale(const {'company_students'}), containsAll([myInvitesProvider, allSubscriptionsProvider]));
     });
 
-    test('notifications: the inbox only, for every role', () {
-      expect(stale(const {'notifications'}), [notificationFeedProvider]);
+    test('notifications: the inbox, and for a student the recap banner it may announce; nothing else', () {
+      // The platform tells students a recap is out with a notification.
+      expect(stale(const {'notifications'}), [notificationFeedProvider, termRecapProvider]);
       expect(stale(const {'notifications'}, role: UserRole.supervisor), [notificationFeedProvider]);
+      expect(stale(const {'recap'}), [termRecapProvider]);
     });
 
     test('a supervisor: the dashboard and trips; the photo only when the supervisor row changed', () {
