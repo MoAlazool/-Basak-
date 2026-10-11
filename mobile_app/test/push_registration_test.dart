@@ -154,6 +154,22 @@ void main() {
       expect(messaging.prompts, 0, reason: 'attaching never asks for permission');
     });
 
+    test('push reaches the phone once its token is attached, and no longer after sign-out', () async {
+      final push = controller();
+      expect(push.reaches.value, isFalse);
+      await push.sync();
+      expect(push.reaches.value, isTrue);
+      await push.detach();
+      await settle();
+      expect(push.reaches.value, isFalse);
+
+      // No permission (or no token, as on an iPhone build without push): the
+      // phone has to show what it can by itself.
+      messaging.granted = PushPermission.notAsked;
+      await push.sync();
+      expect(push.reaches.value, isFalse);
+    });
+
     test('no permission, or no token yet: nothing is attached and nothing is asked', () async {
       messaging.granted = PushPermission.notAsked;
       final push = controller();

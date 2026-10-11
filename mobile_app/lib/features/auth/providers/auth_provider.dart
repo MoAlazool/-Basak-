@@ -11,8 +11,8 @@ import '../../../core/sync/own_changes.dart';
 import '../biometrics/biometric_vault.dart';
 import '../data/auth_repository.dart';
 import '../models/user_role.dart';
+import '../../notifications/local/local_notifier.dart';
 import '../../notifications/push/push_providers.dart';
-import '../../student/daily_ride/data/vote_reminders.dart';
 import '../../student/profile/data/profile_repository.dart';
 import '../../student/qr/presentation/student_qr_screen.dart';
 
@@ -272,7 +272,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // A deleted account has nothing to sign in to again; the others on this
       // phone keep theirs.
       if (deleted != null) await biometrics?.disable(deleted);
-      await VoteReminders.cancelAll();
+      await LocalNotifier.clear();
       await _clearAccountData();
       state = const AuthState();
     } catch (e) {
@@ -303,8 +303,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // revoke failed, so the student is still signed out on this device.
       if (!isNetworkFailure(error)) rethrow;
     }
-    // The next account on this phone must not get this student's reminders.
-    await VoteReminders.cancelAll();
+    // The next account on this phone must not get this student's reminders,
+    // nor find this one's notifications still in the tray.
+    await LocalNotifier.clear();
     await _clearAccountData();
     state = const AuthState();
   }
