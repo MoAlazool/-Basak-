@@ -557,7 +557,7 @@ BEGIN
         FROM public.subscriptions s WHERE s.student_id = auth.uid() AND s.status IN ('pending_payment','pending_review','active','rejected')
           AND (s.end_date IS NULL OR s.end_date >= %L::date) ORDER BY s.start_date, s.created_at DESC LIMIT 1) x)$q$, v_today)),
     ('student', 'subscription.all', v_student, $q$(SELECT json_agg(s ORDER BY s.start_date DESC NULLS LAST, s.created_at DESC) FROM public.subscriptions s WHERE s.student_id = auth.uid())$q$),
-    ('student', 'subscription.receipt_snapshot', v_student, format($q$(SELECT row_to_json(r) FROM public.subscription_receipts r WHERE r.subscription_id = %L)$q$, v_sub)),
+    ('student', 'subscription.receipt_snapshot', v_student, format($q$(SELECT row_to_json(r) FROM (SELECT subscription_id, receipt_code, company_name, student_name, student_phone, university_name, line_name, station_name, period_label, start_date, end_date, amount, payment_method, approved_at, company_phone, company_address, company_commercial_register, company_tax_number, company_logo_path FROM public.subscription_receipts WHERE subscription_id = %L) r)$q$, v_sub)),
     ('student', 'subscription.receipts', v_student, format($q$(SELECT json_agg(r ORDER BY r.attempt_number DESC) FROM public.receipts r WHERE r.subscription_id = %L)$q$, v_sub)),
     ('student', 'home.week_votes', v_student, format($q$(SELECT json_agg(d) FROM (SELECT ride_date, is_riding, departure_time, return_time, is_returning FROM public.daily_ride_status WHERE student_id = auth.uid() AND ride_date BETWEEN %L::date - 6 AND %L::date + 6) d)$q$, v_today, v_today)),
     ('student', 'home.profile', v_student, $q$(SELECT row_to_json(s) FROM public.students s WHERE s.id = auth.uid())$q$),
