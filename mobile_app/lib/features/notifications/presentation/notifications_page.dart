@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../../../core/widgets/basak_ui.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../data/notification_feed.dart';
 import '../data/notifications_repository.dart';
+import '../local/local_notifier.dart';
 import '../notification_router.dart';
 import '../push/push_messaging.dart';
 import '../push/push_providers.dart';
@@ -224,6 +227,26 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     }
   }
 
+  /// Removed from the screen at once; if the server cannot be told it comes
+  /// back and the reason is said.
+  Future<void> _remove(AppNotification n) async {
+    unawaited(LocalNotifier.dismissInbox([n.id]));
+    await _marking(() => _feed.remove([n.id]));
+  }
+
+  Future<void> _removeAll(NotificationFeed feed) async {
+    final sure = await BasakDialog.confirm(
+      context,
+      icon: LucideIcons.trash2,
+      title: 'مسح كل التنبيهات؟',
+      message: 'ستُمسح كل التنبيهات من عندك ولن تعود.',
+      confirmLabel: 'مسح الكل',
+    );
+    if (!sure || !mounted) return;
+    unawaited(LocalNotifier.dismissInbox([for (final n in feed.items) n.id]));
+    await _marking(_feed.remove);
+  }
+
   void _open(AppNotification n) {
     if (!n.read) _marking(() => _feed.markRead([n.id]));
     final router = ref.read(notificationRouterProvider);
@@ -309,6 +332,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             ]),
           )),
         if (feed.loadingMore || feed.moreError != null || feed.hasMore) _gutter(_more(feed)),
+        // At the end of the list, out of the way: it removes everything.
+        if (_query.isEmpty && feed.items.any((n) => !n.mine))
+          Center(
+            child: TextAction(
+              key: const Key('remove-all'),
+              label: 'مسح كل التنبيهات',
+              onTap: () => _removeAll(feed),
+            ),
+          ),
       ],
     ];
 
@@ -396,6 +428,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       time: notificationTime(n.createdAt),
       unread: !n.read,
       onTap: () => _open(n),
+      // What the supervisor sent is not in their own inbox to remove.
+      onDelete: n.mine ? null : () => _remove(n),
     );
   }
 

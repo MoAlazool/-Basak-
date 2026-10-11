@@ -51,6 +51,7 @@ class FakeNotificationsRepo implements NotificationsRepository {
   /// Reads and writes of the push switches.
   int preferenceRequests = 0;
   final List<List<String>?> marked = [];
+  final List<List<String>?> deleted = [];
   final List<String> openedIds = [];
   final List<Map<String, Object?>> sent = [];
   final List<Map<String, Object?>> quickSent = [];
@@ -87,6 +88,14 @@ class FakeNotificationsRepo implements NotificationsRepository {
     _write();
     marked.add(ids);
     inbox = [for (final n in inbox) ids == null || ids.contains(n.id) ? n.markedRead() : n];
+  }
+
+  @override
+  Future<void> delete([List<String>? ids]) async {
+    await markGate?.future;
+    _write();
+    deleted.add(ids);
+    inbox = [for (final n in inbox) if (n.mine || (ids != null && !ids.contains(n.id))) n];
   }
 
   @override

@@ -212,6 +212,14 @@ void main() {
       expect(banners, isEmpty, reason: 'the push already told them');
     });
 
+    test('never twice: a date the phone showed itself gets no banner for the server\'s copy', () async {
+      await announcer().inboxRead('user-a', [_notice('n1', type: 'subscription.expiring'), _notice('old')]);
+      foreground = false;
+      await announcer().inboxRead('user-a', [_notice('n2', type: 'subscription.expired'), _notice('old')]);
+      expect(banners, isEmpty);
+      expect(system, isEmpty);
+    });
+
     test('another account on the phone starts from its own inbox', () async {
       await announcer().inboxRead('user-b', [_notice('n1')]);
       expect(banners, isEmpty, reason: 'first read on this phone');

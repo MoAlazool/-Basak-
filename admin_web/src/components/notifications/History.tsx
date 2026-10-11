@@ -162,6 +162,8 @@ export const History: React.FC<Props> = ({ companyId, filter, onFilter, history,
             {history.hasMore && <Button kind="outline" sm icon="adown" className="max-sm:!h-12" loading={history.loadingMore} onClick={history.loadMore}>اعرض 25 أقدم</Button>}
           </div>
         )} />
+      {/* notifications_purge (20261122000001): nothing sent is kept longer. */}
+      <p className="mt-3 text-cap text-ink-3">تُحذف الإشعارات المرسلة تلقائياً بعد 7 أيام من إرسالها، وإشعارات الاشتراك التلقائية بعد 30 يوماً.</p>
 
       {open?.kind === 'details' && openRow && (
         <NotificationDetails row={openRow} pushConfigured={history.pushConfigured} onClose={() => setOpen(null)} showPush={platform} me={me}
