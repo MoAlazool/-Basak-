@@ -29,7 +29,8 @@ export const COMPANY_NAV: NavGroup[] = [
     { id: 'team', slug: 'team', label: 'مديرو الشركة', icon: 'shield', preload: routes.TeamPage.preload }] },
   { group: 'الخطوط والرحلات', items: [
     { id: 'lines', slug: 'lines', label: 'الخطوط', icon: 'route', preload: routes.LinesPage.preload },
-    { id: 'ride-confirmation', slug: 'ride-confirmation', label: 'تأكيد الركوب', icon: 'clock', preload: routes.RideConfirmationPage.preload }] },
+    { id: 'ride-confirmation', slug: 'ride-confirmation', label: 'تأكيد الركوب', icon: 'clock', preload: routes.RideConfirmationPage.preload },
+    { id: 'governorates', slug: 'governorates', label: 'المحافظات', icon: 'pin', preload: routes.GovernoratesPage.preload }] },
   { group: 'الاشتراكات والمدفوعات', items: [
     { id: 'subscription-periods', slug: 'subscription-periods', label: 'مواعيد الاشتراك', icon: 'calendar', preload: routes.SubscriptionPeriodsPage.preload },
     { id: 'payment-methods', slug: 'payment-methods', label: 'وسائل الدفع', icon: 'card', preload: routes.PaymentMethodsPage.preload },

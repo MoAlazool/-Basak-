@@ -65,8 +65,9 @@ SaleCatalog oneLine({List<Map<String, dynamic>>? options, num? daily, List<Map<S
       },
     ]);
 
-/// Three companies: one in Dakahlia, one in Damietta, and one that has set no
-/// governorate (it shows under both). [served] narrows the list the server sends.
+/// Three companies: one in Dakahlia, one in Dakahlia and Damietta, and one
+/// that has set no governorate (shown under none). [served] narrows what the
+/// server sends.
 SaleCatalog governed({List<String> served = const ['dakahlia', 'damietta']}) =>
     SaleCatalog.fromJson(jsonDecode(jsonEncode({
       'university': {'id': 'u1', 'name': 'جامعة المنصورة الجديدة'},
@@ -76,8 +77,11 @@ SaleCatalog governed({List<String> served = const ['dakahlia', 'damietta']}) =>
       ],
       'companies': [
         {'id': 'c1', 'name': 'النورس للنقل', 'governorates': ['dakahlia'], 'lines': [line('l1', 'الزرقا')]},
-        if (served.contains('damietta'))
-          {'id': 'c2', 'name': 'دلتا باص', 'governorates': ['damietta'], 'lines': [line('l3', 'كفر سعد')]},
+        {
+          'id': 'c2', 'name': 'دلتا باص',
+          'governorates': ['dakahlia', 'damietta'].where(served.contains).toList(),
+          'lines': [line('l3', 'كفر سعد')],
+        },
         {'id': 'c3', 'name': 'الريتاج', 'lines': [line('l5', 'المنصورة')]},
       ],
     })) as Map<String, dynamic>);
@@ -237,43 +241,69 @@ void main() {
   });
 
   group('governorate', () {
-    testWidgets('first, from a list: then only the companies that serve it, and those that set none',
-        (tester) async {
+    /// From the field to the list, then the one named.
+    Future<void> governorate(WidgetTester tester, String code) async {
+      await tap(tester, 'flow-governorate');
+      await tap(tester, 'governorate-$code');
+      await tap(tester, 'governorate-confirm');
+    }
+
+    testWidgets('first, from a plain list: then only the companies that serve it', (tester) async {
       await open(tester, governed);
       expect(find.text('المحافظة'), findsOneWidget);
-      expect(find.text('شركتان تخدمانها'), findsNWidgets(2));
       expect(find.byKey(const Key('company-c1')), findsNothing);
       // The later steps wait, numbered after it.
       expect(find.text('شركة النقل'), findsOneWidget);
       expect(find.text('الخط والمحطة'), findsOneWidget);
       expect(find.text('الفترة'), findsOneWidget);
 
+      await tap(tester, 'flow-governorate');
+      expect(find.byType(SheetRadioRow), findsNWidgets(2));
+      expect(find.text('شركتان تخدمانها'), findsOneWidget);
+      expect(find.text('شركة واحدة تخدمها'), findsOneWidget);
+      // Nothing is chosen for the student.
+      expect(tester.widget<BasakButton>(find.byKey(const Key('governorate-confirm'))).onPressed, isNull);
       await tap(tester, 'governorate-dakahlia');
-      expect(find.byKey(const Key('governorate-damietta')), findsNothing);
+      await tap(tester, 'governorate-confirm');
+
       expect(find.descendant(of: find.byKey(const Key('flow-row-governorate')), matching: find.text('الدقهلية')),
           findsOneWidget);
       expect(find.byKey(const Key('company-c1')), findsOneWidget);
-      expect(find.byKey(const Key('company-c3')), findsOneWidget);
-      expect(find.byKey(const Key('company-c2')), findsNothing);
+      expect(find.byKey(const Key('company-c2')), findsOneWidget);
+      expect(find.byKey(const Key('company-c3')), findsNothing, reason: 'it has chosen no governorate');
 
       // Another governorate: the company is chosen again from its own.
       await tap(tester, 'company-c1');
       await change(tester, 'governorate');
       await tap(tester, 'governorate-damietta');
-      expect(find.byKey(const Key('flow-row-company')), findsNothing);
-      expect(find.byKey(const Key('company-c2')), findsOneWidget);
-      expect(find.byKey(const Key('company-c3')), findsOneWidget);
+      await tap(tester, 'governorate-confirm');
       expect(find.byKey(const Key('company-c1')), findsNothing);
+      expect(find.byKey(const Key('company-c3')), findsNothing);
+      // Its one company starts chosen, its lines open.
+      expect(find.descendant(of: find.byKey(const Key('flow-row-company')), matching: find.text('دلتا باص')),
+          findsOneWidget);
+      expect(find.byKey(const Key('line-l3')), findsOneWidget);
+    });
+
+    testWidgets('the same governorate again, or the list closed: nothing chosen is lost', (tester) async {
+      await open(tester, governed);
+      await governorate(tester, 'dakahlia');
+      await tap(tester, 'company-c1');
+      await change(tester, 'governorate');
+      await tap(tester, 'governorate-confirm');
+      expect(find.descendant(of: find.byKey(const Key('flow-row-company')), matching: find.text('النورس للنقل')),
+          findsOneWidget);
     });
 
     testWidgets('one governorate: already chosen, with nothing to change to', (tester) async {
       await open(tester, () => governed(served: ['dakahlia']));
-      expect(find.byKey(const Key('governorate-dakahlia')), findsNothing);
+      expect(find.byKey(const Key('flow-governorate')), findsNothing);
       expect(find.byKey(const Key('flow-row-governorate')), findsOneWidget);
       expect(find.descendant(of: find.byKey(const Key('flow-row-governorate')), matching: find.text('تغيير')),
           findsNothing);
       expect(find.byKey(const Key('company-c1')), findsOneWidget);
-      expect(find.byKey(const Key('company-c3')), findsOneWidget);
+      expect(find.byKey(const Key('company-c2')), findsOneWidget);
+      expect(find.byKey(const Key('company-c3')), findsNothing);
     });
 
     testWidgets('no company has set one: no step, every company', (tester) async {
@@ -284,36 +314,44 @@ void main() {
       expect(find.byKey(const Key('company-c2')), findsOneWidget);
     });
 
-    testWidgets('a renewal is not asked again: its company\'s governorate is the student\'s', (tester) async {
+    testWidgets('a renewal is not asked again: the first governorate its company serves', (tester) async {
       await open(tester, governed, initial: const SubscriptionDraft(companyId: 'c2'));
-      expect(find.byKey(const Key('governorate-dakahlia')), findsNothing);
-      expect(find.descendant(of: find.byKey(const Key('flow-row-governorate')), matching: find.text('دمياط')),
+      expect(find.byKey(const Key('flow-governorate')), findsNothing);
+      expect(find.descendant(of: find.byKey(const Key('flow-row-governorate')), matching: find.text('الدقهلية')),
           findsOneWidget);
       expect(find.descendant(of: find.byKey(const Key('flow-row-company')), matching: find.text('دلتا باص')),
           findsOneWidget);
     });
 
-    testWidgets('the system back button returns from the companies to the governorates', (tester) async {
+    testWidgets('a renewal with a company that serves no governorate: asked, and it is not offered',
+        (tester) async {
+      await open(tester, governed, initial: const SubscriptionDraft(companyId: 'c3'));
+      expect(find.byKey(const Key('flow-governorate')), findsOneWidget);
+      await governorate(tester, 'dakahlia');
+      expect(find.byKey(const Key('company-c3')), findsNothing);
+      expect(find.byKey(const Key('flow-row-company')), findsNothing);
+    });
+
+    testWidgets('the system back button returns from the companies to the governorate', (tester) async {
       await open(tester, governed, page: true);
       final navigator = tester.state<NavigatorState>(find.byType(Navigator));
       navigator.push(MaterialPageRoute<void>(builder: (_) => const PurchaseFlowPage()));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('governorate-dakahlia')).last);
-      await tester.pumpAndSettle();
+      await governorate(tester, 'dakahlia');
       await tester.tap(find.byKey(const Key('company-c1')).last);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('line-l1')), findsOneWidget);
 
       await navigator.maybePop();
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('company-c3')), findsWidgets, reason: 'from the lines to the companies');
+      expect(find.byKey(const Key('company-c2')), findsOneWidget, reason: 'from the lines to the companies');
       await navigator.maybePop();
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('governorate-damietta')), findsWidgets, reason: 'from the companies to the governorates');
+      expect(find.byKey(const Key('flow-governorate')), findsOneWidget, reason: 'from the companies to the governorate');
       expect(navigator.canPop(), isTrue);
       await navigator.maybePop();
       await tester.pumpAndSettle();
-      expect(navigator.canPop(), isFalse, reason: 'and from the governorates, out');
+      expect(navigator.canPop(), isFalse, reason: 'and from the governorate, out');
     });
   });
 

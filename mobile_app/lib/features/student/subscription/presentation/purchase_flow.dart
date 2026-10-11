@@ -16,6 +16,7 @@ import '../models/sale_catalog.dart';
 import '../models/subscription_draft.dart';
 import '../models/subscription_model.dart';
 import 'confirm_sheet.dart';
+import 'governorate_sheet.dart';
 import 'station_sheet.dart';
 import 'subscription_screen.dart';
 
@@ -188,11 +189,34 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   /// The governorate the student picked (null: not yet).
   String? _governorate;
 
-  /// Set on every build: the governorate row is step 1 and the rest move down
-  /// one ([_shift] 1); whether another governorate can be picked; its name.
+  /// Set on every build: the whole catalog; the governorate row is step 1 and
+  /// the rest move down one ([_shift] 1); whether another governorate can be
+  /// picked; the one the companies are shown for.
+  SaleCatalog? _full;
   int _shift = 0;
   bool _canPickGovernorate = false;
-  String? _governorateName;
+  SaleGovernorate? _current;
+
+  /// The governorate from its sheet. Another one: the company and what
+  /// follows are chosen again.
+  Future<void> _pickGovernorate() async {
+    final full = _full;
+    if (full == null) return;
+    final code = await GovernorateSheet.show(
+      context,
+      governorates: full.governorates,
+      captions: {
+        for (final g in full.governorates) g.code: _companiesLabel(full.forGovernorate(g.code).companies.length),
+      },
+      selected: _current?.code,
+    );
+    if (code == null || !mounted || code == _current?.code) return;
+    setState(() {
+      _governorate = code;
+      _draft = const SubscriptionDraft();
+      _step = DraftStep.company;
+    });
+  }
 
   /// Back to the governorates: the company and what follows are chosen again.
   void _pickGovernorateAgain() => setState(() {
@@ -349,21 +373,24 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         ],
       )),
       data: (full) {
-        // The governorate first: the companies are those that serve it.
+        // The governorate first: the companies are only those that serve it.
+        // With none set by any company there is nothing to pick: all of them.
         final governorates = full.governorates;
         var governorate = governorates.any((g) => g.code == _governorate) ? _governorate : null;
         if (governorate == null && governorates.length == 1) governorate = governorates.single.code;
-        // A company already chosen (a renewal) is not asked about again: its
-        // governorate is the student's; one that has set none shows them all.
-        final preset = governorate == null && governorates.isNotEmpty ? full.company(_draft.companyId) : null;
-        if (preset != null) {
-          governorate = governorates.map((g) => g.code).where(preset.governorates.contains).firstOrNull;
+        // A company already chosen (a renewal) is not asked about again: the
+        // student's governorate is the first one it serves.
+        if (governorate == null) {
+          final preset = full.company(_draft.companyId);
+          if (preset != null) {
+            governorate = governorates.map((g) => g.code).where(preset.governorates.contains).firstOrNull;
+          }
         }
-        final askGovernorate = governorates.isNotEmpty && governorate == null && preset == null;
-        _shift = governorates.isNotEmpty && (governorate != null || askGovernorate) ? 1 : 0;
+        _full = full;
+        _shift = governorates.isEmpty ? 0 : 1;
         _canPickGovernorate = governorates.length > 1;
-        _governorateName = governorates.where((g) => g.code == governorate).firstOrNull?.name;
-        if (askGovernorate) {
+        _current = governorates.where((g) => g.code == governorate).firstOrNull;
+        if (governorates.isNotEmpty && governorate == null) {
           return PopScope(
             canPop: widget.onCancel == null,
             onPopInvokedWithResult: (didPop, _) {
@@ -555,14 +582,14 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         _title(catalog.universityName),
 
         // 1 · Governorate (when the companies have set theirs)
-        if (_shift == 1) ...[
+        if (_shift == 1 && _current != null) ...[
           BuilderRow(
             key: const Key('flow-row-governorate'),
             state: BuilderRowState.chosen,
             step: 1,
             title: 'المحافظة',
-            value: _governorateName ?? 'كل المحافظات',
-            onChange: _canPickGovernorate ? _pickGovernorateAgain : null,
+            value: _current?.name ?? '',
+            onChange: _canPickGovernorate ? () => unawaited(_pickGovernorate()) : null,
           ),
           _gap,
         ],
@@ -618,7 +645,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   }
 
   /// Step 1 when the companies have set their governorates: the student's own,
-  /// then only the companies that serve it.
+  /// from a list, then only the companies that serve it.
   Widget _governoratePage(SaleCatalog full) => _frame(
         header: _close(),
         children: [
@@ -630,19 +657,16 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const BuilderStepHead(step: 1, title: 'المحافظة'),
-                for (final governorate in full.governorates) ...[
-                  _gap,
-                  CompanyRow(
-                    key: Key('governorate-${governorate.code}'),
-                    name: governorate.name,
-                    caption: _companiesLabel(full.forGovernorate(governorate.code).companies.length),
-                    onTap: () => setState(() {
-                      _governorate = governorate.code;
-                      _draft = const SubscriptionDraft();
-                      _step = DraftStep.company;
-                    }),
+                _gap,
+                GroupedFields(children: [
+                  GroupedValue(
+                    key: const Key('flow-governorate'),
+                    label: 'محافظتك',
+                    placeholder: 'اختر محافظتك',
+                    opensSheet: true,
+                    onTap: () => unawaited(_pickGovernorate()),
                   ),
-                ],
+                ]),
               ],
             ),
           ),

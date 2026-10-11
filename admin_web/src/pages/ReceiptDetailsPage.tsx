@@ -2,7 +2,6 @@ import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 
 /** The logo and emblem editor, downloaded when it is opened. */
 const CompanyIdentityCard = lazy(() => import('../components/CompanyIdentityCard').then((m) => ({ default: m.CompanyIdentityCard })));
-const CompanyGovernoratesCard = lazy(() => import('../components/CompanyGovernoratesCard').then((m) => ({ default: m.CompanyGovernoratesCard })));
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Card, ErrorState, Sheet, Icon, Ltr, Money, Note, Page, PageHeader, PhoneBar, SkeletonForm, SkeletonText, TextField, dayText, useOnline,
@@ -144,11 +143,6 @@ export const ReceiptDetailsPage: React.FC = () => {
             register={draft.commercial_register.trim()} tax={draft.tax_number.trim()} />
         </Card>
       </div>
-      {/* Where the company works: students pick their governorate before the company. Saved on its own. */}
-      <Card as="section" className="flex flex-col gap-3 p-4 lg:p-6">
-        <h2 className="m-0 text-card">المحافظات التي تخدمها الشركة</h2>
-        <Suspense fallback={<SkeletonForm />}><CompanyGovernoratesCard companyId={company.id} /></Suspense>
-      </Card>
       <PhoneBar><Button full loading={saving} disabled={!canSave} onClick={() => void save()}>حفظ بيانات الإيصال</Button></PhoneBar>
       {/* The company's logo and emblem (receipts, the app, the dashboard) — saved on their own, as before. */}
       <Sheet open={identityOpen} onClose={() => setIdentityOpen(false)} title="شعار الشركة" w={720}>

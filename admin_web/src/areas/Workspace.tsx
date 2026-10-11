@@ -15,7 +15,7 @@ import { OPEN_RESET_STATUSES } from '../lib/resetRequests';
 import { COMPANY_NAV, MOVED_SLUGS } from '../lib/nav';
 import { AdminProfile, CompanyScope, CompanyScopeProvider, companyAccountStatusLabel } from '../lib/adminScope';
 import {
-  AnalyticsPage, LineNewPage, LinePage, LinesPage, NotificationsPage, PasswordRequestsPage, PaymentMethodsPage, ReceiptDetailsPage,
+  AnalyticsPage, GovernoratesPage, LineNewPage, LinePage, LinesPage, NotificationsPage, PasswordRequestsPage, PaymentMethodsPage, ReceiptDetailsPage,
   ReceiptsPage, ReportsPage, RideConfirmationPage, StudentsPage, SubscriptionPeriodsPage, SupervisorsPage, TeamPage,
   TodayPage, WalletCardPage,
 } from '../lib/routes';
@@ -96,6 +96,7 @@ export const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> 
             <Route path="lines/new" element={<LineNewPage />} />
             <Route path="lines/:lineId" element={<LinePage />} />
             <Route path="ride-confirmation" element={<RideConfirmationPage />} />
+            <Route path="governorates" element={<GovernoratesPage />} />
             <Route path="subscription-periods" element={<SubscriptionPeriodsPage />} />
             <Route path="payment-methods" element={<PaymentMethodsPage />} />
             <Route path="reports" element={<ReportsPage />} />
