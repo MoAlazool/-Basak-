@@ -135,6 +135,20 @@ abstract final class RideWords {
 
   static String question(DateTime day, DateTime now) => 'هل ستركب ${when(day, now)}؟';
 
+  /// The Saturday of the week [asked] falls in.
+  static DateTime weekStart(DateTime asked) =>
+      DateTime(asked.year, asked.month, asked.day - (asked.weekday + 1) % 7);
+
+  /// What a tap on [day] of the week strip says.
+  static String dayNote(DateTime day, {required bool? riding, required bool off, required bool asked}) {
+    final name = 'يوم ${BasakUi.arabicWeekdays[day.weekday - 1]} ${day.day}';
+    if (riding == true) return '$name: أكّدت أنك ستركب.';
+    if (riding == false) return '$name: قلت إنك لن تركب.';
+    if (off) return '$name: لا رحلات في هذا اليوم.';
+    if (asked) return '$name: بانتظار إجابتك.';
+    return '$name: لم تصوّت لهذا اليوم.';
+  }
+
   /// The seven days (Saturday to Friday) of the week [asked] falls in.
   static List<({String letter, int day, WeekDayMark mark})> week({
     required DateTime asked,
@@ -143,7 +157,7 @@ abstract final class RideWords {
     required bool ringAsked,
   }) {
     const letters = ['س', 'ح', 'ن', 'ث', 'ر', 'خ', 'ج'];
-    final first = DateTime(asked.year, asked.month, asked.day - (asked.weekday + 1) % 7);
+    final first = weekStart(asked);
     return [
       for (var i = 0; i < 7; i++)
         () {
@@ -151,6 +165,8 @@ abstract final class RideWords {
           final WeekDayMark mark;
           if (statuses[day] == true) {
             mark = WeekDayMark.confirmed;
+          } else if (statuses[day] == false) {
+            mark = WeekDayMark.declined;
           } else if (ringAsked && DateUtils.isSameDay(day, asked)) {
             mark = WeekDayMark.asked;
           } else if (vote.offWeekdays.contains(day.weekday) || vote.offDates.contains(day)) {
@@ -183,6 +199,9 @@ class RideCard extends StatelessWidget {
 
   final List<({String letter, int day, WeekDayMark mark})> week;
 
+  /// A day of the week strip was tapped (0 = Saturday).
+  final ValueChanged<int>? onDayTap;
+
   final VoidCallback onYes;
   final VoidCallback onNo;
   final VoidCallback onEdit;
@@ -199,6 +218,7 @@ class RideCard extends StatelessWidget {
     required this.onYes,
     required this.onNo,
     required this.onEdit,
+    this.onDayTap,
   });
 
   @override
@@ -251,7 +271,7 @@ class RideCard extends StatelessWidget {
             const SizedBox(height: BasakSpace.s14),
             Container(height: 1, color: colors.hairline),
             const SizedBox(height: BasakSpace.s14),
-            WeekStrip(days: week),
+            WeekStrip(days: week, onDayTap: onDayTap),
           ];
 
     final List<Widget> children;

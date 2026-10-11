@@ -611,6 +611,30 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
         onYes: () => _askRide(sub, moment),
         onNo: () => _confirmRide(sub, const RideChoice.notRiding()),
         onEdit: () => _askRide(sub, moment),
+        onDayTap: (index) => _weekDayTapped(index, sub, moment, vote),
+      ),
+    );
+  }
+
+  /// A day of the week strip was tapped. The day the vote is open for opens
+  /// the answer itself; any other day says where it stands.
+  void _weekDayTapped(int index, SubscriptionModel sub, RideMoment moment, VoteSettings vote) {
+    final first = RideWords.weekStart(moment.day);
+    final day = DateTime(first.year, first.month, first.day + index);
+    final asked = DateUtils.isSameDay(day, moment.day);
+    final open = moment.kind == RideCardKind.ask || moment.kind == RideCardKind.confirmed;
+    if (asked && open && !_isSavingRide && OfflineCache.offlineSince.value == null) {
+      HapticFeedback.selectionClick();
+      _askRide(sub, moment);
+      return;
+    }
+    BasakToast.show(
+      context,
+      RideWords.dayNote(
+        day,
+        riding: _weeklyRideStatuses[day],
+        off: vote.offWeekdays.contains(day.weekday) || vote.offDates.contains(day),
+        asked: asked && open,
       ),
     );
   }

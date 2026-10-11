@@ -138,8 +138,11 @@ class ValueTile extends StatelessWidget {
 }
 
 enum WeekDayMark {
-  /// A ride is confirmed: filled.
+  /// A ride is confirmed: a green disc.
   confirmed,
+
+  /// The student said they would not ride that day.
+  declined,
 
   /// The day being asked about: a ring.
   asked,
@@ -151,13 +154,25 @@ enum WeekDayMark {
   off,
 }
 
-/// The seven days of the week as letters over numbers: what is confirmed,
-/// and the day the question is about.
+/// The seven days of the week as letters over numbers. Each day shows where
+/// its vote stands (riding, not riding, the one being asked about, a day off)
+/// and changes as the student answers; a tap on a day says so in words.
 class WeekStrip extends StatelessWidget {
   final String title;
   final List<({String letter, int day, WeekDayMark mark})> days;
 
-  const WeekStrip({super.key, this.title = 'هذا الأسبوع', required this.days});
+  /// A day was tapped (its place in [days]).
+  final ValueChanged<int>? onDayTap;
+
+  const WeekStrip({super.key, this.title = 'هذا الأسبوع', required this.days, this.onDayTap});
+
+  static String _spoken(WeekDayMark mark) => switch (mark) {
+        WeekDayMark.confirmed => 'ستركب',
+        WeekDayMark.declined => 'لن تركب',
+        WeekDayMark.asked => 'بانتظار إجابتك',
+        WeekDayMark.off => 'لا رحلات',
+        WeekDayMark.open => '',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -174,40 +189,59 @@ class WeekStrip extends StatelessWidget {
           const SizedBox(height: BasakSpace.s10),
           Row(
             children: [
-              for (final day in days)
+              for (final (index, day) in days.indexed)
                 Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(day.letter, style: text.tab.copyWith(color: colors.ink3)),
-                      const SizedBox(height: BasakSpace.s6),
-                      Container(
-                        width: 30,
-                        height: 30,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: switch (day.mark) {
-                            WeekDayMark.confirmed => colors.tealTint,
-                            WeekDayMark.asked => colors.surface,
-                            _ => null,
-                          },
-                          border: day.mark == WeekDayMark.asked ? Border.all(color: colors.teal, width: 1.5) : null,
-                        ),
-                        child: Text(
-                          '${day.day}',
-                          textScaler: TextScaler.noScaling,
-                          style: text.caption.copyWith(
-                            fontWeight: FontWeight.w500,
-                            color: switch (day.mark) {
-                              WeekDayMark.confirmed || WeekDayMark.asked => colors.teal,
-                              WeekDayMark.open => colors.ink2,
-                              WeekDayMark.off => colors.disabled,
-                            },
+                  child: Semantics(
+                    button: onDayTap != null,
+                    label: '${day.day} ${_spoken(day.mark)}'.trim(),
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      key: Key('week-day-$index'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onDayTap == null ? null : () => onDayTap!(index),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(day.letter, style: text.tab.copyWith(color: colors.ink3)),
+                          const SizedBox(height: BasakSpace.s6),
+                          // The answer just given grows into its colour.
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeOutCubic,
+                            width: 30,
+                            height: 30,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: switch (day.mark) {
+                                WeekDayMark.confirmed => colors.success,
+                                WeekDayMark.declined => colors.dangerTint,
+                                WeekDayMark.asked => colors.surface,
+                                _ => colors.surface.withValues(alpha: 0),
+                              },
+                              border: Border.all(
+                                color: day.mark == WeekDayMark.asked ? colors.teal : colors.teal.withValues(alpha: 0),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 260),
+                              style: text.caption.copyWith(
+                                fontWeight: day.mark == WeekDayMark.confirmed ? FontWeight.w700 : FontWeight.w500,
+                                color: switch (day.mark) {
+                                  WeekDayMark.confirmed => colors.surface,
+                                  WeekDayMark.declined => colors.danger,
+                                  WeekDayMark.asked => colors.teal,
+                                  WeekDayMark.open => colors.ink2,
+                                  WeekDayMark.off => colors.disabled,
+                                },
+                              ),
+                              child: Text('${day.day}', textScaler: TextScaler.noScaling),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
             ],
