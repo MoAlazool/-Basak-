@@ -51,7 +51,17 @@ class PushController {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
   /// What the server was last told: this token belongs to this account.
-  ({String userId, String token})? _attached;
+  ({String userId, String token})? _attachment;
+
+  ({String userId, String token})? get _attached => _attachment;
+  set _attached(({String userId, String token})? value) {
+    _attachment = value;
+    reaches.value = value != null;
+  }
+
+  /// Whether the server can push to this phone for the signed-in account. A
+  /// phone it cannot reach shows what it can by itself (local notifications).
+  final ValueNotifier<bool> reaches = ValueNotifier(false);
 
   /// [detach] already ran for the session that is ending (an ordinary sign-out).
   bool _detached = false;

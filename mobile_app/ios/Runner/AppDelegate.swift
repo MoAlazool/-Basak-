@@ -1,3 +1,4 @@
+import BackgroundTasks
 import Flutter
 import LocalAuthentication
 import PassKit
@@ -8,13 +9,57 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let walletPasses = WalletPassPresenter()
 
+  /// Background refresh: now and then iOS wakes the app for a moment, and the
+  /// app reads its inbox and shows what is new (notifications_host.dart). It
+  /// is how a phone that push does not reach still hears of a notification
+  /// while the app is not open; when, and whether, is up to iOS. Listed in
+  /// Info.plist (BGTaskSchedulerPermittedIdentifiers).
+  private static let inboxRefreshTask = "com.basak.app.inbox-refresh"
+  private var notificationsChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     // Vote reminders (flutter_local_notifications) also show while the app is open.
     UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
+    // Has to be registered before the launch ends.
+    BGTaskScheduler.shared.register(forTaskWithIdentifier: AppDelegate.inboxRefreshTask, using: .main) {
+      [weak self] task in
+      guard let self = self, let task = task as? BGAppRefreshTask else {
+        return task.setTaskCompleted(success: false)
+      }
+      self.runInboxRefresh(task)
+    }
+    NotificationCenter.default.addObserver(
+      forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+    ) { [weak self] _ in self?.scheduleInboxRefresh() }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func scheduleInboxRefresh() {
+    let request = BGAppRefreshTaskRequest(identifier: AppDelegate.inboxRefreshTask)
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+    // Refused when Background App Refresh is off for the app: nothing to do.
+    try? BGTaskScheduler.shared.submit(request)
+  }
+
+  /// Asks the Flutter side to read the inbox and waits for its answer, within
+  /// the short time iOS allows. With no Flutter engine running (the app was
+  /// closed, not just in the background) there is nobody to ask.
+  private func runInboxRefresh(_ task: BGAppRefreshTask) {
+    scheduleInboxRefresh()
+    guard let channel = notificationsChannel else { return task.setTaskCompleted(success: false) }
+    var finished = false
+    let finish: (Bool) -> Void = { success in
+      if finished { return }
+      finished = true
+      task.setTaskCompleted(success: success)
+    }
+    task.expirationHandler = { DispatchQueue.main.async { finish(false) } }
+    channel.invokeMethod("backgroundCheck", arguments: nil) { answer in
+      finish((answer as? Bool) ?? false)
+    }
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
@@ -69,6 +114,7 @@ import UserNotifications
     // app's page in Settings when notifications were switched off there.
     let notifications = FlutterMethodChannel(
       name: "basak/notifications", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    notificationsChannel = notifications
     notifications.setMethodCallHandler { call, result in
       switch call.method {
       case "setBadge":

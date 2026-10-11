@@ -37,11 +37,25 @@ class NotificationPlatform {
     ),
   ];
 
+  /// Asked by the system when it wakes the app in the background for a moment
+  /// (iOS background refresh, AppDelegate.swift): read the inbox and show what
+  /// is new. Answers whether anything was read.
+  static Future<bool> Function()? _onBackgroundCheck;
+
+  static set onBackgroundCheck(Future<bool> Function()? check) {
+    _onBackgroundCheck = check;
+    if (!_ios) return;
+    _channel.setMethodCallHandler(check == null
+        ? null
+        : (call) async => call.method == 'backgroundCheck' ? await _onBackgroundCheck?.call() ?? false : null);
+  }
+
   static bool get _android => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   static bool get _ios => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
-  /// Creates the push channels (Android 8+). Creating one that exists changes
-  /// nothing, so this runs on every start; the vote-reminder channel is not touched.
+  /// Creates the channels (Android 8+) that pushes and the phone's own inbox
+  /// notifications are shown on. Creating one that exists changes nothing, so
+  /// this runs on every start; the vote-reminder channel is not touched.
   static Future<void> createChannels() async {
     if (!_android) return;
     try {

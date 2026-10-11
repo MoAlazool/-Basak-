@@ -126,9 +126,20 @@ final pushControllerProvider = Provider<PushController>((ref) {
       }
     },
   );
-  ref.onDispose(controller.dispose);
+  void reachesChanged() => ref.read(pushReachesProvider.notifier).state = controller.reaches.value;
+  controller.reaches.addListener(reachesChanged);
+  ref.onDispose(() {
+    controller.reaches.removeListener(reachesChanged);
+    controller.dispose();
+  });
   return controller;
 });
+
+/// Whether the server can push to this phone for the signed-in account (see
+/// [PushController.reaches]). While it cannot, the phone shows by itself what
+/// it knows of: the subscription's dates, and whatever arrives in the inbox
+/// while the app is running.
+final pushReachesProvider = StateProvider<bool>((ref) => false);
 
 /// Whether this build has push and the push service started.
 final pushReadyProvider =

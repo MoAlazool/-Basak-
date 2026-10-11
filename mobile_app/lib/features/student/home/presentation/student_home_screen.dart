@@ -18,6 +18,7 @@ import '../../../../core/widgets/greeting_header.dart';
 import '../../../../core/widgets/skeleton.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../notifications/data/notification_feed.dart';
+import '../../../notifications/push/push_providers.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
@@ -27,6 +28,7 @@ import '../../recap/recap_copy.dart';
 import '../../recap/recap_repository.dart';
 import '../../recap/recap_screen.dart';
 import '../../../rating/rating.dart';
+import '../../subscription/data/subscription_reminders.dart';
 import '../../subscription/data/subscription_repository.dart';
 import '../../subscription/models/subscription_model.dart';
 import '../../subscription/presentation/pay_screen.dart';
@@ -176,6 +178,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   /// [justVoted] counts as voted even if the server copy is not re-read yet.
   Future<void> _planReminders({DateTime? justVoted}) async {
     if (!mounted) return;
+    unawaited(_planSubscriptionNotices());
     final settings = ref.read(voteSettingsProvider).valueOrNull;
     final subscription = ref.read(currentSubscriptionProvider);
     if (settings == null || !subscription.hasValue) return; // not known yet
@@ -205,6 +208,25 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     } catch (_) {
       // Offline with nothing saved: the previous plan stays.
     }
+  }
+
+  /// The two notices about the subscription's last day, planned on the phone
+  /// when push does not reach it (see SubscriptionReminders).
+  Future<void> _planSubscriptionNotices() async {
+    if (!mounted) return;
+    final subscription = ref.read(currentSubscriptionProvider);
+    if (!subscription.hasValue) return; // not known yet
+    final sub = subscription.value;
+    if (sub == null || !sub.isActive) {
+      await SubscriptionReminders.cancelAll();
+      return;
+    }
+    await SubscriptionReminders.plan(
+      subscriptionId: sub.id,
+      endDate: DateTime.tryParse(sub.endDate ?? ''),
+      daily: sub.isDaily,
+      pushReaches: ref.read(pushReachesProvider),
+    );
   }
 
   Future<void> _handleRefresh() async {
@@ -367,8 +389,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
               before?.id != after?.id ||
               before?.status != after?.status)) {
         _planReminders();
+      } else if (next.hasValue && before?.endDate != after?.endDate) {
+        _planSubscriptionNotices();
       }
     });
+    // Push started to reach this phone, or stopped: the server tells it the
+    // subscription's dates, or the phone does.
+    ref.listen(pushReachesProvider, (_, __) => _planSubscriptionNotices());
     final vote = ref.watch(voteSettingsProvider).valueOrNull ??
         VoteSettings.fallback;
     final user = ref.watch(authStateProvider).user;

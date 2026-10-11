@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest_10y.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../../notifications/local/local_notifier.dart';
 import '../models/vote_settings.dart';
 
 /// Notifications that remind a student to confirm a ride before its vote closes.
@@ -16,14 +16,13 @@ import '../models/vote_settings.dart';
 class VoteReminders {
   VoteReminders._();
 
-  static final _plugin = FlutterLocalNotificationsPlugin();
-  static tz.Location? _cairo;
-  static bool _askedPermission = false;
+  static FlutterLocalNotificationsPlugin get _plugin => LocalNotifier.plugin;
   static Future<void> _queue = Future.value();
 
-  /// How far ahead reminders are planned, and how many at most (iOS keeps 64).
+  /// How far ahead reminders are planned. How many at most, and under which
+  /// numbers, is [LocalNotifier.voteMax]: the phone's other notifications
+  /// (the subscription's dates, the inbox) are never touched from here.
   static const _days = 7;
-  static const _maxPending = 60;
 
   static const _details = NotificationDetails(
     android: AndroidNotificationDetails(
@@ -37,11 +36,6 @@ class VoteReminders {
     iOS: DarwinNotificationDetails(),
   );
 
-  static bool get _supported =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
-
   /// Replaces the planned reminders. [votedDays] are the ride days (dates
   /// only) the student has already voted for; [validFrom] / [validUntil] bound
   /// the subscription. Never throws: reminders are a convenience.
@@ -52,8 +46,8 @@ class VoteReminders {
     required Set<DateTime> votedDays,
   }) =>
       _serial(() async {
-        if (!await _ready()) return;
-        await _plugin.cancelAll();
+        if (!await LocalNotifier.ready()) return;
+        await _cancelOwn();
 
         final now = DateTime.now();
         final first = settings.rideDateFor(now);
@@ -67,27 +61,28 @@ class VoteReminders {
             if (at.isAfter(now)) reminders.add((day: day, at: at));
           }
         }
-        if (reminders.isEmpty || !await _permitted()) return;
+        if (reminders.isEmpty || !await LocalNotifier.permitted(ask: true)) return;
 
         final closes = VoteSettings.clock(settings.closesAt, long: true);
-        for (final (id, reminder) in reminders.take(_maxPending).indexed) {
+        for (final (index, reminder) in reminders.take(LocalNotifier.voteMax).indexed) {
           final at = reminder.at;
           await _plugin.zonedSchedule(
-            id: id,
+            id: LocalNotifier.voteFirst + index,
             title: 'أكّد رحلة ${_dayName(reminder.day)}',
             body: 'لم تؤكد حضورك بعد. التصويت مفتوح حتى $closes.',
             scheduledDate: tz.TZDateTime(
-                _cairo!, at.year, at.month, at.day, at.hour, at.minute),
+                LocalNotifier.cairo, at.year, at.month, at.day, at.hour, at.minute),
             notificationDetails: _details,
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           );
         }
       });
 
-  /// Signed out, account deleted, or nothing to remind about.
-  static Future<void> cancelAll() => _serial(() async {
-        if (await _ready()) await _plugin.cancelAll();
-      });
+  /// Nothing to remind about (no running subscription, reminders switched off).
+  static Future<void> cancelAll() => _serial(_cancelOwn);
+
+  /// Up to 64: an earlier version of the app planned that many.
+  static Future<void> _cancelOwn() => LocalNotifier.cancelRange(LocalNotifier.voteFirst, 64);
 
   /// One plan at a time, so an older plan never lands after a newer one.
   static Future<void> _serial(Future<void> Function() work) {
@@ -96,46 +91,6 @@ class VoteReminders {
     });
     _queue = next;
     return next;
-  }
-
-  static Future<bool> _ready() async {
-    if (!_supported) return false;
-    if (_cairo != null) return true;
-    tz_data.initializeTimeZones();
-    // Vote times are Cairo times, wherever the phone is set.
-    final cairo = tz.getLocation('Africa/Cairo');
-    await _plugin.initialize(
-      settings: const InitializationSettings(
-        android: AndroidInitializationSettings('ic_stat_basak'),
-        // Asked when there is a first reminder to plan, not at launch.
-        iOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
-        ),
-      ),
-    );
-    _cairo = cairo;
-    return true;
-  }
-
-  /// Android 13+ and iOS ask the student once; a refusal is respected.
-  static Future<bool> _permitted() async {
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (android != null) {
-      if (await android.areNotificationsEnabled() == true) return true;
-      if (_askedPermission) return false;
-      _askedPermission = true;
-      return await android.requestNotificationsPermission() ?? false;
-    }
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    if (ios != null) {
-      // Shows the system prompt the first time only.
-      return await ios.requestPermissions(alert: true, sound: true) ?? false;
-    }
-    return false;
   }
 
   static String _dayName(DateTime day) => const [
