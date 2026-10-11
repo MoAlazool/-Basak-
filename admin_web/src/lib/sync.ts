@@ -172,6 +172,9 @@ const PLATFORM_AFFECTS: Record<string, string[]> = {
   student_correction_requests: ['corrections', 'students'],
   password_reset_requests: ['resetRequests'],
   notifications: ['notifications'],
+  // Both pages read one answer; a merchant's change is announced as 'offers' too.
+  offers: ['offers'],
+  merchants: ['offers'],
 };
 
 /**

@@ -54,6 +54,7 @@ abstract final class LucideIcons {
   static const IconData fileCheck2 = IconData(57538, fontFamily: 'Lucide');
   static const IconData fingerprint = IconData(58059, fontFamily: 'Lucide');
   static const IconData flashlight = IconData(57555, fontFamily: 'Lucide');
+  static const IconData gift = IconData(57569, fontFamily: 'Lucide');
   static const IconData graduationCap = IconData(57908, fontFamily: 'Lucide');
   static const IconData hash = IconData(57583, fontFamily: 'Lucide');
   static const IconData history = IconData(57845, fontFamily: 'Lucide');
@@ -99,6 +100,7 @@ abstract final class LucideIcons {
   static const IconData sunrise = IconData(57721, fontFamily: 'Lucide');
   static const IconData sunset = IconData(57722, fontFamily: 'Lucide');
   static const IconData switchCamera = IconData(57724, fontFamily: 'Lucide');
+  static const IconData tag = IconData(57727, fontFamily: 'Lucide');
   static const IconData ticket = IconData(57871, fontFamily: 'Lucide');
   static const IconData trash2 = IconData(57742, fontFamily: 'Lucide');
   static const IconData triangleAlert = IconData(57747, fontFamily: 'Lucide');

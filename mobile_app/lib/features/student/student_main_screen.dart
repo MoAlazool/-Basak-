@@ -14,6 +14,9 @@ import '../notifications/push/push_providers.dart';
 import 'home/presentation/notifications_screen.dart';
 import 'home/presentation/student_home_screen.dart';
 import 'invites/invites.dart';
+import 'offers/offer_details_screen.dart';
+import 'offers/offers_repository.dart';
+import 'offers/offers_screen.dart';
 import 'subscription/presentation/subscription_screen.dart';
 import 'qr/presentation/student_qr_screen.dart';
 import 'recap/recap_engine.dart' show TermRecap;
@@ -89,9 +92,26 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
       case NotificationDestination.recap:
         _selectTab(0);
         unawaited(_openRecap());
+      case NotificationDestination.offers:
+        _selectTab(0);
+        unawaited(_openOffers(intent.offerId));
       case NotificationDestination.center:
         NotificationsScreen.open(context);
     }
+  }
+
+  /// «عرض خاص لك»: the offers page over Home, read from the server now (the
+  /// offer may be newer than what this phone holds), and on top of it the
+  /// offer the notification is about when it is still one of the student's.
+  /// No offers to show (hidden by the student, an older server): Home stays
+  /// open, as for any notification without a screen.
+  Future<void> _openOffers(String? offerId) async {
+    ref.invalidate(offersProvider);
+    final offers = await ref.read(offersProvider.future);
+    if (!mounted || !offers.available || offers.hidden) return;
+    unawaited(OffersScreen.open(context));
+    final offer = offers.find(offerId);
+    if (offer != null) unawaited(OfferDetailsScreen.open(context, offer));
   }
 
   /// «ملخص فصلك جاهز»: the recap, asked of the server now (Home's copy may be
@@ -125,6 +145,7 @@ class _StudentMainScreenState extends ConsumerState<StudentMainScreen> implement
     ref.invalidate(studentQrProvider);
     ref.invalidate(myInvitesProvider);
     ref.invalidate(notificationFeedProvider);
+    ref.invalidate(offersProvider);
     if (userId != null) ref.invalidate(studentProfileSummaryProvider(userId));
     ref.invalidate(voteSettingsProvider);
     ref.read(rideStatusTickProvider.notifier).state++;

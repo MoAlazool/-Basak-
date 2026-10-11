@@ -60,6 +60,8 @@ describe('the platform admin\'s lists', () => {
   it('refreshes only what a change concerns', () => {
     expect(platformAffectedBy([{ table: 'receipts', id: 'r' }])).toEqual(['overview']);
     expect(platformAffectedBy([{ table: 'notifications', id: 'n' }])).toEqual(['notifications']);
+    expect(platformAffectedBy([{ table: 'offers', id: null }])).toEqual(['offers']);
+    expect(platformAffectedBy([{ table: 'merchants', id: 'm' }, { table: 'offers', id: 'o' }])).toEqual(['offers']);
     expect(platformAffectedBy([{ table: 'receipts', id: 'r' }, { table: 'company_students', id: 's' }])?.sort()).toEqual(['overview', 'students']);
   });
   it('refreshes everything for a table it does not know', () => {
