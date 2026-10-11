@@ -194,6 +194,22 @@ The 1- and 2-year rows are PROJECTED. The first row's "after 3 years" figures ar
 
 The 100, 250 and higher levels were **not run**. The stop rule ended the test at 20 users, and pushing the shared instance further would only have prolonged the outage.
 
+### Natural students (run R2, MEASURED LIVE)
+The VUs above open the app every 3–8 s without pause, which is far heavier than a real student. R2 repeats the test with a **think time of 30–60 s** between app opens (same sessions, same 7-call open, same 423 MB dataset). Raw data: `perf/live/results/2026-10-12-live-natural.json`.
+
+| Stage | Students | Ramp | Requests (hold) | RPS (hold) | Error % (hold) | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| N050 | 50 | 30 s | 630 | 7.0 | **0** | 19 ms | 80 ms | 117 ms |
+| N100 | 100 | 30 s | 592 | 6.6 | **94** | >10 s | >10 s | >10 s |
+| P probe (after N100) | 2 | – | 77 | 3.9 | 0 | 45 ms | 1,272 ms | 2,479 ms |
+| P2 probe (+ ~3 min) | 2 | – | 78 | 5.2 | 0 | 31 ms | 172 ms | 405 ms |
+| N100s | 100 | 75 s | 415 | 8.3 | **88** | >10 s | >10 s | >10 s |
+
+- **50 natural students** (≈ 7 RPS sustained): healthy for the whole 90 s hold.
+- **100 natural students:** healthy at first. N100 ran at 15–44 RPS during its 30 s ramp and stalled after ≈ 25 s. N100s (slow 75 s ramp) ran ≈ 58 s at 9–18 RPS, then stalled the same way, and stayed stalled while any load continued. Again no 429 or 5xx, only timeouts.
+- **Envelope on Free/Nano with this dataset:** ≈ 7 RPS can be held indefinitely; ≈ 10–15 RPS held for about a minute tips the instance over, and it needs 3–4 minutes without load to recover.
+- **In app opens (PROJECTED from the above):** ≈ 1 app open per second (7 calls) ≈ 3,600 opens per hour. 1,000 students opening over an hour fit; 1,000 within 15 minutes (≈ 1.1 opens/s) is at the edge; tighter peaks fail.
+
 ### Scenarios
 "Active" means having the app open in the same minute. Each open fires 7 calls.
 
@@ -219,7 +235,7 @@ Paid compute (Micro 1 GB, Small 2 GB, Medium 4 GB) was **not measured**. No user
 **C) Not ready on the current tier for real rush-hour concurrency.**
 - The data model, indexes and RLS queries are sound. Queries take milliseconds at 2,470 active students, with tenant isolation and no slowdown for a 500-student company as the platform grows.
 - Storage holds about 2,000–2,600 actives for one year on Free.
-- But the Free Nano instance's API layer saturated at about 10–20 simultaneously active users and needed minutes to recover.
+- But the Free Nano instance's API layer saturated at about 10–20 simultaneously active users and needed minutes to recover. With natural students (an app open every 30–60 s) that is ≈ 50 students at once, or ≈ 1 app open per second sustained.
 
 **Before launch:**
 1. Upgrade to Pro with at least Small compute.
