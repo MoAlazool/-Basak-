@@ -55,6 +55,9 @@ export const PLATFORM_NAV: NavGroup[] = [
   { group: 'الطلاب', items: [
     { id: 'p-students', slug: 'students', label: 'كل الطلاب', icon: 'users', preload: routes.AllStudentsPage.preload },
     { id: 'p-notifications', slug: 'notifications', label: 'إشعارات المنصة', icon: 'megaphone', preload: routes.PlatformNotificationsPage.preload }] },
+  { group: 'التسويق', items: [
+    { id: 'p-merchants', slug: 'merchants', label: 'التجّار', icon: 'pin', preload: routes.MerchantsPage.preload },
+    { id: 'p-offers', slug: 'offers', label: 'العروض', icon: 'receipt', preload: routes.OffersPage.preload }] },
   { group: 'إعدادات المنصة', items: [
     { id: 'p-universities', slug: 'universities', label: 'الجامعات والكليات', icon: 'school', preload: routes.UniversitiesPage.preload },
     { id: 'p-defaults', slug: 'defaults', label: 'الإعدادات الافتراضية', icon: 'sliders', preload: routes.PlatformDefaultsPage.preload },

@@ -9,6 +9,9 @@ enum NotificationDestination {
   /// The end-of-term recap, once the platform has published it.
   recap,
 
+  /// «عروض باصك»: the offers page, and the offer the notification is about.
+  offers,
+
   /// The Notification Center: also where anything unknown ends up.
   center;
 
@@ -19,6 +22,7 @@ enum NotificationDestination {
         'subscription' => NotificationDestination.subscription,
         'card' => NotificationDestination.card,
         'recap' => NotificationDestination.recap,
+        'offers' => NotificationDestination.offers,
         _ => NotificationDestination.center,
       };
 }
@@ -41,7 +45,7 @@ class NotificationIntent {
   final String type;
   final NotificationDestination destination;
 
-  /// Ids only (subscription_id, line_id, trip_id, ride_date).
+  /// Ids only (subscription_id, line_id, trip_id, ride_date, offer_id).
   final Map<String, String> data;
 
   const NotificationIntent({
@@ -73,6 +77,9 @@ class NotificationIntent {
   }
 
   String? get subscriptionId => data['subscription_id'];
+
+  /// The offer a «عرض خاص لك» notification is about.
+  String? get offerId => data['offer_id'];
 }
 
 /// The signed-in app shell (the student's or the supervisor's tabs), which

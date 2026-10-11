@@ -24,6 +24,8 @@ import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../invites/invites.dart';
 import '../data/line_supervisors.dart';
+import '../../offers/offers_repository.dart';
+import '../../offers/offers_strip.dart';
 import '../../recap/recap_copy.dart';
 import '../../recap/recap_repository.dart';
 import '../../recap/recap_screen.dart';
@@ -232,6 +234,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   Future<void> _handleRefresh() async {
     // The platform may have published the term's recap, or taken it back.
     ref.invalidate(termRecapProvider);
+    // So may the offers: a new one, one that ended, one used on another phone.
+    ref.invalidate(offersProvider);
     ref.invalidate(currentSubscriptionProvider);
     ref.invalidate(lineSupervisorsProvider);
     final user = ref.read(authStateProvider).user;
@@ -407,6 +411,8 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     final invites = ref.watch(myInvitesProvider).valueOrNull ?? const <CompanyInvite>[];
     // The term's recap: only at the end of a term, and only when there is one.
     final recap = ref.watch(termRecapProvider).valueOrNull;
+    // «عروض لك»: only when there is an offer for this student to show.
+    final offers = ref.watch(offersProvider).valueOrNull;
 
     final List<Widget> children;
     if (subAsync.hasValue) {
@@ -451,6 +457,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
           SheetLink(label: 'أو اختر اشتراكك بنفسك', onTap: widget.onNavigateToSubscription),
         if (sub != null && !sub.isExpired)
           sub.isActive ? _ride(sub, vote) : const RideLockedCard(),
+        if (offers != null && offers.shows) OffersStrip(key: const Key('offers-strip'), offers: offers.offers),
         if (sub != null) ..._supervisors(sub),
       ];
     } else if (subAsync.hasError) {

@@ -12,6 +12,7 @@ import '../../features/notifications/data/notification_preferences.dart';
 import '../../features/notifications/data/quick_templates.dart';
 import '../../features/student/home/presentation/student_home_screen.dart';
 import '../../features/student/invites/invites.dart';
+import '../../features/student/offers/offers_repository.dart';
 import '../../features/student/qr/presentation/student_qr_screen.dart';
 import '../../features/student/subscription/presentation/purchase_flow.dart';
 import '../../features/student/subscription/presentation/subscription_screen.dart';
@@ -56,6 +57,8 @@ class SyncScope extends ConsumerStatefulWidget {
     if (key.startsWith('notifications')) return const {'notifications'};
     // The term's recap and whether it is published: only the recap is read again.
     if (key.startsWith('recap')) return const {'recap'};
+    // The student's offers: nothing else shows them.
+    if (key.startsWith('offers')) return const {'offers'};
     if (key.startsWith('supervisor.') || key.startsWith('rider_counts')) {
       return const {'supervisor_scan_events', 'supervisors'};
     }
@@ -128,11 +131,14 @@ class SyncScope extends ConsumerStatefulWidget {
         (tables.contains('notifications') || tables.contains('recap') || tables.contains('term_recap_releases'))) {
       invalidate(termRecapProvider);
     }
+    // The platform published, changed or ended an offer, or a merchant changed.
+    if (role == UserRole.student && tables.contains('offers')) invalidate(offersProvider);
     if (tables.contains('notification_preferences')) invalidate(notificationPreferencesProvider);
     if (tables.contains('notification_templates')) invalidate(quickTemplatesProvider);
     // 'term_recap_releases': the platform published the recap or took it back.
     const ownScreens = {
       'notifications', 'notification_preferences', 'notification_templates', 'recap', 'term_recap_releases',
+      'offers',
     };
     if (tables.every(ownScreens.contains)) return;
     if (role == UserRole.student) {
@@ -286,6 +292,7 @@ class SyncScope extends ConsumerStatefulWidget {
     if (key == 'subscriptions.current') return currentSubscriptionProvider;
     if (key == 'profile.summary') return userId == null ? null : studentProfileSummaryProvider(userId);
     if (key == 'sale_catalog') return saleCatalogProvider;
+    if (key == OffersRepository.cacheKey) return offersProvider;
     if (key == 'supervisor.photo') return supervisorPhotoUrlProvider;
     if (key == 'supervisor.dashboard') return supervisorDashboardProvider;
     if (key == 'supervisor.capacities') return lineCapacitiesProvider;
@@ -502,8 +509,9 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
       // 'lines' includes what is on sale: company settings (sale switches,
-      // vote times) send no event to students.
-      _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students', 'notifications'});
+      // vote times) send no event to students. 'offers': one may have started
+      // or ended by its dates, which sends nothing either.
+      _invalidateFor(const {'subscriptions', 'lines', 'company_invites', 'students', 'notifications', 'offers'});
       ref.invalidate(voteSettingsProvider);
       _settlePendingReceipts();
       ref.read(rideStatusTickProvider.notifier).state++;

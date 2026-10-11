@@ -22,6 +22,7 @@ NotificationStyle notificationStyle(String type, NotificationCategory category) 
     'transport.cancelled' => (LucideIcons.ban, BasakTone.danger),
     'transport.return_departing' => (LucideIcons.school, BasakTone.success),
     'announcement.supervisor' => (LucideIcons.megaphone, BasakTone.info),
+    'offer.special' => (LucideIcons.gift, BasakTone.info),
     _ => switch (category) {
         NotificationCategory.subscription => (LucideIcons.receiptText, BasakTone.neutral),
         NotificationCategory.transport => (LucideIcons.bus, BasakTone.success),

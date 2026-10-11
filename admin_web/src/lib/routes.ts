@@ -37,6 +37,8 @@ export const AppVersionsPage = page(() => import('../pages/platform/AppVersionsP
 export const PlatformAnalyticsPage = page(() => import('../pages/platform/PlatformAnalyticsPage'), 'PlatformAnalyticsPage');
 export const PlatformBillingPage = page(() => import('../pages/platform/PlatformBillingPage'), 'PlatformBillingPage');
 export const PlatformRecapPage = page(() => import('../pages/platform/PlatformRecapPage'), 'PlatformRecapPage');
+export const MerchantsPage = page(() => import('../pages/platform/MerchantsPage'), 'MerchantsPage');
+export const OffersPage = page(() => import('../pages/platform/OffersPage'), 'OffersPage');
 
 // One company's workspace.
 export const TodayPage = page(() => import('../pages/TodayPage'), 'TodayPage');

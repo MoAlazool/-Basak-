@@ -13,6 +13,8 @@ import '../../../notifications/push/push_messaging.dart';
 import '../../../notifications/push/push_providers.dart';
 import '../../../rating/rating.dart';
 import '../../home/presentation/student_home_screen.dart';
+import '../../offers/offers_repository.dart';
+import '../../offers/offers_setting.dart';
 import 'help_sheet.dart';
 import 'profile_editor.dart';
 
@@ -52,13 +54,15 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   /// «التطبيق»: help, signing in with Face ID or a fingerprint (on a phone
-  /// that has one enrolled), then the phone's own notification setting.
+  /// that has one enrolled), the phone's own notification setting, then
+  /// whether merchants' offers are shown (where the server has them).
   List<SettingRow> _appRows(BuildContext context, WidgetRef ref) {
     final journey = ref.watch(helpJourneyProvider);
     final support = ref.watch(helpSupportProvider);
     final pushReady = ref.watch(pushReadyProvider).valueOrNull == true;
     final permission = pushReady ? ref.watch(pushPermissionProvider).valueOrNull : null;
     final biometric = biometricSettingRow(context, ref);
+    final offers = offersSettingRow(ref);
     return [
       // Nobody to turn to yet (no subscription, no channels): no row.
       if (journey.isNotEmpty || support.isNotEmpty)
@@ -76,6 +80,7 @@ class ProfileScreen extends ConsumerWidget {
           external: true,
           onTap: NotificationPlatform.openSystemSettings,
         ),
+      if (offers != null) offers,
       // Always there: the store's page for the app, asked for by the student.
       SettingRow(
         key: const Key('profile-rate'),
@@ -107,6 +112,7 @@ class ProfileScreen extends ConsumerWidget {
       onRefresh: () async {
         if (user != null) ref.invalidate(studentProfileSummaryProvider(user.id));
         if (authState.isStudent) ref.invalidate(currentSubscriptionProvider);
+        if (authState.isStudent) ref.invalidate(offersProvider);
         ref.invalidate(pushPermissionProvider);
       },
       children: [

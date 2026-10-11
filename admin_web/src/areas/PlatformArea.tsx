@@ -10,7 +10,7 @@ import { useAdminScope } from '../lib/adminScope';
 import { useResetRequestCount, useTabCount, whoOf } from './Workspace';
 import {
   AllStudentsPage, AppVersionsPage, PlatformAnalyticsPage, PlatformBillingPage, PlatformRecapPage, CompaniesPage, CompanyAdminsPage, CompanyNewPage, CorrectionsPage, PlatformDefaultsPage,
-  PlatformNotificationsPage, PlatformPasswordRequestsPage, PlatformTodayPage, UniversitiesPage,
+  MerchantsPage, OffersPage, PlatformNotificationsPage, PlatformPasswordRequestsPage, PlatformTodayPage, UniversitiesPage,
 } from '../lib/routes';
 
 /** Corrections companies sent that wait on the platform admin, counted by the server. */
@@ -41,6 +41,8 @@ export const PlatformArea: React.FC<{ onLogout: () => void }> = ({ onLogout }) =
           <Route path="admins" element={<CompanyAdminsPage />} />
           <Route path="students" element={<AllStudentsPage />} />
           <Route path="notifications" element={<PlatformNotificationsPage />} />
+          <Route path="merchants" element={<MerchantsPage />} />
+          <Route path="offers" element={<OffersPage />} />
           <Route path="universities" element={<UniversitiesPage />} />
           <Route path="defaults" element={<PlatformDefaultsPage />} />
           <Route path="app-versions" element={<AppVersionsPage />} />
