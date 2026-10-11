@@ -511,3 +511,96 @@ BEGIN
     'max_ms', round((SELECT max(x) FROM unnest(ms) x)::numeric, 2), 'bytes', v_bytes, 'runs', p_n);
 END;
 $$;
+
+-- ---------------------------------------------------------------- workload
+-- The calls each screen makes on load (mapped from the app and the dashboard),
+-- replayed as the real signed-in user of the reference company. Writes (scan) are
+-- benchmark rows and are removed with the company.
+CREATE TABLE IF NOT EXISTS bench.perf (
+  label text, role text, name text, result jsonb, at timestamptz DEFAULT now(), PRIMARY KEY (label, role, name));
+
+CREATE OR REPLACE FUNCTION bench.try_timeit(p_user uuid, p_sql text, p_n int) RETURNS jsonb LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN bench.timeit(p_user, p_sql, p_n);
+EXCEPTION WHEN OTHERS THEN
+  EXECUTE 'RESET ROLE';
+  RETURN jsonb_build_object('error', SQLERRM);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION bench.workload(p_label text, p_seq int, p_n int DEFAULT 30) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE
+  v_company uuid := (SELECT id FROM bench.company WHERE seq = p_seq);
+  v_student uuid; v_sub uuid; v_qr uuid; v_sup uuid; v_line uuid; v_trip uuid; v_admin uuid;
+  v_super uuid := (SELECT id FROM public.admins WHERE role = 'super_admin' ORDER BY created_at LIMIT 1);
+  v_today date := public.cairo_today();
+  q record;
+BEGIN
+  SELECT s.student_id, s.id INTO v_student, v_sub FROM public.subscriptions s
+  WHERE s.company_id = v_company AND s.status = 'active' AND s.period_code IN ('first', 'both') AND s.academic_year = 2026
+  ORDER BY s.student_id LIMIT 1;
+  SELECT qr_code_value INTO v_qr FROM public.students WHERE id = v_student;
+  SELECT line_id, departure_trip_id INTO v_line, v_trip FROM public.subscriptions WHERE id = v_sub;
+  SELECT supervisor_id INTO v_sup FROM public.supervisor_lines WHERE line_id = v_line LIMIT 1;
+  SELECT id INTO v_admin FROM public.admins WHERE company_id = v_company ORDER BY id LIMIT 1;
+
+  FOR q IN SELECT * FROM (VALUES
+    -- student app
+    ('student', 'home.current_subscription', v_student, format($q$(SELECT row_to_json(x) FROM (
+        SELECT s.*, (SELECT row_to_json(l) FROM (SELECT l.name, (SELECT row_to_json(c) FROM (SELECT id, name, logo_path, emblem_path FROM public.companies c WHERE c.id = l.company_id) c) company,
+                       (SELECT row_to_json(sv) FROM (SELECT full_name, phone, profile_image_url FROM public.supervisors sv WHERE sv.id = l.supervisor_id) sv) supervisor,
+                       (SELECT json_agg(t) FROM (SELECT direction, is_active, start_time FROM public.line_trips t WHERE t.line_id = l.id) t) trips
+                     FROM public.lines l WHERE l.id = s.line_id) l) line,
+               (SELECT row_to_json(st) FROM (SELECT st.name, st.departure_times, st.return_times,
+                       (SELECT json_agg(ts) FROM (SELECT ts.stop_time, t.direction, t.is_active, t.start_time FROM public.line_trip_stops ts JOIN public.line_trips t ON t.id = ts.trip_id WHERE ts.station_id = st.id) ts) stops
+                     FROM public.stations st WHERE st.id = s.station_id) st) station
+        FROM public.subscriptions s WHERE s.student_id = auth.uid() AND s.status IN ('pending_payment','pending_review','active','rejected')
+          AND (s.end_date IS NULL OR s.end_date >= %L::date) ORDER BY s.start_date, s.created_at DESC LIMIT 1) x)$q$, v_today)),
+    ('student', 'subscription.all', v_student, $q$(SELECT json_agg(s ORDER BY s.start_date DESC NULLS LAST, s.created_at DESC) FROM public.subscriptions s WHERE s.student_id = auth.uid())$q$),
+    ('student', 'subscription.receipt_snapshot', v_student, format($q$(SELECT row_to_json(r) FROM public.subscription_receipts r WHERE r.subscription_id = %L)$q$, v_sub)),
+    ('student', 'subscription.receipts', v_student, format($q$(SELECT json_agg(r ORDER BY r.attempt_number DESC) FROM public.receipts r WHERE r.subscription_id = %L)$q$, v_sub)),
+    ('student', 'home.week_votes', v_student, format($q$(SELECT json_agg(d) FROM (SELECT ride_date, is_riding, departure_time, return_time, is_returning FROM public.daily_ride_status WHERE student_id = auth.uid() AND ride_date BETWEEN %L::date - 6 AND %L::date + 6) d)$q$, v_today, v_today)),
+    ('student', 'home.profile', v_student, $q$(SELECT row_to_json(s) FROM public.students s WHERE s.id = auth.uid())$q$),
+    ('student', 'home.vote_settings', v_student, format('public.get_vote_settings(%L::uuid)', v_company)),
+    ('student', 'home.line_supervisors', v_student, 'public.get_my_line_supervisors()'),
+    ('student', 'home.invites', v_student, 'public.get_my_invites()'),
+    ('student', 'home.offers', v_student, 'public.get_my_offers()'),
+    ('student', 'inbox.page', v_student, 'public.get_my_notifications_page(NULL, 30, false)'),
+    ('student', 'catalog', v_student, 'public.get_subscription_catalog()'),
+    ('student', 'recap', v_student, format('public.get_my_term_recap(%L::uuid, NULL, NULL)', v_sub)),
+    -- supervisor app
+    ('supervisor', 'dashboard', v_sup, 'public.get_supervisor_dashboard()'),
+    ('supervisor', 'trip_manifest', v_sup, format($q$public.get_supervisor_trip_manifest(%L::uuid, 'departure', NULL, NULL)$q$, v_line)),
+    ('supervisor', 'line_capacities', v_sup, 'public.get_my_line_capacities()'),
+    ('supervisor', 'lookup_student', v_sup, format('public.lookup_student_by_qr(%L::uuid)', v_qr)),
+    ('supervisor', 'scan_check_in', v_sup, format($q$public.supervisor_check_in_student(%L::uuid, 'departure', %L::uuid)$q$, v_qr, v_trip)),
+    -- company admin dashboard
+    ('company_admin', 'overview', v_admin, format('public.company_overview(%L::uuid)', v_company)),
+    ('company_admin', 'students.page', v_admin, format($q$public.get_company_students_page_v2(%L::uuid, NULL, NULL, NULL, NULL, 'newest', 25, 0, NULL)$q$, v_company)),
+    ('company_admin', 'students.search', v_admin, format($q$public.get_company_students_page_v2(%L::uuid, 'محمد', NULL, NULL, NULL, 'newest', 25, 0, NULL)$q$, v_company)),
+    ('company_admin', 'money.report', v_admin, format($q$public.admin_subscription_report(jsonb_build_object('company_id', %L, 'academic_year', 2026, 'limit', 25, 'offset', 0))$q$, v_company)),
+    ('company_admin', 'money.revenue', v_admin, format($q$public.company_revenue_breakdown(%L::uuid, NULL, NULL, '{"academic_year": 2026}'::jsonb)$q$, v_company)),
+    ('company_admin', 'receipts.pending', v_admin, format('public.get_pending_receipts_page(%L::uuid, 50)', v_company)),
+    ('company_admin', 'receipts.history', v_admin, format('public.admin_reviewed_receipts(%L::uuid, NULL, NULL, NULL, NULL, 25, 0, NULL)', v_company)),
+    ('company_admin', 'notifications.history', v_admin, format('public.get_company_notifications_page(%L::uuid, NULL, 25, NULL)', v_company)),
+    ('company_admin', 'supervisors', v_admin, format($q$(SELECT json_agg(s) FROM (SELECT id, phone, full_name, is_active, profile_image_url FROM public.supervisors WHERE company_id = %L ORDER BY created_at DESC) s)$q$, v_company)),
+    ('company_admin', 'analytics.30d', v_admin, format('public.company_analytics(%L::uuid, %L::date, NULL)', v_company, v_today - 29)),
+    ('company_admin', 'today', v_admin, format('public.company_today(%L::uuid)', v_company)),
+    ('company_admin', 'reset_requests', v_admin, format('public.admin_list_password_reset_requests(%L::uuid)', v_company)),
+    -- platform admin
+    ('super_admin', 'platform.today', v_super, 'public.platform_today()'),
+    ('super_admin', 'platform.companies', v_super, 'public.platform_companies()'),
+    ('super_admin', 'platform.overview', v_super, 'public.platform_overview()'),
+    ('super_admin', 'platform.analytics.30d', v_super, format('public.platform_analytics(%L::date, NULL)', v_today - 29)),
+    ('super_admin', 'platform.billing', v_super, 'public.platform_billing()'),
+    ('super_admin', 'platform.university_counts', v_super, 'public.platform_university_counts()'),
+    ('super_admin', 'platform.students', v_super, 'public.platform_students(NULL, NULL, NULL, 25, 0)'),
+    ('super_admin', 'platform.students_counts', v_super, 'public.platform_students_counts(NULL, NULL)')
+  ) w(role, name, uid, sql) LOOP
+    INSERT INTO bench.perf (label, role, name, result)
+    VALUES (p_label, q.role, q.name, bench.try_timeit(q.uid, q.sql, CASE WHEN q.name = 'scan_check_in' THEN LEAST(p_n, 10) ELSE p_n END))
+    ON CONFLICT (label, role, name) DO UPDATE SET result = EXCLUDED.result, at = now();
+  END LOOP;
+  RETURN (SELECT jsonb_object_agg(role || '/' || name, result) FROM bench.perf WHERE label = p_label);
+END;
+$$;
