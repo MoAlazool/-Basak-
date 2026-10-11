@@ -3,6 +3,7 @@
 // way in from a notification.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -143,6 +144,18 @@ Future<void> _settle(WidgetTester tester) async {
 /// The page's own back button (the newest page's, when several are open).
 Future<void> _back(WidgetTester tester) =>
     tester.tap(find.widgetWithIcon(BasakIconButton, LucideIcons.arrowRight).last);
+
+/// A picture the phone cannot load (no connection, a file that is gone).
+class _Broken extends ImageProvider<_Broken> {
+  const _Broken();
+
+  @override
+  Future<_Broken> obtainKey(ImageConfiguration configuration) => SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(_Broken key, ImageDecoderCallback decode) =>
+      OneFrameImageStreamCompleter(Future<ImageInfo>.error(StateError('no picture')));
+}
 
 Finder _pinField() =>
     find.descendant(of: find.byKey(const Key('coupon-pin')), matching: find.byType(TextField));
@@ -332,12 +345,12 @@ void main() {
       expect(find.byType(MerchantOfferCard), findsNWidgets(3));
       expect(find.text('كافيه الجامعة'), findsNWidgets(3));
       expect(card('خصم على المشروبات').offer.id, offerUuid(1));
-      expect(inCard('خصم على المشروبات', '20%'), findsOneWidget);
+      expect(inCard('خصم على المشروبات', '20%'), findsWidgets);
       expect(inCard('خصم على المشروبات', 'ينتهي بعد 3 أيام'), findsOneWidget);
       expect(inCard('خصم على المشروبات', 'متبقٍ 5'), findsOneWidget);
       expect(inCard('خصم على المشروبات', 'استخدمته'), findsNothing);
 
-      expect(inCard('قهوة مجانية', 'مشروب مجاني'), findsOneWidget);
+      expect(inCard('قهوة مجانية', 'مشروب مجاني'), findsWidgets);
       expect(inCard('قهوة مجانية', 'ينتهي اليوم'), findsOneWidget);
       expect(inCard('قهوة مجانية', 'استخدمته'), findsOneWidget);
 
@@ -430,6 +443,107 @@ void main() {
     });
   });
 
+  group('the offer\'s picture', () {
+    final shown = <String>[];
+    setUp(() {
+      shown.clear();
+      debugCompanyLogoImage = (url) {
+        shown.add(url);
+        return MemoryImage(onePixel);
+      };
+    });
+    tearDown(() => debugCompanyLogoImage = null);
+
+    Rect slot(WidgetTester tester, Finder within) =>
+        tester.getRect(find.descendant(of: within, matching: find.byType(OfferPicture)));
+
+    testWidgets('on Home\'s cards, on the page\'s cards and at the top of the offer; never decoded at full size',
+        (tester) async {
+      _phone(tester, const Size(400, 1700));
+      gateway.answer = offersJson([
+        offerJson(1, title: 'خصم على المشروبات', imagePath: 'offers/${offerUuid(1)}/cover.jpg'),
+        offerJson(2, title: 'عرض بلا صورة'),
+      ]);
+      await tester.pumpWidget(_home(gateway, clock));
+      await _settle(tester);
+
+      // The strip: the picture is the top of the card, edge to edge.
+      final strip = find.byKey(const Key('offers-strip'));
+      final card = find.descendant(
+          of: strip, matching: find.ancestor(of: find.text('خصم على المشروبات'), matching: find.byType(BasakCard)));
+      final picture = slot(tester, card);
+      expect((picture.top, picture.left, picture.right),
+          (tester.getRect(card).top, tester.getRect(card).left, tester.getRect(card).right));
+      expect(picture.width / picture.height, closeTo(16 / 9, .01));
+      expect(picture.bottom, lessThan(tester.getRect(find.text('خصم على المشروبات')).top));
+      expect(find.descendant(of: strip, matching: find.byKey(const Key('offer-picture'))), findsOneWidget);
+      expect(shown, contains(endsWith('/offer-assets/offers/${offerUuid(1)}/cover.jpg')));
+      final image = tester.widget<Image>(find.descendant(of: strip, matching: find.byKey(const Key('offer-picture'))));
+      final sized = image.image as ResizeImage;
+      expect(sized.height, isNull);
+      expect(sized.width, inInclusiveRange(picture.width.ceil(), picture.width.ceil() + 100),
+          reason: 'as wide as it is drawn, not as it was uploaded');
+
+      // No picture: the same slot, the same size, with the merchant's mark and the value.
+      final plain = find.descendant(
+          of: strip, matching: find.ancestor(of: find.text('عرض بلا صورة'), matching: find.byType(BasakCard)));
+      expect(slot(tester, plain).size, picture.size);
+      final panel = find.descendant(of: plain, matching: find.byKey(const Key('offer-picture-panel')));
+      expect(panel, findsOneWidget);
+      expect(find.descendant(of: panel, matching: find.text('20%')), findsOneWidget);
+      expect(find.descendant(of: panel, matching: find.text('ك ج')), findsOneWidget);
+      expect(find.descendant(of: plain, matching: find.byKey(const Key('offer-picture'))), findsNothing);
+      expect(find.byIcon(Icons.broken_image), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // The page of all offers, then the offer itself.
+      await tester.tap(find.byKey(const Key('offers-all')));
+      await _settle(tester);
+      final rows = find.byType(MerchantOfferCard);
+      expect(rows, findsNWidgets(2));
+      for (final row in [rows.first, rows.last]) {
+        final banner = slot(tester, row);
+        expect((banner.top, banner.width), (tester.getRect(row).top, tester.getRect(row).width));
+        expect(banner.width / banner.height, closeTo(16 / 9, .01));
+      }
+      expect(find.descendant(of: rows.first, matching: find.byKey(const Key('offer-picture'))), findsOneWidget);
+      expect(find.descendant(of: rows.last, matching: find.byKey(const Key('offer-picture-panel'))), findsOneWidget);
+
+      await tester.tap(find.descendant(of: rows.first, matching: find.text('خصم على المشروبات')));
+      await _settle(tester);
+      final page = find.byType(OfferDetailsScreen);
+      final hero = slot(tester, page);
+      expect(find.descendant(of: page, matching: find.byKey(const Key('offer-picture'))), findsOneWidget);
+      expect(hero.bottom, lessThan(tester.getRect(find.descendant(of: page, matching: find.text('كافيه الجامعة'))).top),
+          reason: 'the picture leads the page');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a path that is not the platform\'s, or a picture that cannot be loaded: the panel, and no error',
+        (tester) async {
+      _phone(tester, const Size(400, 2400));
+      debugCompanyLogoImage = (url) {
+        shown.add(url);
+        return const _Broken();
+      };
+      gateway.answer = offersJson([
+        offerJson(1, title: 'مسار غريب', imagePath: 'https://evil.example/a.png'),
+        offerJson(2, title: 'صورة لا تُحمَّل', imagePath: 'offers/${offerUuid(2)}/gone.png', value: ''),
+      ]);
+      await tester.pumpWidget(offersApp(const OffersScreen(), offerOverrides(gateway, clock)));
+      await _settle(tester);
+      final rows = find.byType(MerchantOfferCard);
+      expect(shown, [endsWith('/offers/${offerUuid(2)}/gone.png')], reason: 'the foreign address is never asked for');
+      expect(slot(tester, rows.first).size, slot(tester, rows.last).size, reason: 'the slot never changes size');
+      for (final row in [rows.first, rows.last]) {
+        expect(find.descendant(of: row, matching: find.byKey(const Key('offer-picture-panel'))), findsOneWidget);
+      }
+      expect(find.byIcon(Icons.broken_image), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('one offer', () {
     Future<void> open(WidgetTester tester, Map<String, dynamic> offer, {Size size = const Size(400, 2400)}) async {
       _phone(tester, size);
@@ -458,7 +572,7 @@ void main() {
       expect(page, findsOneWidget);
       expect(find.byKey(const Key('offer-picture')), findsOneWidget);
       expect(on('كافيه الجامعة'), findsOneWidget);
-      expect(on('20%'), findsOneWidget);
+      expect(on('20%'), findsWidgets);
       expect(on('خصم على المشروبات'), findsOneWidget);
       expect(on('خصم على كل المشروبات الساخنة لطلاب الجامعة.'), findsOneWidget);
       expect(on('الشروط'), findsOneWidget);
@@ -567,7 +681,26 @@ void main() {
       Finder on(String text) => find.descendant(of: screen, matching: find.text(text));
       expect(screen, findsOneWidget);
       expect(on('كافيه الجامعة'), findsOneWidget);
-      expect(on('20% · خصم على المشروبات'), findsOneWidget);
+      final card = find.byKey(const Key('coupon-card'));
+      Finder onCard(Finder what) => find.descendant(of: card, matching: what);
+      expect(card, findsOneWidget);
+      expect(onCard(find.text('20%')), findsWidgets);
+      expect(onCard(find.text('خصم على المشروبات')), findsOneWidget);
+      expect(onCard(find.text('صاحب الكوبون')), findsOneWidget);
+      expect(onCard(find.byType(OfferPicture)), findsOneWidget);
+      expect(onCard(find.byType(TicketTear)), findsOneWidget);
+      // Under the tear: where it stands, the time left, the bar and the code.
+      final tear = tester.getRect(find.byType(TicketTear)).bottom;
+      for (final key in ['coupon-waiting', 'coupon-countdown', 'coupon-live', 'coupon-code']) {
+        expect(onCard(find.byKey(Key(key))), findsOneWidget, reason: key);
+        expect(tester.getRect(find.byKey(Key(key))).top, greaterThanOrEqualTo(tear), reason: key);
+      }
+      // The code is the cashier's reference, no longer the largest thing on the card.
+      double size(Finder text) => tester.widget<Text>(text).style!.fontSize!;
+      expect(size(find.byKey(const Key('coupon-code'))), lessThan(size(onCard(find.text('20%')).last)));
+      // The PIN is typed under the card, not on it.
+      expect(onCard(find.byKey(const Key('coupon-pin'))), findsNothing);
+      expect(tester.getRect(find.byKey(const Key('coupon-pin'))).top, greaterThan(tester.getRect(card).bottom));
       expect(on('سارة أحمد محمود'), findsOneWidget);
       expect(find.byKey(const Key('coupon-student-photo')), findsOneWidget);
       expect(tester.widget<Text>(find.byKey(const Key('coupon-code'))).data, 'K 7 M 2 Q P');
@@ -619,7 +752,11 @@ void main() {
       await _settle(tester);
       expect(gateway.pins.last, (id: 'coupon-1', pin: '4821'));
       expect(find.byKey(const Key('coupon-used')), findsOneWidget);
-      expect(on('تم استخدام العرض'), findsOneWidget);
+      expect(onCard(find.byKey(const Key('coupon-used'))), findsOneWidget, reason: 'the card itself says it');
+      expect(on('تم الاستخدام'), findsOneWidget);
+      expect(on('الساعة 12:00 م'), findsOneWidget, reason: 'with the time the cashier confirmed it');
+      expect(find.byKey(const Key('coupon-waiting')), findsNothing);
+      expect(find.byKey(const Key('coupon-code')), findsOneWidget);
       expect(find.byKey(const Key('coupon-pin')), findsNothing);
       expect(find.byKey(const Key('coupon-confirm')), findsNothing);
       expect(gateway.reads, greaterThan(reads), reason: 'the offers are read again: this one is used');
@@ -660,7 +797,9 @@ void main() {
       await use(tester);
       expect(find.byType(OfferCouponScreen), findsOneWidget);
       expect(find.byKey(const Key('coupon-used')), findsOneWidget);
-      expect(find.text('تم استخدام العرض'), findsOneWidget);
+      expect(find.text('تم الاستخدام'), findsOneWidget);
+      expect(find.text('الساعة 12:00 م'), findsOneWidget, reason: 'used when the coupon was made');
+      expect(find.text('أرِ هذه البطاقة للكاشير قبل انتهاء الوقت.'), findsOneWidget);
       expect(tester.widget<Text>(find.byKey(const Key('coupon-code'))).data, 'K 7 M 2 Q P');
       expect(find.byKey(const Key('coupon-countdown')), findsOneWidget);
       expect(find.byKey(const Key('coupon-pin')), findsNothing);
@@ -680,6 +819,14 @@ void main() {
       expect(find.text('انتهت مدة الكوبون'), findsOneWidget);
       expect(find.byKey(const Key('coupon-code')), findsNothing);
       expect(find.byKey(const Key('coupon-pin')), findsNothing);
+      // The card is still there, gone quiet, with the way to a new one on it.
+      expect(find.byKey(const Key('coupon-card')), findsOneWidget);
+      expect(find.byKey(const Key('coupon-countdown')), findsNothing);
+      expect(find.byKey(const Key('coupon-live')), findsNothing);
+      expect(tester.widget<OfferPicture>(find.byType(OfferPicture)).muted, isTrue);
+      expect(
+          find.descendant(of: find.byKey(const Key('coupon-card')), matching: find.byKey(const Key('coupon-renew'))),
+          findsOneWidget);
 
       gateway.onRedeem =
           (_) => couponJson(clock.now.add(const Duration(minutes: 5)), id: 'coupon-2', code: 'ZX84RT', needsPin: true);
@@ -991,7 +1138,8 @@ void main() {
       await _settle(tester);
 
       // The offer in full, to its last row.
-      await tester.scrollUntilVisible(find.text(long['title'] as String), 100, scrollable: list);
+      await tester.ensureVisible(find.text(long['title'] as String));
+      await _settle(tester);
       await tester.tap(find.text(long['title'] as String));
       await _settle(tester);
       expect(find.byType(OfferDetailsScreen), findsOneWidget);
@@ -1037,7 +1185,8 @@ void main() {
       clock.forward(const Duration(minutes: 11));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump();
-      expect(find.text('تم استخدام العرض'), findsOneWidget);
+      expect(find.text('تم الاستخدام'), findsOneWidget);
+      expect(find.byKey(const Key('coupon-countdown')), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
