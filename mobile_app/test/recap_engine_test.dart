@@ -484,7 +484,9 @@ void main() {
       expect(recap.rideDays, 62, reason: 'the recap itself is the same; only the banner waits');
 
       final early = TermRecap.build(RecapData.tryParse(ahmed()..['published'] = true)!, studentKey: 'student-1')!;
-      expect(early.bannerOpen(), isFalse, reason: 'published, but still outside the window');
+      // The platform chose the moment: published shows it, whatever the date
+      // (it used to wait for the term's last two weeks as well).
+      expect(early.bannerOpen(), isTrue, reason: 'published, so shown, though the term is not near its end');
     });
   });
 }

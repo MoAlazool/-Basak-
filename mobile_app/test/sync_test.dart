@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:basak_mobile/features/student/recap/recap_repository.dart';
 import 'package:basak_mobile/core/storage/snapshot_store.dart';
 import 'package:basak_mobile/core/sync/session.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
@@ -140,11 +141,12 @@ void main() {
       expect(SyncScope.tableOf(const {}), '');
     });
 
-    test('a notifications change re-reads the inbox and nothing else', () {
+    test('a notifications change re-reads the inbox (and, for a student, the recap banner it may announce)', () {
       for (final role in [UserRole.student, UserRole.supervisor]) {
         final invalidated = <ProviderOrFamily>[];
         SyncScope.invalidateFor(invalidated.add, const {'notifications'}, role, 'u1');
-        expect(invalidated, [notificationFeedProvider], reason: role.name);
+        expect(invalidated, [notificationFeedProvider, if (role == UserRole.student) termRecapProvider],
+            reason: role.name);
       }
 
       // Other tables still refresh what they always did, without the inbox.

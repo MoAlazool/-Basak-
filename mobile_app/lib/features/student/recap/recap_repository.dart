@@ -17,10 +17,35 @@ typedef RecapFetch = Future<dynamic> Function(String subscriptionId);
 Future<dynamic> _rpc(String subscriptionId) =>
     SupabaseService.client.rpc(kTermRecapRpc, params: {'p_subscription_id': subscriptionId});
 
+/// The terms the platform has published a recap for (`term_recap_releases`,
+/// readable by everyone signed in).
+typedef ReleasesFetch = Future<dynamic> Function();
+
+Future<dynamic> _releases() => SupabaseService.client
+    .from('term_recap_releases')
+    .select('academic_year, period_code, published_at, unpublished_at');
+
 class TermRecapRepository {
   final RecapFetch _fetch;
+  final ReleasesFetch _fetchReleases;
 
-  TermRecapRepository({RecapFetch? fetch}) : _fetch = fetch ?? _rpc;
+  TermRecapRepository({RecapFetch? fetch, ReleasesFetch? releases})
+      : _fetch = fetch ?? _rpc,
+        _fetchReleases = releases ?? _releases;
+
+  /// Whether the platform has a recap out right now, for any term. A small
+  /// read, asked only outside a term's last weeks (inside them the recap
+  /// itself is asked for, and says). False when it cannot be known: an older
+  /// database, or no connection and nothing saved.
+  Future<bool> anyPublished() async {
+    try {
+      final rows = await OfflineCache.readThrough('recap.releases', _fetchReleases);
+      if (rows is! List) return false;
+      return rows.any((row) => row is Map && row['published_at'] != null && row['unpublished_at'] == null);
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// The recap of that subscription's term for [studentId], or null: no rides,
   /// no such function on this database, no connection and nothing saved, or
@@ -103,6 +128,17 @@ abstract final class RecapGate {
     return (subscriptionId: id, end: DateTime.utc(end.year, end.month, end.day));
   }
 
+  /// The term to ask a recap for today: the one whose window is open, as
+  /// [resolve] decides; and outside every window, the current term when
+  /// [published] says the platform has a recap out — it chose the moment, and
+  /// the recap's own answer then says whether it is this student's term.
+  static Future<RecapTerm?> resolveWith(DateTime today, RecapTerm? current, Future<bool> Function() published) async {
+    final inWindow = await resolve(today, current);
+    if (inWindow != null) return inWindow;
+    if (current == null || recapWindowPassed(today, current.end)) return null;
+    return await published() ? current : null;
+  }
+
   /// Reads what was remembered, decides, and remembers for next time.
   static Future<RecapTerm?> resolve(DateTime today, RecapTerm? current) async {
     final remembered = await _read();
@@ -131,10 +167,13 @@ final termRecapProvider = FutureProvider<TermRecap?>((ref) async {
   // Wait for Home's subscription instead of deciding twice.
   if (!subscription.known) return null;
   final today = ref.watch(recapTodayProvider)();
-  final term = await RecapGate.resolve(today, subscription.term);
+  final repo = ref.watch(termRecapRepoProvider);
+  final term = await RecapGate.resolveWith(today, subscription.term, repo.anyPublished);
   if (term == null) return null;
-  final recap =
-      await ref.watch(termRecapRepoProvider).load(subscriptionId: term.subscriptionId, studentId: userId);
+  // Outside the window it is here because it was just published: ask the
+  // server rather than show a copy saved before that.
+  final recap = await repo.load(
+      subscriptionId: term.subscriptionId, studentId: userId, fresh: !recapWindowOpen(today, term.end));
   return recap != null && recap.bannerOpen() ? recap : null;
 });
 
@@ -149,10 +188,11 @@ final termRecapNowProvider = FutureProvider<TermRecap?>((ref) async {
     // Opened from a push while the app was closed: Home may not have it yet.
     subscription = await ref.read(currentSubscriptionProvider.future);
   } catch (_) {}
-  final term = await RecapGate.resolve(ref.read(recapTodayProvider)(), RecapGate.of(subscription));
+  final repo = ref.read(termRecapRepoProvider);
+  // A tap on the notice that it is out: it is out, whatever the date.
+  final term = await RecapGate.resolveWith(
+      ref.read(recapTodayProvider)(), RecapGate.of(subscription), () async => true);
   if (term == null) return null;
-  final recap = await ref
-      .read(termRecapRepoProvider)
-      .load(subscriptionId: term.subscriptionId, studentId: userId, fresh: true);
+  final recap = await repo.load(subscriptionId: term.subscriptionId, studentId: userId, fresh: true);
   return recap != null && recap.bannerOpen() ? recap : null;
 });

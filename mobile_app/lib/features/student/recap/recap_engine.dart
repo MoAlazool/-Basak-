@@ -89,6 +89,15 @@ bool recapWindowOpen(DateTime today, DateTime? termEnd) {
       !day.isAfter(end.add(RecapRules.bannerStaysAfter));
 }
 
+/// Whether the banner's time is over: later than [RecapRules.bannerStaysAfter]
+/// past the term's end.
+bool recapWindowPassed(DateTime today, DateTime? termEnd) {
+  if (termEnd == null) return true;
+  final day = DateTime.utc(today.year, today.month, today.day);
+  final end = DateTime.utc(termEnd.year, termEnd.month, termEnd.day);
+  return day.isAfter(end.add(RecapRules.bannerStaysAfter));
+}
+
 DateTime? _date(Object? value) {
   final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch('${value ?? ''}');
   if (match == null) return null;
@@ -623,8 +632,15 @@ class TermRecap {
   /// Whether Home shows the banner on [today] (the server's day by default):
   /// the platform has published it (or the server does not say) and the
   /// window is open.
-  bool bannerOpen([DateTime? today]) =>
-      data.published != false && recapWindowOpen(today ?? data.today, data.termEnd ?? data.to);
+  bool bannerOpen([DateTime? today]) {
+    final day = today ?? data.today;
+    final end = data.termEnd ?? data.to;
+    // Published: the platform chose the moment, whatever the date; it stays
+    // until the banner's time is over.
+    if (data.published == true) return !recapWindowPassed(day, end);
+    // An older database does not say: the dates alone decide, as before.
+    return data.published != false && recapWindowOpen(day, end);
+  }
 
   /// Null with no rides at all: no recap, and no banner.
   /// [studentKey] fixes the draw of the title and of the poster's colours.

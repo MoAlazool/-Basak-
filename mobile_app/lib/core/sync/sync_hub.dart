@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../features/student/recap/recap_repository.dart';
 import '../../features/auth/models/user_role.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/notifications/data/notification_feed.dart';
@@ -53,6 +54,8 @@ class SyncScope extends ConsumerStatefulWidget {
     }
     if (key == 'sale_catalog' || key.startsWith('payment_methods')) return const {'lines'};
     if (key.startsWith('notifications')) return const {'notifications'};
+    // The term's recap and whether it is published: only the recap is read again.
+    if (key.startsWith('recap')) return const {'recap'};
     if (key.startsWith('supervisor.') || key.startsWith('rider_counts')) {
       return const {'supervisor_scan_events', 'supervisors'};
     }
@@ -118,9 +121,15 @@ class SyncScope extends ConsumerStatefulWidget {
       void Function(ProviderOrFamily provider) invalidate, Set<String> tables, UserRole role, String? userId,
       {bool subscriptionChanged = true}) {
     if (tables.contains('notifications')) invalidate(notificationFeedProvider);
+    // The platform tells students a recap is out with a notification: Home's
+    // banner asks again when one arrives (a small read), and when its saved
+    // copy turned out stale.
+    if (role == UserRole.student && (tables.contains('notifications') || tables.contains('recap'))) {
+      invalidate(termRecapProvider);
+    }
     if (tables.contains('notification_preferences')) invalidate(notificationPreferencesProvider);
     if (tables.contains('notification_templates')) invalidate(quickTemplatesProvider);
-    const ownScreens = {'notifications', 'notification_preferences', 'notification_templates'};
+    const ownScreens = {'notifications', 'notification_preferences', 'notification_templates', 'recap'};
     if (tables.every(ownScreens.contains)) return;
     if (role == UserRole.student) {
       final subscription = tables.contains('subscriptions');

@@ -59,6 +59,11 @@ class PayScreen extends ConsumerStatefulWidget {
   @visibleForTesting
   static Future<XFile?> Function(ImageSource source)? debugPickImage;
 
+  /// The caption under the chosen method (see the state's own); here so it can
+  /// be read without a screen.
+  static String methodCaption(PaymentMethodModel m, {required bool chipShown}) =>
+      _PayScreenState.methodCaption(m, chipShown: chipShown);
+
   @override
   ConsumerState<PayScreen> createState() => _PayScreenState();
 }
