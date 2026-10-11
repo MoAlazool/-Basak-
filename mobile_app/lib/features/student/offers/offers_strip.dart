@@ -119,6 +119,8 @@ class _OffersStripState extends ConsumerState<OffersStrip> {
                             key: _cards.putIfAbsent(shown[i].id, GlobalKey.new),
                             offer: shown[i],
                             now: now,
+                            // Alone on the row its picture is a band, not half of Home.
+                            pictureRatio: shown.length == 1 ? 2.4 : 16 / 9,
                             onTap: () => OfferDetailsScreen.open(context, shown[i]),
                           ),
                         ),
@@ -135,13 +137,16 @@ class _OffersStripState extends ConsumerState<OffersStrip> {
   }
 }
 
-/// One offer of the strip: the merchant, what it gives, and one line of marks.
+/// One offer of the strip: its picture, the merchant, what it gives, and one
+/// line of marks.
 class _StripCard extends StatelessWidget {
   final Offer offer;
   final DateTime now;
+  final double pictureRatio;
   final VoidCallback onTap;
 
-  const _StripCard({super.key, required this.offer, required this.now, required this.onTap});
+  const _StripCard(
+      {super.key, required this.offer, required this.now, required this.pictureRatio, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -151,36 +156,53 @@ class _StripCard extends StatelessWidget {
     return BasakPressable(
       onTap: onTap,
       child: BasakCard(
-        padding: const EdgeInsetsDirectional.all(BasakSpace.s14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                OfferLogo(merchant, size: 36),
-                const SizedBox(width: BasakSpace.s8),
-                Expanded(
-                  child: Text(
-                    merchant.name.isEmpty ? merchant.category.label : merchant.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.label.copyWith(color: colors.ink2),
+        padding: EdgeInsets.zero,
+        // The picture is the card's top: cut to its corners.
+        child: ClipRRect(
+          borderRadius: BasakRadius.all(BasakRadius.card),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OfferPicture(offer, aspectRatio: pictureRatio),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.all(BasakSpace.s14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          OfferLogo(merchant, size: 36),
+                          const SizedBox(width: BasakSpace.s8),
+                          Expanded(
+                            child: Text(
+                              merchant.name.isEmpty ? merchant.category.label : merchant.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.label.copyWith(color: colors.ink2),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: BasakSpace.s10),
+                      if (offer.valueLabel.isNotEmpty)
+                        Text(offer.valueLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.headline.copyWith(color: colors.teal)),
+                      Text(offer.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.bodySmall),
+                      if (OfferMarks.has(offer, now)) ...[
+                        // The marks sit on the card's last line, whatever its neighbours' height.
+                        const Spacer(),
+                        const SizedBox(height: BasakSpace.s10),
+                        OfferMarks(offer, now: now, compact: true),
+                      ],
+                    ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: BasakSpace.s10),
-            if (offer.valueLabel.isNotEmpty)
-              Text(offer.valueLabel,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: text.headline.copyWith(color: colors.teal)),
-            Text(offer.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.bodySmall),
-            if (OfferMarks.has(offer, now)) ...[
-              // The marks sit on the card's last line, whatever its neighbours' height.
-              const Spacer(),
-              const SizedBox(height: BasakSpace.s10),
-              OfferMarks(offer, now: now, compact: true),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );

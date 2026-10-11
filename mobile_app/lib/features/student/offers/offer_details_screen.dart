@@ -146,7 +146,6 @@ class _OfferDetailsScreenState extends ConsumerState<OfferDetailsScreen> {
     final offer = ref.watch(offersProvider).valueOrNull?.find(widget.offer.id) ?? widget.offer;
     final now = ref.watch(offersClockProvider)();
     final merchant = offer.merchant;
-    final picture = offer.imageUrl;
     final running = offer.runningCoupon(now);
     final refusal = running == null ? offer.refusal : null;
     final end = offer.endsAt;
@@ -187,21 +186,11 @@ class _OfferDetailsScreenState extends ConsumerState<OfferDetailsScreen> {
                 ),
               ),
         children: [
-          if (picture != null)
-            ClipRRect(
-              borderRadius: BasakRadius.all(BasakRadius.card),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Image(
-                  key: const Key('offer-picture'),
-                  image: companyLogoImage(picture),
-                  fit: BoxFit.cover,
-                  excludeFromSemantics: true,
-                  // No picture to show (offline the first time): its place stays calm.
-                  errorBuilder: (context, error, stack) => ColoredBox(color: colors.sunken),
-                ),
-              ),
-            ),
+          // The picture leads the page; without one its place holds the merchant's mark.
+          ClipRRect(
+            borderRadius: BasakRadius.all(BasakRadius.card),
+            child: OfferPicture(offer),
+          ),
           BasakCard(
             child: Column(
               mainAxisSize: MainAxisSize.min,

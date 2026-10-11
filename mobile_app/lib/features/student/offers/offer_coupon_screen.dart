@@ -8,15 +8,19 @@ import '../../../core/network/network_errors.dart';
 import '../../../core/theme/app_icons.dart';
 import '../../../core/ui/ui.dart';
 import '../../../core/widgets/avatar_image.dart';
+import '../../../core/widgets/basak_ui.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'offer_widgets.dart';
 import 'offers_repository.dart';
 
-/// The coupon at the till: whose it is, what for, its code, and the time it
-/// has left — counted down every second beside a bar that never stands
-/// still, so a picture of the screen is plainly not the screen. An offer with
-/// a PIN is counted when the merchant types it here.
+/// The coupon at the till, as a pass card of the same family as the student's
+/// bus card: the offer's picture, who it is from and what it gives, whose it
+/// is, and under the tear the time it has left — counted down every second
+/// beside a bar that never stands still, so a picture of the screen is
+/// plainly not the screen — with the code as the cashier's reference. The
+/// card itself says when it was used and when it is over. An offer with a PIN
+/// is counted when the merchant types it under the card.
 class OfferCouponScreen extends ConsumerStatefulWidget {
   final Offer offer;
   final OfferCoupon coupon;
@@ -65,6 +69,12 @@ class _OfferCouponScreenState extends ConsumerState<OfferCouponScreen> with Sing
 
   /// No tries left on this coupon: the field waits for a new one.
   bool _locked = false;
+
+  /// When the coupon was counted, where this phone knows: the moment the PIN
+  /// was accepted here, or, without a PIN, the moment the coupon was made.
+  late DateTime? _usedAt = widget.coupon.confirmed && !widget.offer.needsPin
+      ? widget.coupon.expiresAt.subtract(Duration(minutes: widget.offer.couponMinutes))
+      : null;
 
   DateTime _clock() => ref.read(offersClockProvider)();
 
@@ -132,6 +142,7 @@ class _OfferCouponScreenState extends ConsumerState<OfferCouponScreen> with Sing
         setState(() {
           _confirming = false;
           _coupon = _coupon.asConfirmed();
+          _usedAt = _clock();
         });
         // Used: Home and the offer's page say so.
         ref.invalidate(offersProvider);
@@ -164,6 +175,7 @@ class _OfferCouponScreenState extends ConsumerState<OfferCouponScreen> with Sing
         _renewing = false;
         _coupon = coupon;
         _now = _clock();
+        _usedAt = coupon.confirmed ? _now : null;
         _locked = false;
         _pinError = null;
       });
@@ -181,182 +193,248 @@ class _OfferCouponScreenState extends ConsumerState<OfferCouponScreen> with Sing
   Widget build(BuildContext context) {
     final colors = context.colors;
     final expired = _expired;
-    final List<Widget> children;
-    if (expired && _coupon.confirmed) {
-      children = [
-        const SizedBox(height: BasakSpace.s24),
-        const ResultBody(
-          key: Key('coupon-used'),
-          title: 'تم استخدام العرض',
-          message: 'انتهت مدة هذا الكوبون.',
-        ),
-        BasakButton(
-          label: 'تم',
-          variant: BasakButtonVariant.secondary,
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-      ];
-    } else if (expired) {
-      children = [
-        const SizedBox(height: BasakSpace.s24),
-        const ResultBody(
-          key: Key('coupon-expired'),
-          icon: LucideIcons.hourglass,
-          tone: BasakTone.warning,
-          title: 'انتهت مدة الكوبون',
-          message: 'لم يُحسب عليك استخدام. اطلب كوبوناً جديداً وأنت عند الكاشير.',
-        ),
-        BasakButton(
-          key: const Key('coupon-renew'),
-          label: 'اطلب كوبوناً جديداً',
-          loading: _renewing,
-          onPressed: _renew,
-        ),
-      ];
-    } else {
-      children = [
-        if (_coupon.confirmed)
-          _Used(byPin: widget.offer.needsPin)
-        else if (_needsPin)
-          const NoticeCard(
-            icon: LucideIcons.info,
-            tone: BasakTone.info,
-            message: 'أرِ الكوبون للكاشير، ثم يكتب رمز المحل في الأسفل ليُحسب الاستخدام.',
-          ),
-        _ticket(context),
-        if (_needsPin) _pinEntry(context),
-      ];
-    }
-
+    final used = _coupon.confirmed;
     return Scaffold(
       backgroundColor: colors.ground,
       body: BasakPage(
         header: const PageTitleBar(title: 'الكوبون'),
-        children: children,
+        children: [
+          _card(context),
+          if (!expired && used && !widget.offer.needsPin)
+            Text('أرِ هذه البطاقة للكاشير قبل انتهاء الوقت.',
+                textAlign: TextAlign.center, style: context.text.label.copyWith(color: colors.ink2)),
+          if (!expired && _needsPin) _pinEntry(context),
+          if (expired && used)
+            BasakButton(
+              label: 'تم',
+              variant: BasakButtonVariant.secondary,
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+        ],
       ),
     );
   }
 
-  /// Whose coupon, what for, the code and the time left.
-  Widget _ticket(BuildContext context) {
+  /// Where the coupon stands, as the card's own strip says it.
+  Widget _standing(bool expired) {
+    if (_coupon.confirmed) {
+      final at = _usedAt;
+      return InfoStrip(
+        key: const Key('coupon-used'),
+        tone: BasakTone.success,
+        label: 'تم الاستخدام',
+        value: at == null
+            ? 'أكّد الكاشير الكوبون'
+            : 'الساعة ${BasakUi.time12('${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}')}',
+        icon: LucideIcons.check,
+      );
+    }
+    if (expired) {
+      return const InfoStrip(
+        key: Key('coupon-expired'),
+        tone: BasakTone.neutral,
+        label: 'انتهت مدة الكوبون',
+        value: 'لم يُحسب عليك استخدام',
+        icon: LucideIcons.hourglass,
+      );
+    }
+    return const InfoStrip(
+      key: Key('coupon-waiting'),
+      tone: BasakTone.warning,
+      label: 'بانتظار الكاشير',
+      value: 'يكتب رمز المحل في الأسفل',
+      icon: LucideIcons.clock3,
+    );
+  }
+
+  /// The pass: the picture, the merchant and the offer, whose coupon it is,
+  /// and under the tear where it stands, the time left and the code.
+  Widget _card(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
     final offer = widget.offer;
     final merchant = offer.merchant;
+    final expired = _expired;
+    final used = _coupon.confirmed;
     final user = ref.watch(authStateProvider).user;
     final profile = user == null ? null : ref.watch(studentProfileSummaryProvider(user.id)).valueOrNull;
-    final name = ((profile?['full_name'] ?? user?.userMetadata?['full_name']) as String?)?.trim() ?? '';
+    final typed = ((profile?['full_name'] ?? user?.userMetadata?['full_name']) as String?)?.trim() ?? '';
+    final name = typed.isEmpty ? 'الطالب' : typed;
     final photo = studentPhoto(profile?['profile_image_url'] as String?);
     final photoUrl = photo == null ? null : ref.watch(signedPhotoProvider(photo)).valueOrNull;
-    final what = [if (offer.valueLabel.isNotEmpty) offer.valueLabel, offer.title].join(' · ');
-    final rule = Divider(height: BasakSpace.s28, thickness: 1, color: colors.hairline);
+    final code = _coupon.code.split('').join(' ');
+    // A coupon that is over reads as one: its words step back.
+    final strong = expired ? colors.ink3 : colors.ink;
 
-    return BasakCard(
-      radius: BasakRadius.sheet,
-      padding: const EdgeInsetsDirectional.all(BasakSpace.s20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              OfferLogo(merchant, size: 44),
-              const SizedBox(width: BasakSpace.s12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (merchant.name.isNotEmpty)
-                      Text(merchant.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.rowTitle),
-                    Text(what,
-                        maxLines: 2, overflow: TextOverflow.ellipsis, style: text.bodySmall.copyWith(color: colors.ink2)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          rule,
-          Row(
-            children: [
-              PhotoRing(
-                key: const Key('coupon-student-photo'),
-                name: name.isEmpty ? 'الطالب' : name,
-                image: photoUrl == null ? null : avatarImage(photoUrl),
-                size: 48,
-              ),
-              const SizedBox(width: BasakSpace.s12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('صاحب الكوبون', style: text.caption.copyWith(color: colors.ink3)),
-                    Text(name.isEmpty ? 'الطالب' : name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.body.copyWith(fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          rule,
-          Text('رمز الكوبون', textAlign: TextAlign.center, style: text.caption.copyWith(color: colors.ink3)),
-          const SizedBox(height: BasakSpace.s4),
-          // Always whole and on one line, however narrow the phone.
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Semantics(
-              label: 'رمز الكوبون ${_coupon.code.split('').join(' ')}',
-              child: ExcludeSemantics(
-                child: Text(
-                  _coupon.code.split('').join(' '),
-                  key: const Key('coupon-code'),
-                  maxLines: 1,
-                  textDirection: TextDirection.ltr,
-                  textScaler: TextScaler.noScaling,
-                  style: text.amount.copyWith(color: colors.ink, letterSpacing: 2),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: BasakSpace.s16),
-          Container(
-            padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s14, vertical: BasakSpace.s12),
-            decoration: BoxDecoration(color: colors.ground, borderRadius: BasakRadius.all(BasakRadius.small)),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Icon(LucideIcons.hourglass, size: 16, color: colors.ink2),
-                    const SizedBox(width: BasakSpace.s8),
-                    Expanded(
-                      child: Text('ينتهي بعد',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: text.label.copyWith(color: colors.ink2)),
-                    ),
-                    const SizedBox(width: BasakSpace.s8),
-                    Text(
-                      OfferCouponScreen.clock(_left),
-                      key: const Key('coupon-countdown'),
-                      textDirection: TextDirection.ltr,
-                      style: text.headline.copyWith(
-                        color: _left < const Duration(minutes: 1) ? colors.danger : colors.ink,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+    return Semantics(
+      container: true,
+      label: 'كوبون ${merchant.name}',
+      child: Container(
+        key: const Key('coupon-card'),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BasakRadius.all(BasakRadius.sheet),
+          boxShadow: BasakShadow.card,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OfferPicture(offer, aspectRatio: 2.4, muted: expired),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.s20, BasakSpace.s16, BasakSpace.s20, 0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      OfferLogo(merchant, size: 40),
+                      const SizedBox(width: BasakSpace.s12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (merchant.name.isNotEmpty)
+                              Text(merchant.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.rowTitle.copyWith(color: strong)),
+                            Text(merchant.category.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.caption.copyWith(color: colors.ink3)),
+                          ],
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: BasakSpace.s14),
+                  if (offer.valueLabel.isNotEmpty)
+                    // Whole and on one line, however long the merchant made it.
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(offer.valueLabel,
+                          maxLines: 1, style: text.amount.copyWith(color: expired ? colors.ink3 : colors.teal)),
+                    ),
+                  Text(offer.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.body.copyWith(fontWeight: FontWeight.w500, color: strong)),
+                  const SizedBox(height: BasakSpace.s16),
+                  Row(
+                    children: [
+                      PhotoRing(
+                        key: const Key('coupon-student-photo'),
+                        name: name,
+                        image: photoUrl == null ? null : avatarImage(photoUrl),
+                        size: 48,
+                        ring: used ? colors.success : (expired ? colors.track : colors.teal),
+                      ),
+                      const SizedBox(width: BasakSpace.s14),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('صاحب الكوبون', style: text.caption.copyWith(color: colors.ink3)),
+                            Text(name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.headline.copyWith(color: strong)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: BasakSpace.s6),
+            TicketTear(color: colors.track),
+            Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(BasakSpace.s20, BasakSpace.s6, BasakSpace.s20, BasakSpace.s20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Semantics(liveRegion: true, child: _standing(expired)),
+                  if (!expired) ...[
+                    const SizedBox(height: BasakSpace.s14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('ينتهي بعد', style: text.caption.copyWith(color: colors.ink3)),
+                            Text(
+                              OfferCouponScreen.clock(_left),
+                              key: const Key('coupon-countdown'),
+                              textDirection: TextDirection.ltr,
+                              style: text.title.copyWith(
+                                color: _left < const Duration(minutes: 1) ? colors.danger : colors.ink,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: BasakSpace.s16),
+                        // The cashier's reference: small, and never cut.
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('الرمز', style: text.caption.copyWith(color: colors.ink3)),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: AlignmentDirectional.centerEnd,
+                                child: Semantics(
+                                  label: 'رمز الكوبون $code',
+                                  child: ExcludeSemantics(
+                                    child: Text(
+                                      code,
+                                      key: const Key('coupon-code'),
+                                      maxLines: 1,
+                                      textDirection: TextDirection.ltr,
+                                      style: text.body.copyWith(
+                                        color: colors.ink2,
+                                        fontWeight: FontWeight.w500,
+                                        letterSpacing: 1.5,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: BasakSpace.s12),
+                    _LiveBar(animation: _live),
+                  ] else if (!used) ...[
+                    const SizedBox(height: BasakSpace.s14),
+                    BasakButton(
+                      key: const Key('coupon-renew'),
+                      label: 'اطلب كوبوناً جديداً',
+                      size: BasakButtonSize.medium,
+                      loading: _renewing,
+                      onPressed: _renew,
                     ),
                   ],
-                ),
-                const SizedBox(height: BasakSpace.s10),
-                _LiveBar(animation: _live),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -398,46 +476,6 @@ class _OfferCouponScreenState extends ConsumerState<OfferCouponScreen> with Sing
             onPressed: enough && !_locked ? _confirm : null,
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// «تم استخدام العرض», while the coupon is still on screen for the cashier.
-class _Used extends StatelessWidget {
-  /// The merchant's PIN counted it (otherwise asking for the coupon did).
-  final bool byPin;
-
-  const _Used({required this.byPin});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final text = context.text;
-    return Semantics(
-      liveRegion: true,
-      child: BasakCard(
-        key: const Key('coupon-used'),
-        color: colors.successTint,
-        radius: BasakRadius.control,
-        padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s14),
-        child: Row(
-          children: [
-            const ToneGlyph(LucideIcons.check, tone: BasakTone.success),
-            const SizedBox(width: BasakSpace.s12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('تم استخدام العرض', style: text.rowTitle.copyWith(color: colors.success)),
-                  Text(byPin ? 'أكّد الكاشير الكوبون.' : 'أرِ هذه الشاشة للكاشير قبل انتهاء الوقت.',
-                      style: text.label.copyWith(color: colors.ink2, fontWeight: FontWeight.w400)),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
