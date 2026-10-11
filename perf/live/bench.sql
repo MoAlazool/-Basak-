@@ -604,3 +604,42 @@ BEGIN
   RETURN (SELECT jsonb_object_agg(role || '/' || name, result) FROM bench.perf WHERE label = p_label);
 END;
 $$;
+
+-- ----------------------------------------------------------- one day's votes
+-- A day's votes as toggle_student_daily_ride writes them: a departure time from
+-- the student's station on any departure trip of their line and university (most
+-- keep the subscribed one), a return time only when returning (else NULL).
+CREATE OR REPLACE FUNCTION bench.add_votes_for(p_day date) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE v_n int;
+BEGIN
+  SET LOCAL session_replication_role = replica;
+  WITH riders AS (
+    SELECT bs.id AS student_id, bs.profile, bs.university_id, sub.id AS subscription_id, sub.company_id, sub.line_id,
+           sub.station_id, sub.departure_time AS sub_dep, sub.return_time AS sub_ret,
+           bench.h(bs.id || p_day::text || 'v') AS v, bench.h(bs.id || p_day::text || 'c') AS c, bench.h(bs.id || p_day::text || 'x') AS x
+    FROM bench.student bs
+    JOIN public.subscriptions sub ON sub.student_id = bs.id AND sub.status = 'active'
+      AND sub.start_date <= p_day AND sub.end_date >= p_day
+  ), opts AS (
+    SELECT r.*,
+      (SELECT array_agg(s.stop_time ORDER BY s.stop_time) FROM public.line_trips t JOIN public.line_trip_stops s ON s.trip_id = t.id AND s.station_id = r.station_id
+        WHERE t.line_id = r.line_id AND t.direction = 'departure' AND t.is_active AND t.university_id = r.university_id) AS deps,
+      (SELECT min(s.stop_time) FROM public.line_trips t JOIN public.line_trip_stops s ON s.trip_id = t.id AND s.station_id = r.station_id
+        WHERE t.line_id = r.line_id AND t.direction = 'return' AND t.is_active AND t.university_id = r.university_id) AS ret_stop
+    FROM riders r
+    WHERE r.v < CASE r.profile WHEN 'light' THEN 0.35 WHEN 'normal' THEN 0.75 ELSE 0.95 END
+  )
+  INSERT INTO public.daily_ride_status (student_id, ride_date, is_riding, departure_time, return_time, is_returning, toggled_at,
+                                        company_id, subscription_id)
+  SELECT student_id, p_day, x >= 0.08,
+         CASE WHEN c < 0.75 OR deps IS NULL THEN sub_dep ELSE deps[1 + floor(c * array_length(deps, 1))::int % array_length(deps, 1)] END,
+         CASE WHEN x >= 0.08 AND x < 0.85 THEN COALESCE(ret_stop, sub_ret) END,
+         x >= 0.08 AND x < 0.85,
+         (p_day - 1) + interval '16 hours' + (c * 14) * interval '1 hour',
+         company_id, subscription_id
+  FROM opts
+  ON CONFLICT (student_id, ride_date) DO NOTHING;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN jsonb_build_object('day', p_day, 'votes', v_n);
+END;
+$$;
