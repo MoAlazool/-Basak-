@@ -4,6 +4,7 @@ import {
   Button, Dialog, Icon, InfoRows, Ltr, Money, Note, SidePanel, SkeletonText, StatePill, num, dayText, cairo, type StateKey,
 } from '../../ui';
 import { useCompanyOverview } from '../../lib/overview';
+import { CompanyGovernoratesCard } from '../CompanyGovernoratesCard';
 import { readiness, statusQuestion, useCompanyDetail, phoneGroups, type CompanyStatus, type PlatformCompany } from '../../lib/platform';
 
 export const STATUS_STATE: Record<CompanyStatus, [StateKey, string]> = { active: ['on', 'تعمل'], suspended: ['suspended', 'موقوفة'], archived: ['archived', 'مؤرشفة'] };
@@ -105,6 +106,10 @@ export const CompanyPanel: React.FC<{
           ['الخطوط', num(c.lines)],
           ['المديرون', num(c.admins)],
         ]} />
+      </section>
+      <section className="flex flex-col gap-2">
+        <h3 className="m-0 text-card">المحافظات التي تخدمها</h3>
+        <CompanyGovernoratesCard companyId={c.id} compact />
       </section>
     </SidePanel>
   );

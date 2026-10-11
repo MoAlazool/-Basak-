@@ -102,6 +102,15 @@ export const RESET_REQUESTS: Row[] = [3, 17].map((n, i) => ({
 
 /** Tables the client reads directly. */
 export const tables: Record<string, Row[]> = {
+  governorates: [
+    ['alexandria', 'الإسكندرية'], ['ismailia', 'الإسماعيلية'], ['aswan', 'أسوان'], ['asyut', 'أسيوط'], ['luxor', 'الأقصر'],
+    ['red_sea', 'البحر الأحمر'], ['beheira', 'البحيرة'], ['beni_suef', 'بني سويف'], ['port_said', 'بورسعيد'],
+    ['south_sinai', 'جنوب سيناء'], ['giza', 'الجيزة'], ['dakahlia', 'الدقهلية'], ['damietta', 'دمياط'], ['sohag', 'سوهاج'],
+    ['suez', 'السويس'], ['sharqia', 'الشرقية'], ['north_sinai', 'شمال سيناء'], ['gharbia', 'الغربية'], ['faiyum', 'الفيوم'],
+    ['cairo', 'القاهرة'], ['qalyubia', 'القليوبية'], ['qena', 'قنا'], ['kafr_el_sheikh', 'كفر الشيخ'], ['matrouh', 'مطروح'],
+    ['monufia', 'المنوفية'], ['minya', 'المنيا'], ['new_valley', 'الوادي الجديد'],
+  ].map(([code, name], i) => ({ code, name, sort_order: i + 1 })),
+  company_governorates: [{ company_id: COMPANY_ID, governorate_code: 'dakahlia' }, { company_id: COMPANY_ID, governorate_code: 'damietta' }],
   companies: [
     { id: COMPANY_ID, name: 'النورس للنقل', status: 'active', is_active: true, created_at: daysAgo(320), contact_phone: '01001234567', contact_label: 'للاستفسار', address: 'دمياط الجديدة · المنطقة المركزية', logo_path: null, emblem_path: null,
       annual_subscription_enabled: true, daily_subscription_enabled: true, advance_subscription_enabled: true, vote_opens_at: '16:00:00', vote_closes_at: '06:00:00', vote_reminder_minutes: 60, vote_reminder_off_weekdays: [5], vote_reminder_off_dates: [] },

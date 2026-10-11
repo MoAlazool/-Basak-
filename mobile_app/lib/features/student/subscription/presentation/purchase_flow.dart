@@ -105,6 +105,13 @@ String _range(SaleOption option) {
 }
 
 /// "4 خطوط إلى جامعتك"
+String _companiesLabel(int count) => switch (count) {
+      1 => 'شركة واحدة تخدمها',
+      2 => 'شركتان تخدمانها',
+      <= 10 => '$count شركات تخدمها',
+      _ => '$count شركة تخدمها',
+    };
+
 String _linesLabel(int count) => switch (count) {
       1 => 'خط واحد إلى جامعتك',
       2 => 'خطّان إلى جامعتك',
@@ -178,6 +185,22 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
   /// The catalog as last shown (null: the flow has not been on screen yet).
   AsyncValue<SaleCatalog>? _shown;
 
+  /// The governorate the student picked (null: not yet).
+  String? _governorate;
+
+  /// Set on every build: the governorate row is step 1 and the rest move down
+  /// one ([_shift] 1); whether another governorate can be picked; its name.
+  int _shift = 0;
+  bool _canPickGovernorate = false;
+  String? _governorateName;
+
+  /// Back to the governorates: the company and what follows are chosen again.
+  void _pickGovernorateAgain() => setState(() {
+        _governorate = null;
+        _draft = const SubscriptionDraft();
+        _step = DraftStep.company;
+      });
+
   /// The builder's row a draft step belongs to.
   static DraftStep _section(DraftStep step) => switch (step) {
         DraftStep.station => DraftStep.line,
@@ -204,7 +227,9 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
       });
 
   bool _canStepBack(SaleCatalog catalog, DraftStep step) =>
-      step == DraftStep.period || (step == DraftStep.line && catalog.companies.length > 1);
+      step == DraftStep.period ||
+      (step == DraftStep.line && catalog.companies.length > 1) ||
+      (_canPickGovernorate && (step == DraftStep.company || step == DraftStep.line));
 
   /// One step back; from the first one, out of the flow.
   void _back(SaleCatalog catalog, SubscriptionDraft draft, DraftStep step) {
@@ -213,6 +238,9 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
       // Back from the cash day to the periods.
       setState(() => _draft =
           SubscriptionDraft(companyId: draft.companyId, lineId: draft.lineId, stationId: draft.stationId));
+    } else if (_canPickGovernorate &&
+        (step == DraftStep.company || (step == DraftStep.line && catalog.companies.length <= 1))) {
+      _pickGovernorateAgain();
     } else if (_canStepBack(catalog, step)) {
       setState(() => _step = step == DraftStep.period ? DraftStep.line : DraftStep.company);
     } else {
@@ -320,7 +348,31 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           ),
         ],
       )),
-      data: (catalog) {
+      data: (full) {
+        // The governorate first: the companies are those that serve it.
+        final governorates = full.governorates;
+        var governorate = governorates.any((g) => g.code == _governorate) ? _governorate : null;
+        if (governorate == null && governorates.length == 1) governorate = governorates.single.code;
+        // A company already chosen (a renewal) is not asked about again: its
+        // governorate is the student's; one that has set none shows them all.
+        final preset = governorate == null && governorates.isNotEmpty ? full.company(_draft.companyId) : null;
+        if (preset != null) {
+          governorate = governorates.map((g) => g.code).where(preset.governorates.contains).firstOrNull;
+        }
+        final askGovernorate = governorates.isNotEmpty && governorate == null && preset == null;
+        _shift = governorates.isNotEmpty && (governorate != null || askGovernorate) ? 1 : 0;
+        _canPickGovernorate = governorates.length > 1;
+        _governorateName = governorates.where((g) => g.code == governorate).firstOrNull?.name;
+        if (askGovernorate) {
+          return PopScope(
+            canPop: widget.onCancel == null,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) widget.onCancel?.call();
+            },
+            child: _governoratePage(full),
+          );
+        }
+        final catalog = full.forGovernorate(governorate);
         // Whatever was chosen and is no longer offered is dropped.
         var draft = _draft.reconciled(catalog);
         // One company leaves nothing to choose: it starts chosen and collapsed.
@@ -502,6 +554,19 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
       children: [
         _title(catalog.universityName),
 
+        // 1 · Governorate (when the companies have set theirs)
+        if (_shift == 1) ...[
+          BuilderRow(
+            key: const Key('flow-row-governorate'),
+            state: BuilderRowState.chosen,
+            step: 1,
+            title: 'المحافظة',
+            value: _governorateName ?? 'كل المحافظات',
+            onChange: _canPickGovernorate ? _pickGovernorateAgain : null,
+          ),
+          _gap,
+        ],
+
         // 1 · Company
         if (step == DraftStep.company)
           _companies(catalog, draft)
@@ -509,7 +574,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           BuilderRow(
             key: const Key('flow-row-company'),
             state: BuilderRowState.chosen,
-            step: 1,
+            step: 1 + _shift,
             title: 'شركة النقل',
             value: company?.name,
             onChange: catalog.companies.length > 1 ? () => _go(DraftStep.company) : null,
@@ -523,13 +588,13 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           BuilderRow(
             key: const Key('flow-row-line'),
             state: BuilderRowState.chosen,
-            step: 2,
+            step: 2 + _shift,
             title: 'الخط والمحطة',
             value: '${line.name} · ${station.name}',
             onChange: () => _go(DraftStep.line),
           )
         else
-          const BuilderRow(state: BuilderRowState.locked, step: 2, title: 'الخط والمحطة'),
+          BuilderRow(state: BuilderRowState.locked, step: 2 + _shift, title: 'الخط والمحطة'),
         _gap,
 
         // 3 · Period
@@ -539,7 +604,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           BuilderRow(
             key: const Key('flow-row-period'),
             state: BuilderRowState.chosen,
-            step: 3,
+            step: 3 + _shift,
             title: 'الفترة',
             value: option == null
                 ? 'يوم واحد · ${formatMoney(line.dailyPrice)}'
@@ -547,10 +612,48 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
             onChange: () => _go(DraftStep.period),
           )
         else
-          const BuilderRow(state: BuilderRowState.locked, step: 3, title: 'الفترة'),
+          BuilderRow(state: BuilderRowState.locked, step: 3 + _shift, title: 'الفترة'),
       ],
     );
   }
+
+  /// Step 1 when the companies have set their governorates: the student's own,
+  /// then only the companies that serve it.
+  Widget _governoratePage(SaleCatalog full) => _frame(
+        header: _close(),
+        children: [
+          _title(full.universityName),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(bottom: BasakSpace.s6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const BuilderStepHead(step: 1, title: 'المحافظة'),
+                for (final governorate in full.governorates) ...[
+                  _gap,
+                  CompanyRow(
+                    key: Key('governorate-${governorate.code}'),
+                    name: governorate.name,
+                    caption: _companiesLabel(full.forGovernorate(governorate.code).companies.length),
+                    onTap: () => setState(() {
+                      _governorate = governorate.code;
+                      _draft = const SubscriptionDraft();
+                      _step = DraftStep.company;
+                    }),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _gap,
+          const BuilderRow(state: BuilderRowState.locked, step: 2, title: 'شركة النقل'),
+          _gap,
+          const BuilderRow(state: BuilderRowState.locked, step: 3, title: 'الخط والمحطة'),
+          _gap,
+          const BuilderRow(state: BuilderRowState.locked, step: 4, title: 'الفترة'),
+        ],
+      );
 
   Widget _companies(SaleCatalog catalog, SubscriptionDraft draft) => Padding(
         padding: const EdgeInsetsDirectional.only(bottom: BasakSpace.s6),
@@ -558,7 +661,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const BuilderStepHead(step: 1, title: 'شركة النقل'),
+            BuilderStepHead(step: 1 + _shift, title: 'شركة النقل'),
             for (final company in catalog.companies) ...[
               _gap,
               CompanyRow(
@@ -584,7 +687,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const BuilderStepHead(step: 2, title: 'الخط والمحطة'),
+          BuilderStepHead(step: 2 + _shift, title: 'الخط والمحطة'),
           if (company.lines.isEmpty) ...[
             _gap,
             InlineError(
@@ -657,7 +760,7 @@ class _PurchaseFlowState extends ConsumerState<PurchaseFlow> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const BuilderStepHead(step: 3, title: 'الفترة'),
+          BuilderStepHead(step: 3 + _shift, title: 'الفترة'),
           const SizedBox(height: BasakSpace.s14),
           if (options.isEmpty && !daily)
             InlineError(

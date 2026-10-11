@@ -45,3 +45,16 @@ registerRpc({
   },
 });
 void TODAY;
+
+// The governorates a company serves (lib/governorates.ts): replaced as a set, answered in list order.
+registerRpc({
+  set_company_governorates: ({ p_company_id, p_codes }) => {
+    const order = new Map(tables.governorates.map((g) => [g.code, g.sort_order]));
+    const codes = [...new Set<string>(p_codes ?? [])].filter((c) => order.has(c)).sort((a, b) => order.get(a)! - order.get(b)!);
+    tables.company_governorates = [
+      ...tables.company_governorates.filter((r) => r.company_id !== p_company_id),
+      ...codes.map((governorate_code) => ({ company_id: p_company_id, governorate_code })),
+    ];
+    return codes;
+  },
+});
