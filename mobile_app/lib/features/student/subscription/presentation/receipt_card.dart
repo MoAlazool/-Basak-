@@ -22,7 +22,10 @@ import 'purchase_flow.dart' show formatMoney;
 class ReceiptCard extends StatelessWidget {
   final SubscriptionReceipt receipt;
 
-  const ReceiptCard({super.key, required this.receipt});
+  /// The day it is read on (tests set their own).
+  final DateTime? today;
+
+  const ReceiptCard({super.key, required this.receipt, this.today});
 
   static String money(double value) => formatMoney(value);
 
@@ -50,6 +53,7 @@ class ReceiptCard extends StatelessWidget {
     final method = filled(r.paymentMethod);
     // A receipt keeps the logo it was issued under (a logo folder).
     final brand = CompanyBrand(logoPath: r.companyLogoPath);
+    final past = r.isPastOn(today ?? DateTime.now());
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -78,6 +82,17 @@ class ReceiptCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (past) ...[
+                const SizedBox(height: BasakSpace.s12),
+                InfoStrip(
+                  key: const Key('receipt-past'),
+                  label: 'إيصال اشتراك سابق',
+                  value: 'انتهى في ${day(r.endDate)}',
+                  icon: LucideIcons.history,
+                  iconTone: BasakTone.warning,
+                  tone: BasakTone.warning,
+                ),
+              ],
               const SizedBox(height: BasakSpace.s10),
               Row(
                 children: [

@@ -164,6 +164,20 @@ void main() {
       expect(tester.getSize(find.byType(CompanyLogo)), const Size(40, 40));
     });
 
+    testWidgets('a receipt of a subscription that is over says it is an earlier one', (tester) async {
+      // Its last day is 14 January 2027.
+      await tester.pumpWidget(app(ReceiptCard(receipt: boardReceiptDoc, today: DateTime(2027, 1, 14))));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('receipt-past')), findsNothing, reason: 'still running on its last day');
+
+      await tester.pumpWidget(app(ReceiptCard(receipt: boardReceiptDoc, today: DateTime(2027, 1, 15))));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('receipt-past')), findsOneWidget);
+      expect(find.text('إيصال اشتراك سابق'), findsOneWidget);
+      expect(find.text('انتهى في 14 يناير 2027'), findsOneWidget);
+      expect(find.text('مدفوع ومعتمد'), findsOneWidget, reason: 'it was paid all the same');
+    });
+
     testWidgets('the receipt: the logo it was issued under beside the amount; none, and nothing is added',
         (tester) async {
       await tester.pumpWidget(app(const ReceiptCard(receipt: boardReceiptDoc)));

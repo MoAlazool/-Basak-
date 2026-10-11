@@ -224,6 +224,9 @@ class ReceiptPdf {
               fact('تاريخ الاعتماد', day(r.approvedAt)),
               if (method != null) fact('وسيلة الدفع', method),
               fact('الحالة', 'مدفوع ومعتمد', color: _success, font: bold),
+              // An earlier subscription's receipt says so, so it is not
+              // taken for the running one.
+              if (r.isPastOn(DateTime.now())) fact('الاشتراك', 'سابق · انتهى في ${day(r.endDate)}'),
             ]),
           ),
         ]),

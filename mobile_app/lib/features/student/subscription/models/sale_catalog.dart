@@ -267,6 +267,14 @@ class SubscriptionReceipt {
   final String? companyTaxNumber;
   final String? companyLogoPath;
 
+  /// Whether the subscription this receipt paid for is over: its last day is
+  /// behind [today]. The receipt is then a record of an earlier subscription,
+  /// and says so, so it is not taken for the running one.
+  bool isPastOn(DateTime today) {
+    final end = DateTime.tryParse(endDate ?? '');
+    return end != null && DateTime(end.year, end.month, end.day).isBefore(DateTime(today.year, today.month, today.day));
+  }
+
   const SubscriptionReceipt({
     required this.subscriptionId,
     required this.code,
