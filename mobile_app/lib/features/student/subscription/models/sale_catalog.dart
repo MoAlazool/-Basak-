@@ -8,14 +8,34 @@ class SaleCatalog {
   final String? universityName;
   final List<SaleCompany> companies;
 
-  const SaleCatalog({this.universityName, this.companies = const []});
+  /// The governorates these companies serve, in list order: the student picks
+  /// one before the company. Empty when no company has set any (or from an
+  /// older server): then there is nothing to pick.
+  final List<SaleGovernorate> governorates;
+
+  const SaleCatalog({this.universityName, this.companies = const [], this.governorates = const []});
 
   factory SaleCatalog.fromJson(Map<String, dynamic> json) => SaleCatalog(
         universityName: (json['university'] as Map?)?['name'] as String?,
         companies: (json['companies'] as List<dynamic>? ?? const [])
             .map((c) => SaleCompany.fromJson(Map<String, dynamic>.from(c as Map)))
             .toList(),
+        governorates: [
+          for (final g in (json['governorates'] as List<dynamic>? ?? const []).whereType<Map>())
+            if (g['code'] is String && g['name'] is String)
+              SaleGovernorate(code: g['code'] as String, name: g['name'] as String),
+        ],
       );
+
+  /// The companies that serve [code], and those that have set no governorate
+  /// (they are shown under every one). [code] null: all of them.
+  SaleCatalog forGovernorate(String? code) => code == null
+      ? this
+      : SaleCatalog(
+          universityName: universityName,
+          governorates: governorates,
+          companies: companies.where((c) => c.serves(code)).toList(),
+        );
 
   SaleCompany? company(String? id) =>
       companies.where((c) => c.id == id).firstOrNull;
@@ -34,17 +54,38 @@ class SaleCompany {
   /// Its logo and emblem ([CompanyBrand.none] from a server that sends neither).
   final CompanyBrand brand;
 
-  const SaleCompany({required this.id, required this.name, this.lines = const [], this.brand = CompanyBrand.none});
+  /// The codes of the governorates it serves; empty: it has set none.
+  final List<String> governorates;
+
+  const SaleCompany({
+    required this.id,
+    required this.name,
+    this.lines = const [],
+    this.brand = CompanyBrand.none,
+    this.governorates = const [],
+  });
+
+  /// Whether a student of governorate [code] may see it.
+  bool serves(String code) => governorates.isEmpty || governorates.contains(code);
 
   factory SaleCompany.fromJson(Map<String, dynamic> json) => SaleCompany(
         id: json['id'] as String,
         name: json['name'] as String? ?? '',
         brand: CompanyBrand.fromJson(json),
+        governorates: (json['governorates'] as List<dynamic>? ?? const []).whereType<String>().toList(),
         lines: (json['lines'] as List<dynamic>? ?? const [])
             .map((l) => SaleLine.fromJson(
                 Map<String, dynamic>.from(l as Map), json['id'] as String))
             .toList(),
       );
+}
+
+/// One of Egypt's governorates, as the catalog names it.
+class SaleGovernorate {
+  final String code;
+  final String name;
+
+  const SaleGovernorate({required this.code, required this.name});
 }
 
 class SaleLine {
