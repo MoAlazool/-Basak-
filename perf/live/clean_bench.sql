@@ -65,6 +65,7 @@ DELETE FROM public.report_resets WHERE company_id IN (SELECT id FROM bc);
 DELETE FROM public.deleted_student_revenue WHERE company_id IN (SELECT id FROM bc);
 DELETE FROM public.companies WHERE id IN (SELECT id FROM bc);
 DELETE FROM bench.active; DELETE FROM bench.student; DELETE FROM bench.company;
+DELETE FROM bench.load_session;  -- signed-in tokens of the load test (perf/live/bench-load)
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = 'c5ca34e1-0285-45ef-9ee6-8c7e656ca5f6' AND role = 'super_admin') THEN
