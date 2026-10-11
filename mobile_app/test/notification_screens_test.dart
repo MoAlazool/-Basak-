@@ -146,6 +146,32 @@ void main() {
       expect(push.prompts, 0);
     });
 
+    testWidgets('a row is swiped away to remove it; «مسح كل التنبيهات» removes everything after asking', (tester) async {
+      final repo = FakeNotificationsRepo([
+        for (var i = 0; i < 3; i++)
+          note('n$i', 'تنبيه $i', at: DateTime.now().subtract(Duration(minutes: 5 + i))),
+      ]);
+      await tester.pumpWidget(app(const NotificationsPage(), repo: repo));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byKey(const Key('alert-n1')), const Offset(-600, 0));
+      await tester.pumpAndSettle();
+      expect(repo.deleted, [
+        ['n1']
+      ]);
+      expect(find.byKey(const Key('alert-n1')), findsNothing);
+      expect(find.byKey(const Key('alert-n0')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('remove-all')));
+      await tester.pumpAndSettle();
+      expect(find.text('مسح كل التنبيهات؟'), findsOneWidget);
+      await tester.tap(find.text('مسح الكل'));
+      await tester.pumpAndSettle();
+      expect(repo.deleted.last, isNull);
+      expect(find.byKey(const Key('alert-n0')), findsNothing);
+      expect(find.text('لا توجد تنبيهات بعد'), findsOneWidget);
+    });
+
     testWidgets('the Notification Center makes no offer when the build has no push', (tester) async {
       await tester.pumpWidget(app(const NotificationsPage(), repo: FakeNotificationsRepo()));
       await tester.pumpAndSettle();

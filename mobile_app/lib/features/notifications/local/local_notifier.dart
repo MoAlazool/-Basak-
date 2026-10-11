@@ -198,6 +198,18 @@ class LocalNotifier {
     }
   }
 
+  /// Takes [notificationIds] out of the system tray, where this phone put them.
+  static Future<void> dismissInbox(Iterable<String> notificationIds) async {
+    try {
+      if (!await ready()) return;
+      for (final id in notificationIds) {
+        await plugin.cancel(id: inboxId(id));
+      }
+    } catch (error) {
+      debugPrint('Local notifications: dismiss: $error');
+    }
+  }
+
   /// The same fields a push of [notification] carries in its data.
   static Map<String, String> tapData(AppNotification notification) => {
         ...notification.data,

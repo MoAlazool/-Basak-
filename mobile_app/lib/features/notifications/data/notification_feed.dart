@@ -100,6 +100,11 @@ class NotificationFeedNotifier extends AsyncNotifier<NotificationFeed> {
   final Set<String> _marking = {};
   bool _markingAll = false;
 
+  /// Removed here while the server has not answered yet: a refresh that lands
+  /// meanwhile must not bring them back.
+  final Set<String> _removing = {};
+  bool _removingAll = false;
+
   NotificationsRepository get _repo => ref.read(notificationsRepoProvider);
 
   @override
@@ -113,6 +118,8 @@ class NotificationFeedNotifier extends AsyncNotifier<NotificationFeed> {
       _allFeed = null;
       _marking.clear();
       _markingAll = false;
+      _removing.clear();
+      _removingAll = false;
     }
     if (userId == null) return const NotificationFeed();
     final unreadOnly = _unreadOnly;
@@ -143,6 +150,13 @@ class NotificationFeedNotifier extends AsyncNotifier<NotificationFeed> {
 
   /// Read marks still on their way to the server, applied to fresh data.
   NotificationFeed _overlay(NotificationFeed feed) {
+    if (_removingAll || _removing.isNotEmpty) {
+      bool leaving(AppNotification n) => !n.mine && (_removingAll || _removing.contains(n.id));
+      feed = feed.copyWith(
+        items: [for (final n in feed.items) if (!leaving(n)) n],
+        unread: _removingAll ? 0 : max(0, feed.unread - feed.items.where((n) => leaving(n) && !n.read).length),
+      );
+    }
     if (!_markingAll && _marking.isEmpty) return feed;
     bool pending(AppNotification n) => !n.read && (_markingAll || _marking.contains(n.id));
     final cleared = feed.items.where(pending).length;
@@ -253,6 +267,58 @@ class NotificationFeedNotifier extends AsyncNotifier<NotificationFeed> {
     } catch (_) {
       // Offline: it stays unread and can be opened from the list later.
     }
+  }
+
+  /// Removes [ids] from the inbox, or everything in it: gone from the screen
+  /// at once, and back if the server could not be told (the error is rethrown
+  /// for the screen to say so). What the user sent themselves is not theirs to
+  /// remove here: it is not in their inbox, only listed with it.
+  Future<void> remove([List<String>? ids]) async {
+    final feed = _feed;
+    if (feed == null || _userId == null) return;
+    final userId = _userId;
+    final wanted = ids?.toSet();
+    bool affects(AppNotification n) => !n.mine && (wanted == null || wanted.contains(n.id));
+    if (!feed.items.any(affects) && wanted != null) return;
+
+    if (wanted == null) {
+      _removingAll = true;
+    } else {
+      _removing.addAll(wanted);
+    }
+    NotificationFeed without(NotificationFeed f) => f.copyWith(
+          items: [for (final n in f.items) if (!affects(n)) n],
+          unread: wanted == null ? 0 : max(0, f.unread - f.items.where((n) => affects(n) && !n.read).length),
+        );
+    _show(without(feed));
+    if (_allFeed != null) _allFeed = without(_allFeed!);
+
+    void release() {
+      if (wanted == null) {
+        _removingAll = false;
+      } else {
+        _removing.removeAll(wanted);
+      }
+    }
+
+    // The server tells every phone of the account, this one included.
+    final echo = OwnChanges.begin('notifications', op: 'HIDE', once: true);
+    try {
+      await _repo.delete(ids);
+      echo.done();
+    } catch (_) {
+      echo.failed();
+      if (_userId == userId) {
+        release();
+        // Read again: they are still there.
+        ref.invalidateSelf();
+      }
+      rethrow;
+    }
+    if (_userId != userId) return;
+    release();
+    // The copy saved on the phone still holds them: it is read again.
+    ref.invalidateSelf();
   }
 
   Future<void> _mark(List<String>? ids, Future<void> Function() send) async {

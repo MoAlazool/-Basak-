@@ -162,6 +162,9 @@ class AlertRow {
   /// Unread: the title is set heavier and a teal dot sits under the time.
   final bool unread;
   final VoidCallback? onTap;
+
+  /// Swiped away: the row can be removed. Needs a [key].
+  final VoidCallback? onDelete;
   final Key? key;
 
   const AlertRow({
@@ -172,6 +175,7 @@ class AlertRow {
     required this.time,
     this.unread = false,
     this.onTap,
+    this.onDelete,
     this.key,
   });
 }
@@ -191,11 +195,35 @@ class AlertRows extends StatelessWidget {
           children: [
             for (var i = 0; i < rows.length; i++) ...[
               if (i > 0) Divider(height: 1, thickness: 1, color: context.colors.hairline),
-              _row(context, rows[i]),
+              _removable(context, rows[i]),
             ],
           ],
         ),
       );
+
+  /// A row that can be removed is swiped to the side, over the word for it.
+  Widget _removable(BuildContext context, AlertRow row) {
+    final key = row.key;
+    final onDelete = row.onDelete;
+    if (onDelete == null || key == null) return _row(context, row);
+    final colors = context.colors;
+    Widget behind(AlignmentGeometry alignment) => Container(
+          alignment: alignment,
+          padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s8),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(LucideIcons.trash2, size: 18, color: colors.danger),
+            const SizedBox(width: BasakSpace.s8),
+            Text('مسح', style: context.text.label.copyWith(color: colors.danger, fontWeight: FontWeight.w600)),
+          ]),
+        );
+    return Dismissible(
+      key: ValueKey('swipe-$key'),
+      background: behind(AlignmentDirectional.centerStart),
+      secondaryBackground: behind(AlignmentDirectional.centerEnd),
+      onDismissed: (_) => onDelete(),
+      child: ColoredBox(color: colors.surface, child: _row(context, row)),
+    );
+  }
 
   Widget _row(BuildContext context, AlertRow row) {
     final colors = context.colors;

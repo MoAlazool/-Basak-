@@ -289,6 +289,65 @@ void main() {
     });
   });
 
+  group('removing', () {
+    test('one notification is gone at once, and the unread count follows', () async {
+      final (:container, :repo) = signedIn(inbox(3));
+      final notifier = container.read(notificationFeedProvider.notifier);
+      await container.read(notificationFeedProvider.future);
+
+      final removing = notifier.remove(['n1']);
+      var feed = container.read(notificationFeedProvider).value!;
+      expect(feed.items.any((n) => n.id == 'n1'), isFalse, reason: 'before the server answers');
+      expect(feed.unread, 2);
+      await removing;
+      expect(repo.deleted, [
+        ['n1']
+      ]);
+      feed = await container.read(notificationFeedProvider.future);
+      expect([for (final n in feed.items) n.id], isNot(contains('n1')));
+      expect(feed.items.length, 2);
+    });
+
+    test('a refresh that lands before the server answers does not bring it back', () async {
+      final (:container, :repo) = signedIn(inbox(3));
+      final notifier = container.read(notificationFeedProvider.notifier);
+      await container.read(notificationFeedProvider.future);
+
+      repo.markGate = Completer<void>();
+      final removing = notifier.remove(['n1']);
+      await notifier.refresh();
+      expect(container.read(notificationFeedProvider).value!.items.any((n) => n.id == 'n1'), isFalse);
+      expect(container.read(notificationFeedProvider).value!.unread, 2);
+      repo.markGate!.complete();
+      await removing;
+    });
+
+    test('everything at once', () async {
+      final (:container, :repo) = signedIn(inbox(3));
+      final notifier = container.read(notificationFeedProvider.notifier);
+      await container.read(notificationFeedProvider.future);
+
+      await notifier.remove();
+      expect(repo.deleted, [null]);
+      final feed = await container.read(notificationFeedProvider.future);
+      expect(feed.items, isEmpty);
+      expect(feed.unread, 0);
+    });
+
+    test('if the server cannot be told, it comes back and the error is told', () async {
+      final (:container, :repo) = signedIn(inbox(3));
+      final notifier = container.read(notificationFeedProvider.notifier);
+      await container.read(notificationFeedProvider.future);
+
+      repo.offline = true;
+      await expectLater(notifier.remove(['n1']), throwsA(predicate(isNetworkFailure)));
+      repo.offline = false;
+      final feed = await container.read(notificationFeedProvider.future);
+      expect(feed.items.any((n) => n.id == 'n1'), isTrue);
+      expect(feed.unread, 3);
+    });
+  });
+
   group('marking read', () {
     test('one notification is read at once and the count follows', () async {
       final (:container, :repo) = signedIn(inbox(3));

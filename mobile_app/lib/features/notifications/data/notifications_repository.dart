@@ -319,6 +319,18 @@ class NotificationsRepository {
   Future<void> markRead([List<String>? ids]) =>
       _write(() => _client.rpc('mark_notifications_read', params: {'p_ids': ids}));
 
+  /// Removes [ids] from the signed-in user's inbox, or everything in it. The
+  /// notification stays for whoever else it went to.
+  Future<void> delete([List<String>? ids]) async {
+    try {
+      await requireOnline(() => _client.rpc('delete_my_notifications', params: {'p_ids': ids}));
+    } on PostgrestException catch (error) {
+      // A server that does not have it yet.
+      if (error.code == 'PGRST202') throw Exception('مسح التنبيهات غير متاح الآن. حاول لاحقاً.');
+      throw Exception(error.message);
+    }
+  }
+
   /// A push or a banner was tapped: counted as opened, and marked read.
   Future<void> opened(String id) =>
       _write(() => _client.rpc('notification_opened', params: {'p_id': id}));
