@@ -7,8 +7,9 @@ import { notifyDone, notifyError } from '../lib/toasts';
 /**
  * The governorates a company serves, chosen from the fixed list (never typed):
  * in the app a student picks their governorate first and sees only the
- * companies that serve it. For the company's admins and the platform admin.
- * `compact`: two columns, for the platform's side panel.
+ * companies that serve it; one that has chosen none is shown under none. For
+ * the company's admins (page «المحافظات») and the platform admin.
+ * `compact`: two columns and its own explanation, for the platform's side panel.
  */
 export const CompanyGovernoratesCard: React.FC<{ companyId: string; compact?: boolean }> = ({ companyId, compact = false }) => {
   const guard = useGuard();
@@ -43,11 +44,13 @@ export const CompanyGovernoratesCard: React.FC<{ companyId: string; compact?: bo
   }
   return (
     <div className="flex flex-col gap-3">
-      <p className="m-0 text-label text-ink-2">
-        يختار الطالب محافظته أولاً عند الاشتراك، ثم تظهر له الشركات التي تخدمها. اختر كل المحافظات التي تخدمها الشركة.
-      </p>
+      {compact && (
+        <p className="m-0 text-label text-ink-2">
+          يختار الطالب محافظته أولاً عند الاشتراك، ثم تظهر له الشركات التي تخدمها فقط. اختر كل المحافظات التي تخدمها الشركة.
+        </p>
+      )}
       {draft.length === 0 && (
-        <Note tone="warning">لم تُحدَّد محافظات بعد: تظهر الشركة للطلاب في كل المحافظات.</Note>
+        <Note tone="warning">لم تُحدَّد محافظات بعد: لن تظهر الشركة للطلاب عند اختيار محافظتهم.</Note>
       )}
       <div className={`grid gap-x-4 ${compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`} role="group" aria-label="المحافظات التي تخدمها الشركة">
         {governorates.map((g) => (

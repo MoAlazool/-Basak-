@@ -10,7 +10,7 @@ class SaleCatalog {
 
   /// The governorates these companies serve, in list order: the student picks
   /// one before the company. Empty when no company has set any (or from an
-  /// older server): then there is nothing to pick.
+  /// older server): then there is nothing to pick and every company is shown.
   final List<SaleGovernorate> governorates;
 
   const SaleCatalog({this.universityName, this.companies = const [], this.governorates = const []});
@@ -27,8 +27,8 @@ class SaleCatalog {
         ],
       );
 
-  /// The companies that serve [code], and those that have set no governorate
-  /// (they are shown under every one). [code] null: all of them.
+  /// The companies that serve [code]; one that has set no governorate is
+  /// shown under none. [code] null: all of them.
   SaleCatalog forGovernorate(String? code) => code == null
       ? this
       : SaleCatalog(
@@ -66,7 +66,7 @@ class SaleCompany {
   });
 
   /// Whether a student of governorate [code] may see it.
-  bool serves(String code) => governorates.isEmpty || governorates.contains(code);
+  bool serves(String code) => governorates.contains(code);
 
   factory SaleCompany.fromJson(Map<String, dynamic> json) => SaleCompany(
         id: json['id'] as String,

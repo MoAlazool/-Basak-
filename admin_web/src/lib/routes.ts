@@ -50,6 +50,7 @@ export const LinesPage = page(() => import('../pages/LinesPage'), 'LinesPage');
 export const LinePage = page(() => import('../pages/LinePage'), 'LinePage');
 export const LineNewPage = page(() => import('../pages/LineNewPage'), 'LineNewPage');
 export const RideConfirmationPage = page(() => import('../pages/RideConfirmationPage'), 'RideConfirmationPage');
+export const GovernoratesPage = page(() => import('../pages/GovernoratesPage'), 'GovernoratesPage');
 export const SubscriptionPeriodsPage = page(() => import('../pages/SubscriptionPeriodsPage'), 'SubscriptionPeriodsPage');
 export const PaymentMethodsPage = page(() => import('../pages/PaymentMethodsPage'), 'PaymentMethodsPage');
 export const ReportsPage = page(() => import('../pages/ReportsPage'), 'ReportsPage');

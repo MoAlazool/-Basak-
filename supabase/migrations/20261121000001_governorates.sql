@@ -9,9 +9,10 @@
 --     platform admin or the company's own admins (set_company_governorates).
 --   * get_subscription_catalog also answers each company's 'governorates'
 --     (codes) and, at the top, the 'governorates' those companies serve
---     ({code, name}, in list order). A company that has set none is not tied
---     to any and the app shows it under every governorate. Otherwise as
---     20261109000001.
+--     ({code, name}, in list order). The app shows a company only under the
+--     governorates it has set, so one that has set none is shown under none
+--     (when no company of the university has set any, all, without asking).
+--     Otherwise as 20261109000001.
 -- ==============================================================================
 BEGIN;
 
