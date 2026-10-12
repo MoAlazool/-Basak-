@@ -23,6 +23,7 @@ import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../daily_ride/data/vote_reminders.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../invites/invites.dart';
+import '../data/home_bundle.dart';
 import '../data/line_supervisors.dart';
 import '../../offers/offers_repository.dart';
 import '../../offers/offers_strip.dart';
@@ -148,15 +149,13 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   Future<void> _loadTodayRideStatus() async {
     try {
-      final rideDate = _vote.rideDateFor(DateTime.now());
-      final saturdayOffset = (rideDate.weekday + 1) % 7;
-      final saturday = DateTime(rideDate.year, rideDate.month, rideDate.day)
-          .subtract(Duration(days: saturdayOffset));
+      final now = DateTime.now();
+      final rideDate = _vote.rideDateFor(now);
       final repository = ref.read(dailyRideRepoProvider);
       // One read for the week shown here, the ride day's own choices and
       // the days the reminders look at (the ride day and the six after it).
-      final rides = await repository.getRides(
-          saturday, DateTime(rideDate.year, rideDate.month, rideDate.day + 6));
+      final range = homeRideRange(_vote, now);
+      final rides = await repository.getRides(range.start, range.end);
       final statuses = rides.statuses;
       final details = rides.detailsFor(rideDate);
       if (mounted) {
@@ -232,6 +231,9 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   }
 
   Future<void> _handleRefresh() async {
+    // Everything read again below, asked for in one request first.
+    final student = ref.read(authStateProvider).user;
+    if (student != null) StudentHomeBundle.prefetch(student.id, vote: _vote);
     // The platform may have published the term's recap, or taken it back.
     ref.invalidate(termRecapProvider);
     // So may the offers: a new one, one that ended, one used on another phone.

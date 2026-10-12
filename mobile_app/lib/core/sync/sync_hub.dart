@@ -10,6 +10,7 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../features/notifications/data/notification_feed.dart';
 import '../../features/notifications/data/notification_preferences.dart';
 import '../../features/notifications/data/quick_templates.dart';
+import '../../features/student/home/data/home_bundle.dart';
 import '../../features/student/home/presentation/student_home_screen.dart';
 import '../../features/student/invites/invites.dart';
 import '../../features/student/offers/offers_repository.dart';
@@ -20,6 +21,7 @@ import '../../features/supervisor/data/supervisor_repository.dart';
 import '../../features/supervisor/trips/presentation/supervisor_trips_screen.dart';
 import '../network/supabase_service.dart';
 import '../storage/offline_cache.dart';
+import '../storage/prefetched_reads.dart';
 import '../../features/student/subscription/models/subscription_model.dart';
 import 'own_changes.dart';
 
@@ -231,8 +233,12 @@ class SyncScope extends ConsumerStatefulWidget {
     required T Function<T>(ProviderListenable<T> provider) read,
     required UserRole role,
     required String? userId,
-  }) =>
-      _handle(withoutEchoes(events), invalidate: invalidate, read: read, role: role, userId: userId);
+  }) {
+    final news = withoutEchoes(events);
+    // News from the server: answers fetched ahead may predate it.
+    if (news.isNotEmpty) PrefetchedReads.discard();
+    return _handle(news, invalidate: invalidate, read: read, role: role, userId: userId);
+  }
 
   /// [events] without this phone's own echoes, and without news it already
   /// acted on (a notification whose push arrived first).
@@ -508,6 +514,9 @@ class _SyncScopeState extends ConsumerState<SyncScope> with WidgetsBindingObserv
     _lastFullRefresh = now;
     final role = ref.read(authStateProvider).role;
     if (role == UserRole.student) {
+      // What is read again below, asked for in one request first.
+      final userId = ref.read(authStateProvider).user?.id;
+      if (userId != null) StudentHomeBundle.prefetch(userId, vote: ref.read(voteSettingsProvider).valueOrNull);
       // 'lines' includes what is on sale: company settings (sale switches,
       // vote times) send no event to students. 'offers': one may have started
       // or ended by its dates, which sends nothing either.

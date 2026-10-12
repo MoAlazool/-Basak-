@@ -75,3 +75,17 @@ CREATE OR REPLACE FUNCTION realtime.send(payload jsonb, event text, topic text, 
 LANGUAGE sql AS $$ INSERT INTO realtime.messages (payload, event, topic, private) VALUES (payload, event, topic, private) $$;
 GRANT USAGE ON SCHEMA realtime TO anon, authenticated, service_role;
 
+
+-- pg_cron: just enough for migrations that schedule a job unconditionally
+-- (20261119000005_daily_expiry.sql). Nothing runs; the jobs are only listed.
+CREATE SCHEMA IF NOT EXISTS cron;
+CREATE TABLE IF NOT EXISTS cron.job (
+  jobid bigserial PRIMARY KEY, jobname text UNIQUE, schedule text NOT NULL, command text NOT NULL);
+CREATE OR REPLACE FUNCTION cron.schedule(job_name text, schedule text, command text) RETURNS bigint
+LANGUAGE sql AS $$
+  INSERT INTO cron.job (jobname, schedule, command) VALUES (job_name, schedule, command)
+  ON CONFLICT (jobname) DO UPDATE SET schedule = EXCLUDED.schedule, command = EXCLUDED.command
+  RETURNING jobid
+$$;
+CREATE OR REPLACE FUNCTION cron.unschedule(job_id bigint) RETURNS boolean
+LANGUAGE sql AS $$ WITH d AS (DELETE FROM cron.job WHERE jobid = job_id RETURNING 1) SELECT EXISTS (SELECT 1 FROM d) $$;

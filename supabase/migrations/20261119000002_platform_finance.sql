@@ -103,17 +103,27 @@ ALTER TABLE public.platform_charges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_expenses ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.company_plans, public.platform_charges, public.platform_expenses FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.company_plans, public.platform_charges, public.platform_expenses TO authenticated;
+-- Reads only: every write goes through the functions below (SECURITY DEFINER).
+GRANT SELECT ON public.company_plans, public.platform_charges, public.platform_expenses TO authenticated;
 
-DROP POLICY IF EXISTS company_plans_platform ON public.company_plans;
-CREATE POLICY company_plans_platform ON public.company_plans FOR ALL TO authenticated
-  USING ((SELECT public.is_super_admin())) WITH CHECK ((SELECT public.is_super_admin()));
-DROP POLICY IF EXISTS platform_charges_platform ON public.platform_charges;
-CREATE POLICY platform_charges_platform ON public.platform_charges FOR ALL TO authenticated
-  USING ((SELECT public.is_super_admin())) WITH CHECK ((SELECT public.is_super_admin()));
-DROP POLICY IF EXISTS platform_expenses_platform ON public.platform_expenses;
-CREATE POLICY platform_expenses_platform ON public.platform_expenses FOR ALL TO authenticated
-  USING ((SELECT public.is_super_admin())) WITH CHECK ((SELECT public.is_super_admin()));
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public'
+                 AND tablename = 'company_plans' AND policyname = 'company_plans_platform') THEN
+    CREATE POLICY company_plans_platform ON public.company_plans FOR ALL TO authenticated
+      USING ((SELECT public.is_super_admin())) WITH CHECK ((SELECT public.is_super_admin()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public'
+                 AND tablename = 'platform_charges' AND policyname = 'platform_charges_platform') THEN
+    CREATE POLICY platform_charges_platform ON public.platform_charges FOR ALL TO authenticated
+      USING ((SELECT public.is_super_admin())) WITH CHECK ((SELECT public.is_super_admin()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public'
+                 AND tablename = 'platform_expenses' AND policyname = 'platform_expenses_platform') THEN
+    CREATE POLICY platform_expenses_platform ON public.platform_expenses FOR ALL TO authenticated
+      USING ((SELECT public.is_super_admin())) WITH CHECK ((SELECT public.is_super_admin()));
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------- save_company_plan
 

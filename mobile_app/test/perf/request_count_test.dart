@@ -9,11 +9,13 @@ import 'package:basak_mobile/core/media/signed_photo.dart';
 import 'package:basak_mobile/core/media/signed_url_cache.dart';
 import 'package:basak_mobile/core/widgets/avatar_image.dart';
 import 'package:basak_mobile/core/storage/offline_cache.dart';
+import 'package:basak_mobile/core/storage/prefetched_reads.dart';
 import 'package:basak_mobile/core/sync/sync_hub.dart';
 import 'package:basak_mobile/features/app_update/app_update_repository.dart';
 import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/auth/models/user_role.dart';
 import 'package:basak_mobile/features/auth/providers/auth_provider.dart';
+import 'package:basak_mobile/features/student/home/data/home_bundle.dart';
 import 'package:basak_mobile/features/student/home/presentation/student_home_screen.dart';
 import 'package:basak_mobile/features/student/profile/data/profile_repository.dart';
 import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
@@ -33,6 +35,96 @@ import '../support/student_world.dart';
 void report(String flow, RequestLog log) {
   // ignore: avoid_print
   print('[requests] $flow: $log');
+}
+
+/// A student opening the app with everything saved from the first run, as
+/// AuthGate and the home tab do it. With [bundle], the launch's one request
+/// (StudentHomeBundle) is asked first, as AuthGate asks it; [bundleFails] makes
+/// that request fail. Returns what the screens showed at the end.
+Future<Map<String, Object?>> coldStart(WidgetTester tester, StudentWorld world,
+    {bool bundle = false, Object? bundleFails}) async {
+  debugAvatarImage = (_) => MemoryImage(onePixel);
+  addTearDown(() => debugAvatarImage = null);
+
+  var shown = <String, Object?>{};
+  Future<void> start({bool withBundle = false}) async {
+    // A new run of the app: memory is gone, the device storage stays.
+    SignedUrlCache.clear();
+    if (withBundle) {
+      addTearDown(() {
+        StudentHomeBundle.gateway = const SupabaseStudentHomeGateway();
+        PrefetchedReads.discard();
+      });
+      world.home.fails = bundleFails;
+      StudentHomeBundle.gateway = world.home;
+      StudentHomeBundle.prefetch(studentId);
+    }
+    await tester.runAsync(() async {
+      // The role is confirmed with the server behind the saved one.
+      await AuthRepository(roles: FakeRoles(world.log)).detectUserRole(studentId);
+    });
+    late ProviderContainer container;
+    var updateChecked = false;
+    void onRefreshed() {
+      // What SyncScope does when a saved copy turned out to be stale.
+      final tables = <String>{};
+      for (final key in OfflineCache.takeRefreshedKeys()) {
+        final provider = SyncScope.providerFor(key, studentId);
+        if (provider != null) {
+          container.invalidate(provider);
+        } else if (!key.startsWith('ride.')) {
+          tables.addAll(SyncScope.tablesFor(key));
+        }
+      }
+      if (tables.isNotEmpty) {
+        SyncScope.invalidateFor(container.invalidate, tables, UserRole.student, studentId, subscriptionChanged: false);
+      }
+    }
+
+    OfflineCache.refreshed.addListener(onRefreshed);
+    await tester.pumpWidget(ProviderScope(
+      key: UniqueKey(),
+      overrides: world.overrides,
+      child: MaterialApp(
+        home: Consumer(builder: (context, ref, _) {
+          container = ProviderScope.containerOf(context);
+          // What the gate at the app's root does on every launch, for every
+          // user: asks whether this version may still run.
+          ref.watch(appUpdateProvider);
+          updateChecked = true;
+          // The other tabs, built in the background a moment after the home
+          // tab. The card tab's provider is also what saves the pass for
+          // offline use at sign-in.
+          ref.watch(allSubscriptionsProvider);
+          final pass = ref.watch(studentQrProvider).valueOrNull;
+          final photo = studentPhoto(pass?.profileImagePath);
+          if (photo != null) ref.watch(signedPhotoProvider(photo));
+          return StudentHomeScreen(onNavigateToSubscription: () {}, onNavigateToQr: () {});
+        }),
+      ),
+    ));
+    for (var i = 0; i < 12; i++) {
+      await tester.runAsync(settle);
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    OfflineCache.refreshed.removeListener(onRefreshed);
+    expect(updateChecked, isTrue);
+    shown = {
+      'current': container.read(currentSubscriptionProvider).valueOrNull?.id,
+      'status': container.read(currentSubscriptionProvider).valueOrNull?.status,
+      'all': container.read(allSubscriptionsProvider).valueOrNull?.length,
+      'name': container.read(studentProfileSummaryProvider(studentId)).valueOrNull?['full_name'],
+      'card': container.read(studentQrProvider).valueOrNull?.subscriptionStatus,
+    };
+    await tester.pumpWidget(const SizedBox());
+  }
+
+  await start(); // first run on this phone: fills the saved copies
+  OfflineCache.resetSession();
+  world.log.reset();
+  world.inbox.pageRequests = 0;
+  await start(withBundle: bundle);
+  return shown;
 }
 
 void main() {
@@ -103,70 +195,7 @@ void main() {
 
   testWidgets('(c) a student cold start with everything saved from last time', (tester) async {
     final world = StudentWorld()..server.sub(subscriptionId)['status'] = 'active';
-    debugAvatarImage = (_) => MemoryImage(onePixel);
-    addTearDown(() => debugAvatarImage = null);
-
-    Future<void> start() async {
-      // A new run of the app: memory is gone, the device storage stays.
-      SignedUrlCache.clear();
-      await tester.runAsync(() async {
-        // The role is confirmed with the server behind the saved one.
-        await AuthRepository(roles: FakeRoles(world.log)).detectUserRole(studentId);
-      });
-      late ProviderContainer container;
-      var updateChecked = false;
-      void onRefreshed() {
-        // What SyncScope does when a saved copy turned out to be stale.
-        final tables = <String>{};
-        for (final key in OfflineCache.takeRefreshedKeys()) {
-          final provider = SyncScope.providerFor(key, studentId);
-          if (provider != null) {
-            container.invalidate(provider);
-          } else if (!key.startsWith('ride.')) {
-            tables.addAll(SyncScope.tablesFor(key));
-          }
-        }
-        if (tables.isNotEmpty) {
-          SyncScope.invalidateFor(container.invalidate, tables, UserRole.student, studentId, subscriptionChanged: false);
-        }
-      }
-
-      OfflineCache.refreshed.addListener(onRefreshed);
-      await tester.pumpWidget(ProviderScope(
-        key: UniqueKey(),
-        overrides: world.overrides,
-        child: MaterialApp(
-          home: Consumer(builder: (context, ref, _) {
-            container = ProviderScope.containerOf(context);
-            // What the gate at the app's root does on every launch, for every
-            // user: asks whether this version may still run.
-            ref.watch(appUpdateProvider);
-            updateChecked = true;
-            // The other tabs, built in the background a moment after the home
-            // tab. The card tab's provider is also what saves the pass for
-            // offline use at sign-in.
-            ref.watch(allSubscriptionsProvider);
-            final pass = ref.watch(studentQrProvider).valueOrNull;
-            final photo = studentPhoto(pass?.profileImagePath);
-            if (photo != null) ref.watch(signedPhotoProvider(photo));
-            return StudentHomeScreen(onNavigateToSubscription: () {}, onNavigateToQr: () {});
-          }),
-        ),
-      ));
-      for (var i = 0; i < 12; i++) {
-        await tester.runAsync(settle);
-        await tester.pump(const Duration(milliseconds: 200));
-      }
-      OfflineCache.refreshed.removeListener(onRefreshed);
-      expect(updateChecked, isTrue);
-      await tester.pumpWidget(const SizedBox());
-    }
-
-    await start(); // first run on this phone: fills the saved copies
-    OfflineCache.resetSession();
-    world.log.reset();
-    world.inbox.pageRequests = 0;
-    await start();
+    await coldStart(tester, world);
 
     report('cold start (warm cache)', world.log);
     expect(world.log.of('role.rpc') + world.log.of('role.select'), 1);
@@ -184,6 +213,46 @@ void main() {
     expect(world.log.of('rating.boarded_rides'), 1,
         reason: 'the rides behind the rating question: once per launch, until this version has been asked');
     expect(world.log.total, lessThanOrEqualTo(12));
+  });
+
+  testWidgets('(e) the same cold start with the launch asked in one request', (tester) async {
+    final plain = await coldStart(tester, StudentWorld()..server.sub(subscriptionId)['status'] = 'active');
+    OfflineCache.resetSession();
+    FlutterSecureStorage.setMockInitialValues({});
+    final world = StudentWorld()..server.sub(subscriptionId)['status'] = 'active';
+    final shown = await coldStart(tester, world, bundle: true);
+
+    report('cold start (warm cache), one request for the launch', world.log);
+    expect(shown, plain, reason: 'the screens show exactly what the separate requests showed');
+    expect(shown['status'], 'active');
+    expect(world.log.of('student_home'), 1);
+    expect(world.home.asked?.rideFrom, isNotNull, reason: 'the week of votes the home screen reads is asked for too');
+    for (final read in ['profile.summary', 'subscriptions.current', 'subscriptions.all']) {
+      expect(world.log.of(read), 0, reason: '$read is answered by the one request');
+    }
+    // The rest as before (here the fakes of the votes, the invitations, the
+    // inbox and the rides count stand in below the layer the answer serves;
+    // their parts are covered in student_home_bundle_test.dart).
+    expect(world.log.of('role.rpc') + world.log.of('role.select'), 1);
+    expect(world.log.of('pass.wallet_refresh'), 1);
+    expect(world.log.of('app_version'), 1);
+    expect(world.log.total, lessThanOrEqualTo(10));
+  });
+
+  testWidgets('(f) a database without the one request: the launch asks as before', (tester) async {
+    final world = StudentWorld()..server.sub(subscriptionId)['status'] = 'active';
+    final shown = await coldStart(tester, world,
+        bundle: true, bundleFails: Exception('PGRST202: Could not find the function public.get_student_home'));
+
+    report('cold start (warm cache), the one request refused', world.log);
+    expect(shown['status'], 'active');
+    expect(shown['name'], 'محمد عادل فؤاد العزول');
+    expect(world.log.of('student_home'), 1);
+    expect(world.log.of('profile.summary'), 1);
+    expect(world.log.of('subscriptions.current'), 1);
+    expect(world.log.of('subscriptions.all'), 1);
+    expect(world.log.total - world.log.of('student_home'), lessThanOrEqualTo(12),
+        reason: 'exactly the requests of a launch without it');
   });
 
   test('(d) changing the profile photo, with its live echo', () async {

@@ -9,6 +9,7 @@ import '../../../core/theme/app_icons.dart';
 import '../../../core/ui/ui.dart';
 import '../qr/presentation/student_qr_screen.dart';
 import '../subscription/presentation/purchase_flow.dart';
+import '../home/data/home_bundle.dart';
 import '../home/presentation/student_home_screen.dart';
 import '../subscription/presentation/subscription_screen.dart';
 
@@ -51,7 +52,8 @@ class CompanyInvite {
 class InvitesGateway {
   const InvitesGateway();
 
-  Future<dynamic> myInvites() => SupabaseService.client.rpc('get_my_invites');
+  Future<dynamic> myInvites() =>
+      StudentHomeBundle.answerOr('invites', () => SupabaseService.client.rpc('get_my_invites'));
 
   Future<dynamic> respond(String inviteId, bool accept) => SupabaseService.client
       .rpc('respond_company_invite', params: {'p_invite_id': inviteId, 'p_accept': accept});

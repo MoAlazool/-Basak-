@@ -4,6 +4,7 @@ import '../../../../core/constants/supabase_tables.dart';
 import '../../../../core/network/supabase_service.dart';
 import '../../../../core/sync/session.dart';
 import '../../subscription/models/subscription_model.dart';
+import 'home_bundle.dart';
 
 /// One supervisor of a line the student rides.
 class LineSupervisor {
@@ -53,5 +54,6 @@ class LineSupervisor {
 /// subscription itself carries only its primary contact.
 final lineSupervisorsProvider = FutureProvider<List<LineSupervisor>>((ref) async {
   if (ref.watch(sessionUserIdProvider) == null) return const [];
-  return LineSupervisor.listFromJson(await SupabaseService.client.rpc(SupabaseRpcs.getMyLineSupervisors));
+  return LineSupervisor.listFromJson(await StudentHomeBundle.answerOr(
+      'line_supervisors', () => SupabaseService.client.rpc(SupabaseRpcs.getMyLineSupervisors)));
 });

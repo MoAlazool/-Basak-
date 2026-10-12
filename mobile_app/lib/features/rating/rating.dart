@@ -14,6 +14,7 @@ import '../app_update/app_store.dart';
 import '../app_update/app_update_repository.dart';
 import '../app_update/app_version.dart';
 import '../auth/providers/auth_provider.dart';
+import '../student/home/data/home_bundle.dart';
 
 /// When the app may ask for a store rating by itself: once per installed
 /// version, and only after the student's fifth boarded ride.
@@ -42,8 +43,8 @@ class SupabaseBoardedRidesGateway implements BoardedRidesGateway {
   const SupabaseBoardedRidesGateway();
 
   @override
-  Future<Object?> boardedRidesCount() async =>
-      await SupabaseService.client.rpc(SupabaseRpcs.getMyBoardedRidesCount);
+  Future<Object?> boardedRidesCount() => StudentHomeBundle.answerOr(
+      'boarded_rides', () async => await SupabaseService.client.rpc(SupabaseRpcs.getMyBoardedRidesCount));
 }
 
 /// Whether to ask. Anything that goes wrong — no connection, a server without

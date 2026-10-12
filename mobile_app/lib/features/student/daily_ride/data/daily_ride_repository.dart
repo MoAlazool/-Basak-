@@ -47,6 +47,21 @@ class RideDays {
 
 String _day(DateTime date) => date.toIso8601String().substring(0, 10);
 
+/// The days of votes the home screen reads at [now]: the week shown there
+/// (from its Saturday), the ride day's own choices and the days the reminders
+/// look at (the ride day and the six after it), in one read.
+({DateTime start, DateTime end}) homeRideRange(VoteSettings vote, DateTime now) {
+  final rideDate = vote.rideDateFor(now);
+  final saturdayOffset = (rideDate.weekday + 1) % 7;
+  return (
+    start: DateTime(rideDate.year, rideDate.month, rideDate.day).subtract(Duration(days: saturdayOffset)),
+    end: DateTime(rideDate.year, rideDate.month, rideDate.day + 6),
+  );
+}
+
+/// The name under which [DailyRideRepository.getRides] keeps that stretch.
+String rideDaysKey(DateTime start, DateTime end) => 'ride.days.${_day(start)}.${_day(end)}';
+
 /// The votes this run of the app has already read or written, day by day, for
 /// whoever shows one without a read of its own: the card's "رحلة اليوم" strip.
 /// A day is known once a read covered it (null: no vote that day).
@@ -129,7 +144,7 @@ class DailyRideRepository {
     final from = _day(start);
     final to = _day(end);
     final rows = await OfflineCache.readThrough(
-        'ride.days.$from.$to',
+        rideDaysKey(start, end),
         () => _client
             .from(SupabaseTables.dailyRideStatus)
             .select('ride_date, is_riding, departure_time, return_time, is_returning')

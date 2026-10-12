@@ -10,6 +10,7 @@ import 'package:basak_mobile/features/auth/data/auth_repository.dart';
 import 'package:basak_mobile/features/rating/rating.dart';
 import 'package:basak_mobile/features/student/daily_ride/data/daily_ride_repository.dart';
 import 'package:basak_mobile/features/student/daily_ride/models/vote_settings.dart';
+import 'package:basak_mobile/features/student/home/data/home_bundle.dart';
 import 'package:basak_mobile/features/student/invites/invites.dart';
 import 'package:basak_mobile/features/student/profile/data/profile_repository.dart';
 import 'package:basak_mobile/features/student/qr/data/student_qr_repository.dart';
@@ -241,12 +242,15 @@ class FakeProfileServer implements ProfileGateway {
   @override
   Future<Map<String, dynamic>?> summaryRow(String userId) async {
     log.hit('profile.summary');
-    return {
-      'full_name': 'محمد عادل فؤاد العزول', 'phone': '01055512301', 'university': 'جامعة الدلتا',
-      'college': pass.college, 'email': email, 'birth_date': null, 'profile_image_url': pass.photoPath,
-      'qr_code_value': 'QR-1', 'must_change_password': mustChangePassword,
-    };
+    return row();
   }
+
+  /// The student's row as the server holds it (no request).
+  Map<String, dynamic> row() => {
+        'full_name': 'محمد عادل فؤاد العزول', 'phone': '01055512301', 'university': 'جامعة الدلتا',
+        'college': pass.college, 'email': email, 'birth_date': null, 'profile_image_url': pass.photoPath,
+        'qr_code_value': 'QR-1', 'must_change_password': mustChangePassword,
+      };
 
   @override
   Future<dynamic> updateDetails(Map<String, dynamic> params) async {
@@ -415,5 +419,49 @@ class FakeBoardedRides implements BoardedRidesGateway {
     log.hit('rating.boarded_rides');
     if (fails != null) throw fails!;
     return count;
+  }
+}
+
+/// `get_student_home`: the launch in one answer, made from the same fake
+/// server the separate requests read (so both ways show the same).
+class FakeStudentHome implements StudentHomeGateway {
+  final RequestLog log;
+  final FakeSubscriptionServer server;
+  final FakeProfileServer profile;
+  FakeStudentHome(this.log, this.server, this.profile);
+
+  /// Thrown instead of answering: an older database without the function, or
+  /// no connection.
+  Object? fails;
+
+  /// What it was asked for, last.
+  ({String today, String? rideFrom, String? rideTo})? asked;
+
+  @override
+  Future<Object?> fetch({required String today, String? rideFrom, String? rideTo}) async {
+    log.hit('student_home');
+    asked = (today: today, rideFrom: rideFrom, rideTo: rideTo);
+    if (fails != null) throw fails!;
+    final current = server.subs.isEmpty ? null : Map<String, dynamic>.from(server.subs.first);
+    return {
+      'v': 1,
+      'profile': profile.row(),
+      'subscriptions': [for (final s in server.subs) Map<String, dynamic>.from(s)],
+      'current': current,
+      'vote_company': current?['company_id'],
+      'vote_settings': {'company_id': current?['company_id'], 'opens_at': '16:00', 'closes_at': '06:00', 'reminder_minutes': 30},
+      'ride_days': rideFrom == null ? null : <dynamic>[],
+      'receipts_of': current?['id'],
+      'receipts': [
+        for (final r in server.receiptRows)
+          if (r['subscription_id'] == current?['id']) Map<String, dynamic>.from(r)
+      ],
+      'inbox': {'items': <dynamic>[], 'unread': 0, 'next_before': null},
+      'invites': <dynamic>[],
+      'offers': {'hidden': false, 'offers': <dynamic>[]},
+      'line_supervisors': <dynamic>[],
+      'recap_releases': <dynamic>[],
+      'boarded_rides': 0,
+    };
   }
 }

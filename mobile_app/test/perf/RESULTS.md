@@ -215,3 +215,35 @@ Left: a student with a running subscription who opens the Subscriptions tab
 still reads the whole catalog once in a session, only to learn whether the
 next period is on sale for their line and at what price. A small function
 answering just that would remove it.
+
+## The student's launch in one request (2026-10-12)
+
+`get_student_home` (migration 20261125000001) answers, in one request, the reads
+a student's launch makes one by one. `StudentHomeBundle` asks it when AuthGate
+lets a student in, when the app comes back to the foreground and on pull to
+refresh; each read then takes its own part (`PrefetchedReads`, through
+`OfflineCache.readThrough` or `StudentHomeBundle.answerOr`). A read with no part
+(an older database, no connection, a part that is not in the answer) asks the
+server itself as before, so the screens show the same either way (test (f)).
+Answers are used once, within 5 s, by the same account, and dropped on any live
+event or write from the phone.
+
+What it stands for, per launch:
+
+| read | before | after |
+|---|---|---|
+| the student's row (`profile.summary`) | 1 | 0 |
+| subscriptions, current subscription | 2 | 0 |
+| vote settings, the week's votes | 2 | 0 |
+| the current subscription's receipts (when unpaid) | 0–1 | 0 |
+| inbox page, invitations, offers, line supervisors, recap releases, boarded rides | 6 | 0 |
+| `get_student_home` | 0 | 1 |
+| role, app version, Wallet card refresh | 3 | 3 (unchanged) |
+| storage links (photos; the storage service, not the API) | ≤ 2 | ≤ 2 (unchanged) |
+
+So a launch goes from about 14 API requests to 4. In the test world
+(`request_count_test.dart`), whose fakes for the votes, invitations, inbox and
+rides count sit below the layer the answer serves, it is measured as 12 → 10
+(test (e)); the other parts are covered in `student_home_bundle_test.dart`, and
+each part's answer equals the separate request's (values, keys and key order)
+over PostgREST 14.5 in `supabase/tests/local/student_home_parity.mjs`.
