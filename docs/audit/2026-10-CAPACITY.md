@@ -210,6 +210,47 @@ The VUs above open the app every 3–8 s without pause, which is far heavier tha
 - **Envelope on Free/Nano with this dataset:** ≈ 7 RPS can be held indefinitely; ≈ 10–15 RPS held for about a minute tips the instance over, and it needs 3–4 minutes without load to recover.
 - **In app opens (PROJECTED from the above):** ≈ 1 app open per second (7 calls) ≈ 3,600 opens per hour. 1,000 students opening over an hour fit; 1,000 within 15 minutes (≈ 1.1 opens/s) is at the edge; tighter peaks fail.
 
+### Clean database (run R3, MEASURED LIVE)
+The 423 MB dataset was then removed:
+- `perf/live/clean_bench.sql`, run by the owner in the SQL editor.
+- All 4,856 benchmark accounts deleted through the Auth Admin API.
+- `VACUUM FULL` on the emptied tables.
+
+The database went back to **23 MB**. The schema fingerprint matched the pre-benchmark one in 13 of 14 categories. The 14th, functions, differs only by the `platform_analytics` fix in `20261124000001_platform_analytics_scan_window.sql`. The super admin, the other real accounts and «الريتاج» were hash-identical before and after.
+
+**The test company:**
+- One new company: 100 current students and 194 student accounts over the year, 2 lines, 3 supervisors and 2 admins.
+- Every account is a real Auth user created through the Admin API.
+- Current-term subscriptions, votes and scans, and notifications were added. Database: **27 MB**.
+- 85 students, 2 supervisors and 2 admins signed in through the normal password grant. Supabase Auth allowed about 30 sign-ins per minute (`429 over_request_rate_limit` beyond that).
+
+The same app-open mix and timeouts as R2 were used, with think time 30–60 s. Raw data: `perf/live/results/2026-10-12-live-clean.json`.
+
+| Stage | Students | Ramp / hold | Requests (hold) | RPS (hold) | Error % (hold) | p50 | p95 | p99 |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| N050 (first, right after the cleanup) | 50 | 30 / 90 s | 588 | 6.5 | 4.6 | 88 ms | 9.4 s | >10 s |
+| N050b | 50 | 30 / 90 s | 585 | 6.5 | **0.3** | 34 ms | 1.5 s | 7.8 s |
+| N100 | 100 | 30 / 90 s | 786 | 8.7 | **27** | 653 ms | >10 s | >10 s |
+| P probe (+3 min) | 2 | – | 101 | 5.1 | 0 | 28 ms | 129 ms | 142 ms |
+| **N075** | 75 | 30 / 90 s | 1,008 | **11.2** | **0** | 28 ms | 539 ms | 1.9 s |
+| N075L1 (right after) | 75 | 20 / 100 s | 987 | 9.9 | 0.6 | 26 ms | 1.9 s | 8.6 s |
+| N075L2 (right after, 5 s ramp) | 75 | 5 / 110 s | 1,120 | 10.2 | 9.6 | 117 ms | >10 s | >10 s |
+
+**What changed with the clean database:**
+- **75 natural students:** **≈ 11 RPS for 90 s with no errors**. Continuing at that level for another 100 s stayed under 1% errors, though p95 crept up to about 2 s.
+- **100 natural students:** still fails, but later and milder than on the 423 MB dataset:
+  - It stayed healthy for ≈ 65–75 s, against ≈ 25 s before.
+  - Hold errors were 27%, against 94% before.
+  - It again recovered within about 3 minutes.
+- **N075L2 ramped all 75 students in within 5 s:** ≈ 75 app opens at once. Every error came in the first ≈ 20 s, and the rest of the stage was clean. A synchronised burst does more harm than the same average load spread out.
+- **N050 right after the cleanup:** it stalled for ≈ 30 s while the instance was still settling after the large delete and `VACUUM FULL`. The repeat (N050b) was clean.
+- **Where the time goes:**
+  - The database answered from memory throughout (`blks_read` rose by under 40 blocks over all of R3).
+  - The slowest call was again the current-subscription embed (`subscriptions.current`).
+  - The stalls look the same as in R1: timeouts with no 429 or 5xx.
+- **Conclusion:** the limit is the compute behind the API on the Free/Nano instance, not the size of the data. A clean database moves the sustained ceiling from ≈ 7–10 RPS up to ≈ 10–12 RPS.
+- **In app opens (PROJECTED):** ≈ 1.5 app opens per second sustained, ≈ 5,000 per hour, with short bursts of a few dozen simultaneous opens tolerated.
+
 ### Scenarios
 "Active" means having the app open in the same minute. Each open fires 7 calls.
 
@@ -235,7 +276,7 @@ Paid compute (Micro 1 GB, Small 2 GB, Medium 4 GB) was **not measured**. No user
 **C) Not ready on the current tier for real rush-hour concurrency.**
 - The data model, indexes and RLS queries are sound. Queries take milliseconds at 2,470 active students, with tenant isolation and no slowdown for a 500-student company as the platform grows.
 - Storage holds about 2,000–2,600 actives for one year on Free.
-- But the Free Nano instance's API layer saturated at about 10–20 simultaneously active users and needed minutes to recover. With natural students (an app open every 30–60 s) that is ≈ 50 students at once, or ≈ 1 app open per second sustained.
+- But the Free Nano instance's API layer saturated at about 10–20 simultaneously active users and needed minutes to recover. With natural students (an app open every 30–60 s) that is ≈ 50 students at once, or ≈ 1 app open per second sustained, on the 423 MB dataset. On the clean database it is ≈ 75 students at once (≈ 1.5 opens per second); 100 still fails within about a minute.
 
 **Before launch:**
 1. Upgrade to Pro with at least Small compute.
