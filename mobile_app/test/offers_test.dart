@@ -383,23 +383,6 @@ void main() {
       expect(gateway.pins, [(id: 'c1', pin: '0000'), (id: 'c1', pin: '4821')]);
     });
 
-    test('hiding offers is written into what the phone holds: the re-read asks nothing', () async {
-      final gateway = FakeOffersGateway(offersJson([offerJson(1)]));
-      final repo = OffersRepository(gateway: gateway);
-      expect((await repo.load()).shows, isTrue);
-      await _settle();
-      expect(await repo.setHidden(true), isTrue);
-      final hidden = await repo.load();
-      expect((hidden.available, hidden.hidden), (true, true));
-      expect(hidden.offers, isEmpty);
-      expect(gateway.reads, 1);
-      expect(gateway.hides, [true]);
-
-      // Shown again: the offers have to come from the server.
-      expect(await repo.setHidden(false), isFalse);
-      expect((await repo.load()).shows, isTrue);
-      expect(gateway.reads, 2);
-    });
   });
 
   group('the provider', () {

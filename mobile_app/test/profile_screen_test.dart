@@ -119,7 +119,8 @@ void main() {
     expect(find.text('بياناتي'), findsOneWidget);
     expect(find.text('التطبيق'), findsOneWidget);
     expect(find.text('المساعدة والدعم'), findsOneWidget);
-    expect(find.text('إشعارات الهاتف'), findsOneWidget);
+    // The phone's own settings hold notifications: no row for them here.
+    expect(find.text('إشعارات الهاتف'), findsNothing);
     expect(find.text('تسجيل الخروج'), findsOneWidget);
     expect(find.text('حذف الحساب'), findsOneWidget);
     expect(find.text('1.0.6'), findsOneWidget);
@@ -142,32 +143,6 @@ void main() {
     expect(find.text('حسابي'), findsOneWidget);
     expect(find.text('تسجيل الخروج'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-  });
-
-  testWidgets('phone notifications: says what the phone allows, and is not shown where there is no push',
-      (tester) async {
-    await open(tester, push: FakePushMessaging());
-    await tester.pumpAndSettle();
-    expect(find.text('مفعّلة'), findsOneWidget);
-    // (The rating row under it leaves the app too, and has the same glyph.)
-    expect(
-        find.descendant(
-            of: find.byKey(const Key('profile-phone-notifications')), matching: find.byIcon(LucideIcons.externalLink)),
-        findsOneWidget,
-        reason: 'it opens the phone\'s settings');
-    await tester.tap(find.byKey(const Key('profile-phone-notifications')));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('phone notifications refused: the row says so', (tester) async {
-    final push = FakePushMessaging(granted: PushPermission.blocked);
-    await open(tester, push: push);
-    await tester.pumpAndSettle();
-    expect(find.text('متوقفة'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('profile-phone-notifications')));
-    await tester.pumpAndSettle();
-    expect(push.prompts, 0, reason: 'the phone\'s settings, never a prompt of the app\'s');
   });
 
   testWidgets('a build without push has no notifications row', (tester) async {
