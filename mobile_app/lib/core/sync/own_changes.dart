@@ -1,3 +1,5 @@
+import '../storage/prefetched_reads.dart';
+
 /// One change the server announced: which table, what happened, which row.
 class SyncEvent {
   final String table;
@@ -39,6 +41,8 @@ class OwnChanges {
   static OwnChange begin(String table, {String? id, String? op, bool once = false}) {
     final change = OwnChange._(table, id, op, once);
     _expected.add(change);
+    // A write is on its way: answers fetched ahead may soon be out of date.
+    PrefetchedReads.discard();
     return change;
   }
 

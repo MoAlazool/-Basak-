@@ -281,8 +281,66 @@ Paid compute (Micro 1 GB, Small 2 GB, Medium 4 GB) was **not measured**. No user
 **Before launch:**
 1. Upgrade to Pro with at least Small compute.
 2. Repeat this load test on that compute, against the clean database.
-3. Consider merging the student home's 7 calls into one RPC. That would cut requests per app open from 7 to about 2.
+3. ~~Consider merging the student home's 7 calls into one RPC.~~ Done (section 5): a launch now makes about 4 API requests instead of about 14, once the app update ships.
 
 Long term:
 1. Plan the retention described in section 2 for scans and votes.
 2. Avoid forcing every user to sign in again at once.
+
+---
+
+## 5. After the benchmark: fewer requests, less kept (2026-10-12)
+
+### The student's launch in one request
+`get_student_home` (`supabase/migrations/20261125000001_student_home_bundle.sql`, applied to the live project on 2026-10-12) answers in one request what a student's launch read one by one:
+- their row and their subscriptions (all, and the current one with its line, station and trips);
+- the vote settings and the week's votes;
+- the current subscription's receipts and the inbox's first page;
+- the invitations and the offers;
+- the line's supervisors, the recap releases and the boarded-rides count.
+
+The app (`StudentHomeBundle`) asks it in three places:
+- when a student is let in (AuthGate);
+- when the app comes back to the foreground;
+- on pull to refresh.
+
+Each screen's read then takes its own part. Everything else is unchanged.
+
+| | before | after |
+|---|---:|---:|
+| API requests per launch (warm cache) | ≈ 14 | ≈ 4 (role, app version, Wallet refresh, this one) |
+| photo links (storage service) | ≤ 2 | ≤ 2 |
+
+**How it was made safe:**
+- **Same answers.** Every part is read the same way as the app's own request:
+  - the table reads run SECURITY INVOKER, so RLS decides as before;
+  - everything else calls the same functions.
+  - Over PostgREST 14.5, `supabase/tests/local/student_home_parity.mjs` compared every part with the separate requests: 82 students × 3 dates, 246 cases, values, keys and key order identical.
+- **Own data only.** `supabase/tests/local/e2e_student_home.sql` (26 checks) shows:
+  - a student sees only their own rows;
+  - anon is refused;
+  - a supervisor and a company admin get no student data.
+- **Falls back to the old requests.** A part that is missing, a refused request (an older database), no connection, another account, or an answer older than 5 s: that read asks the server itself, as before. A live event or a write from the phone drops the answers.
+- **Same screens.** A launch with the one request shows exactly what a launch without it shows (`request_count_test.dart` (e)). Launches with the request refused make the old requests (f).
+- **No regressions.** The app's suite: 1,233 pass, including the 15 new ones; the same 4 layout tests fail as before the change. The SQL suite gives the same results as before, plus the new file.
+
+**Server time:** about 40 ms for the whole answer on the 9,500-scan local test set, the same order as the separate queries together. The saving is in request overhead, which is what ran out on the Nano instance (section 3).
+
+**Expected effect (PROJECTED, not yet measured):**
+- A launch costs about a quarter of the API requests it did.
+- On the same Free/Nano instance, that is roughly 3–4× the launches per second of section 3: ≈ 5 instead of ≈ 1.5.
+- It only applies to phones running the new app version.
+- It should be measured again with the load test once the version is out.
+
+### Storage kept for nobody
+`supabase/migrations/20261125000002_storage_hygiene.sql` is **not yet applied**: the approval prompt timed out.
+
+| | per year | after |
+|---|---|---|
+| pg_cron run history (`cron.job_run_details`): every run of every job is kept forever. That is ≈ 1,600 rows a day (the notification tick every minute, the offers announcer every 5), MEASURED at ≈ 180 bytes a row. | ≈ 100 MB | 7 days kept (≈ 2 MB), by a daily job |
+| Two exact copies of unique indexes (`students(phone)`, `students(qr_code_value)`) | ≈ 2 × the size of a phone index; written on every student insert or update | the unique indexes stay and serve the same lookups |
+
+### Proposed, not done (decisions for the owner)
+1. **Retention for scans and votes.** These are 91% of the data, as in section 2. Keeping 2 years in detail plus small summaries (the table above) stops the database growing. Nothing reads detail older than the recap of the term before; the boarded-rides count would read the summary.
+2. **Pro / Small compute before launch** (section 4). The one-request launch makes the Free tier last longer; it does not change the verdict for a real rush hour.
+

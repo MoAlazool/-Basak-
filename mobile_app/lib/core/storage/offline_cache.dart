@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../network/network_errors.dart';
+import 'prefetched_reads.dart';
 
 /// Small encrypted cache that keeps the app readable on a bus with
 /// intermittent connectivity. It never queues or stores attendance writes.
@@ -82,10 +83,17 @@ class OfflineCache {
   /// Saved results belong to the signed-in user; a server that answers with a
   /// refusal (signed out, removed, not allowed) is never papered over.
   static Future<dynamic> readThrough(
-      String key, Future<dynamic> Function() fetch) async {
+      String key, Future<dynamic> Function() ask) async {
     final userId = _currentUserId();
-    if (userId == null) return fetch();
+    if (userId == null) return ask();
     final storageKey = '$_dataPrefix$userId.$key';
+    // The answer may already be on its way, fetched with others in one
+    // request (PrefetchedReads); otherwise the server is asked as always,
+    // with the whole of [requestTimeout] for itself.
+    Future<dynamic> fetch() async {
+      final ahead = await PrefetchedReads.take(key, userId: userId);
+      return ahead.found ? ahead.value : await ask().timeout(requestTimeout);
+    }
 
     final fresh = _fresh.remove(storageKey);
     _local.remove(storageKey);
@@ -102,7 +110,7 @@ class OfflineCache {
     }
 
     try {
-      final value = await fetch().timeout(requestTimeout);
+      final value = await fetch();
       offlineSince.value = null;
       // Saved in the background: the encrypted write must not delay the screen.
       unawaited(_save(storageKey, value));
@@ -120,7 +128,7 @@ class OfflineCache {
   static Future<void> _revalidate(String key, String storageKey, Future<dynamic> Function() fetch,
       Map<String, dynamic> saved) async {
     try {
-      final value = await fetch().timeout(requestTimeout);
+      final value = await fetch();
       offlineSince.value = null;
       await _save(storageKey, value);
       // Changed on this phone while the server was answering: that is newer.
@@ -359,6 +367,9 @@ class OfflineCache {
       return null;
     }
   }
+
+  /// Whose data this phone's saved copies are (null when nobody is signed in).
+  static String? get signedInUserId => _currentUserId();
 
   static String? _currentUserId() {
     if (debugUserId != null) return debugUserId;

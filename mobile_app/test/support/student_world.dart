@@ -40,6 +40,7 @@ class StudentWorld {
   late final invites = FakeInvites(log, server);
   late final versions = FakeAppVersions(log);
   late final boarded = FakeBoardedRides(log);
+  late final home = FakeStudentHome(log, server, profile);
   final inbox = FakeNotificationsRepo();
 
   StudentWorld() {

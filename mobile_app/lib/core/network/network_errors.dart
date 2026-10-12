@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../storage/prefetched_reads.dart';
+
 /// Shown instead of raw socket errors when an action needs the server.
 const offlineActionMessage =
     'لا يوجد اتصال بالإنترنت. هذا الإجراء يحتاج إلى اتصال، حاول مرة أخرى عند عودة الشبكة.';
@@ -41,6 +43,8 @@ String errorMessage(Object error) {
 /// Writes are never queued: attendance, rides and payments must reach the
 /// server while the student or supervisor is still looking at the screen.
 Future<T> requireOnline<T>(Future<T> Function() action) async {
+  // Whatever was fetched ahead may no longer be what the server holds.
+  PrefetchedReads.discard();
   try {
     return await action();
   } catch (error) {

@@ -26,6 +26,9 @@ platform admin and a signed-out client.
 20261109000001): who may add, list, overwrite and delete files of the artwork
 bucket, `set_company_branding`, the logo of an issued receipt outliving its
 replacement, and that every answer naming a company carries both paths.
+`e2e_student_home.sql` covers `get_student_home` (migration 20261125000001):
+who may call it, that a student's answer holds their own rows only, and that
+each part equals the function or read the app makes for it on its own.
 
 ## 2. HTTP (GoTrue + PostgREST + Edge Functions, through supabase-js)
 
@@ -43,6 +46,18 @@ replacement, and that every answer naming a company carries both paths.
 7. `FN_PORTS='{"admin-create-supervisor":8201,...}' node gateway.mjs` (:8100 = the project URL).
 8. `SUPABASE_URL=http://127.0.0.1:8100 ANON_KEY=... SERVICE_KEY=... node http_e2e.mjs`
    (uses `admin_web/node_modules/@supabase/supabase-js`; run `npm ci` in `admin_web` first).
+
+### The student's launch in one request
+
+`student_home_parity.mjs` needs only steps 1, 3 and 4 (PostgREST, the version the
+project runs) and some students: `perf/live/bench.sql` makes realistic ones from
+`auth.users` rows named `0125…@bench.busak.app`. For every student and a few
+dates it makes the app's separate launch requests as the app builds them, asks
+`get_student_home`, and compares each part (values, keys and key order):
+
+    PGRST_URL=http://localhost:3000 JWT_SECRET=... node student_home_parity.mjs
+
+(Run on 2026-10-12, PostgREST 14.5, 82 students x 3 dates: every part identical.)
 
 ## 3. Wallet cards (local Supabase stack + test doubles)
 
