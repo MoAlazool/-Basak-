@@ -23,6 +23,13 @@
   :focus-visible { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #00658D; border-radius: 10px; }
   input:focus-visible, textarea:focus-visible, select:focus-visible { box-shadow: none; }
   ::placeholder { color: #58707F; opacity: 1; }
+  /* No browser autofill tint: the field keeps its own background (a delayed transition is the only override Chrome honours). */
+  input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
+    -webkit-text-fill-color: #17384A;
+    caret-color: #17384A;
+    transition: background-color 9999999s ease-in-out 0s;
+  }
+  input:autofill { filter: none; }
 }
 
 @layer components {
