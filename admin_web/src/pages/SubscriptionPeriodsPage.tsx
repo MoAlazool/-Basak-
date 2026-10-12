@@ -102,28 +102,31 @@ const NameField: React.FC<{ value: string; onChange: (v: string) => void; change
   )
 );
 
-/** The on-sale switch with the word under it («نعم», «لا», «لم يُحفظ», «أوقفته المنصة»). */
+/** A new line's default for one option, with the word under it («مفتوح», «مقفول», «لم يُحفظ», «أوقفته المنصة»). */
 const SaleSwitch: React.FC<{ on: boolean; onChange: (on: boolean) => void; changed?: boolean; locked?: boolean; disabled?: boolean; label: string; card?: boolean }> = ({ on, onChange, changed, locked, disabled, label, card }) => (
   <div className={`flex flex-col gap-1 ${card ? 'items-end' : 'items-start'}`}>
     <span className={`rounded-full ${changed ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_#8A5300]' : ''}`}>
       <Switch checked={on && !locked} onChange={onChange} disabled={disabled || locked} label={label} />
     </span>
-    <span className={`text-cap ${changed ? 'font-medium text-warn' : 'text-ink-3'}`}>{locked ? 'أوقفته المنصة' : changed ? 'لم يُحفظ' : card ? 'معروض للبيع' : on ? 'نعم' : 'لا'}</span>
+    <span className={`text-cap ${changed ? 'font-medium text-warn' : 'text-ink-3'}`}>{locked ? 'أوقفته المنصة' : changed ? 'لم يُحفظ' : card ? 'في الخط الجديد' : on ? 'مفتوح' : 'مقفول'}</span>
   </div>
 );
 
-/** «ما يراه الطلاب الآن»: what is saved, or what will happen once saved. */
+/** «ما يراه الطلاب الآن» (from the lines), or what saving a new default changes. */
 const StatusCell: React.FC<{ view: OptionView; change?: 'stop' | 'open'; inline?: boolean }> = ({ view, change, inline }) => (
   <div className={`flex min-w-0 items-start gap-1 ${inline ? 'flex-row flex-wrap items-center gap-x-2' : 'flex-col'}`}>
     {change
-      ? <Badge tone="warning">{change === 'stop' ? 'سيتوقف بيعه بعد الحفظ' : 'سيُفتح بيعه بعد الحفظ'}</Badge>
+      ? <Badge tone="warning">{change === 'stop' ? 'الخطوط الجديدة تبدأ به مقفولاً' : 'الخطوط الجديدة تبدأ به مفتوحاً'}</Badge>
       : <Badge tone={view.tone as Tone}>{view.label}</Badge>}
-    <span className="text-label text-ink-2">{change ? (view.lines ? `${view.label} في ${linesWord(view.lines)}` : view.sub) : view.sub}</span>
+    <span className="text-label text-ink-2">{change ? `الخطوط الحالية كما هي · ${view.label}${view.lines ? ` في ${linesWord(view.lines)}` : ''}` : view.sub}</span>
   </div>
 );
 
 // ── The page ────────────────────────────────────────────────────────
-/** «مواعيد الاشتراك»: the company's terms, what is on sale, paying ahead and the daily cash option — saved together. */
+/**
+ * «مواعيد الاشتراك»: the company's terms, what a new line starts with, paying ahead and the daily
+ * cash option — saved together. What each line sells is switched on its own page.
+ */
 export const SubscriptionPeriodsPage: React.FC = () => {
   const company = useCompany();
   const companyId = company.id;
@@ -198,7 +201,7 @@ export const SubscriptionPeriodsPage: React.FC = () => {
   const leave = useLeaveGuard(dirty);
   const leaveWhat = useMemo(() => {
     const kinds = new Set(changes.map((c) => c.kind));
-    const parts = [kinds.has('date') && 'غيّرت موعداً', kinds.has('name') && 'غيّرت اسماً', kinds.has('stop') && 'أوقفت اشتراكاً', kinds.has('open') && 'فتحت اشتراكاً',
+    const parts = [kinds.has('date') && 'غيّرت موعداً', kinds.has('name') && 'غيّرت اسماً', (kinds.has('stop') || kinds.has('open')) && 'غيّرت ما يبدأ به الخط الجديد',
       kinds.has('advance') && 'غيّرت الدفع المسبق', kinds.has('daily') && 'غيّرت الاشتراك اليومي'].filter(Boolean) as string[];
     return parts.length > 1 ? `${parts.slice(0, -1).join('، ')} و${parts[parts.length - 1].replace(/^غيّرت /, '')}` : parts[0] ?? 'غيّرت شيئاً';
   }, [changes]);
@@ -213,8 +216,8 @@ export const SubscriptionPeriodsPage: React.FC = () => {
   const dailyView: OptionView = !sw?.daily_global
     ? { tone: 'neutral', label: 'لا يظهر للطلاب', sub: 'أوقفته إدارة المنصة عند كل الشركات', lines: 0, total: preview.length }
     : preview.length === 0 ? { tone: 'neutral', label: 'لا يظهر للطلاب', sub: 'لا توجد خطوط بعد', lines: 0, total: 0 }
-    : dailySaved ? { tone: 'success', label: 'يُباع الآن', sub: 'سعره في كل خط', lines: preview.length, total: preview.length }
-      : { tone: 'neutral', label: 'لا يظهر للطلاب', sub: 'أنت أوقفت بيعه', lines: 0, total: preview.length };
+    : sw.daily_effective ? { tone: 'success', label: 'يُباع الآن', sub: 'في الخطوط التي فتحته وكتبت سعره', lines: 0, total: preview.length }
+      : { tone: 'neutral', label: 'لا يظهر للطلاب', sub: 'لا يبيعه أي خط', lines: 0, total: preview.length };
 
   const blocked = !online || saving || nProblems > 0 || nameProblem;
 
@@ -286,7 +289,7 @@ export const SubscriptionPeriodsPage: React.FC = () => {
   const header = (
     <PageHeader title="مواعيد الاشتراك" phoneActions={false}
       meta={settings && <Badge tone="teal" className="hidden !text-label sm:inline-flex">العام الدراسي {year}/{year + 1}</Badge>}
-      sub="متى يبدأ كل فصل وينتهي، وأي الاشتراكات يجدها الطالب في التطبيق الآن. السعر يُكتب في كل خط."
+      sub="متى يبدأ كل فصل وينتهي، وما يبدأ به كل خط جديد. ما يُباع فعلاً وسعره تختاره في كل خط."
       actions={settings && (
         <>
           <Button kind="outline" icon="undo" disabled={!dirty || saving} onClick={() => setEdits(NO_EDITS)}>تراجع عن التغييرات</Button>
@@ -320,14 +323,14 @@ export const SubscriptionPeriodsPage: React.FC = () => {
       end: (showLabel?: boolean) => <EdgeField label={`نهاية ${t.name}`} showLabel={showLabel ? 'ينتهي' : undefined} day={t.end_day} month={t.end_month} disabled={!online}
         onDay={(d) => setTerm(t.code, { end_day: d })} onMonth={(m) => setTerm(t.code, { end_month: m })}
         under={under('end')} error={p.end} changed={edgeChanged(t.code, 'end')} />,
-      sale: (card?: boolean) => <SaleSwitch card={card} label={`${t.name} معروض للبيع`} on={t.is_on_sale} onChange={(on) => setSale(t.code, on)} changed={saleChange !== undefined} disabled={!online} />,
+      sale: (card?: boolean) => <SaleSwitch card={card} label={`${t.name} مفتوح في الخط الجديد`} on={t.is_on_sale} onChange={(on) => setSale(t.code, on)} changed={saleChange !== undefined} disabled={!online} />,
       status: (inline?: boolean) => <StatusCell inline={inline} view={views[t.code]} change={saleChange} />,
     };
   };
   const bothChange = edits.annual === undefined ? undefined : edits.annual ? 'open' as const : 'stop' as const;
   const dailyChange = edits.daily === undefined ? undefined : edits.daily ? 'open' as const : 'stop' as const;
-  const bothSwitch = (card?: boolean) => <SaleSwitch card={card} label="الفصلان معاً معروض للبيع" on={annual} onChange={(on) => setFlag('annual', on, annualSaved)} changed={bothChange !== undefined} locked={!settings.annual_global} disabled={!online} />;
-  const dailySwitch = (card?: boolean) => <SaleSwitch card={card} label="اليومي (نقداً) معروض للبيع" on={daily} onChange={(on) => setFlag('daily', on, dailySaved)} changed={dailyChange !== undefined} locked={sw ? !sw.daily_global : false} disabled={!online || !sw} />;
+  const bothSwitch = (card?: boolean) => <SaleSwitch card={card} label="الفصلان معاً مفتوح في الخط الجديد" on={annual} onChange={(on) => setFlag('annual', on, annualSaved)} changed={bothChange !== undefined} locked={!settings.annual_global} disabled={!online} />;
+  const dailySwitch = (card?: boolean) => <SaleSwitch card={card} label="اليومي (نقداً) مفتوح في الخط الجديد" on={daily} onChange={(on) => setFlag('daily', on, dailySaved)} changed={dailyChange !== undefined} locked={sw ? !sw.daily_global : false} disabled={!online || !sw} />;
   const advanceSwitch = (
     <span className={`rounded-full ${edits.advance !== undefined ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_#8A5300]' : ''}`}>
       <Switch label="الدفع المسبق للفصل القادم" checked={advance} onChange={(on) => setFlag('advance', on, advanceSaved)} disabled={!online} />
@@ -355,14 +358,14 @@ export const SubscriptionPeriodsPage: React.FC = () => {
       <div className="-mt-1 sm:hidden"><Badge tone="teal">العام الدراسي {year}/{year + 1}</Badge></div>
 
       {/* Wide screens: one table */}
-      <section aria-label="الفصول وما يُباع" className="hidden overflow-hidden rounded-card bg-surface shadow-card xl:block">
+      <section aria-label="الفصول وما يبدأ به الخط الجديد" className="hidden overflow-hidden rounded-card bg-surface shadow-card xl:block">
         <table className="w-full table-fixed border-collapse">
           <thead>
             <tr className="h-11 bg-ground text-start text-label font-medium text-ink-2">
               <th scope="col" className="w-[25%] px-4 text-start font-medium">الاشتراك</th>
               <th scope="col" className="w-[19%] px-3 text-start font-medium">يبدأ</th>
               <th scope="col" className="w-[19%] px-3 text-start font-medium">ينتهي</th>
-              <th scope="col" className="w-[10%] px-3 text-start font-medium">معروض للبيع</th>
+              <th scope="col" className="w-[10%] px-3 text-start font-medium">في الخط الجديد</th>
               <th scope="col" className="px-4 text-start font-medium">ما يراه الطلاب الآن</th>
             </tr>
           </thead>
@@ -397,7 +400,7 @@ export const SubscriptionPeriodsPage: React.FC = () => {
         </table>
         <div className="flex items-center gap-2 border-t border-hair bg-ground/60 px-4 py-3 text-label text-ink-2">
           <Icon name="info" size={16} className="text-ink-3" />
-          <span>المواعيد تتكرر كل عام في اليوم والشهر نفسيهما. هذه مواعيد شركتك وحدها، ويستخدمها التطبيق والإيصالات وانتهاء الاشتراكات.</span>
+          <span>المواعيد تتكرر كل عام في اليوم والشهر نفسيهما، ويستخدمها التطبيق والإيصالات وانتهاء الاشتراكات. مفتاح «في الخط الجديد» هو ما يبدأ به كل خط تضيفه؛ ما يبيعه كل خط تغيّره من صفحة الخط.</span>
         </div>
       </section>
 
@@ -414,7 +417,7 @@ export const SubscriptionPeriodsPage: React.FC = () => {
             {edits.advance !== undefined && <div className="text-cap font-medium text-warn">لم يُحفظ</div>}</div>
           {advanceSwitch}
         </div>
-        <p className="m-0 hidden items-start gap-2 text-label text-ink-2 sm:col-span-2 sm:flex"><Icon name="info" size={16} className="mt-0.5 text-ink-3" />المواعيد تتكرر كل عام في اليوم والشهر نفسيهما. هذه مواعيد شركتك وحدها، ويستخدمها التطبيق والإيصالات وانتهاء الاشتراكات.</p>
+        <p className="m-0 hidden items-start gap-2 text-label text-ink-2 sm:col-span-2 sm:flex"><Icon name="info" size={16} className="mt-0.5 text-ink-3" />المواعيد تتكرر كل عام في اليوم والشهر نفسيهما، ويستخدمها التطبيق والإيصالات وانتهاء الاشتراكات. مفتاح «في الخط الجديد» هو ما يبدأ به كل خط تضيفه؛ ما يبيعه كل خط تغيّره من صفحة الخط.</p>
       </div>
 
       {/* What students see on each line, as saved now */}
@@ -519,9 +522,7 @@ interface SaveProps {
   changes: { key: string; kind: string }[]; saved: Term[]; terms: Term[]; year: number; views: Record<SaleOption, OptionView>;
   preview: LinePreview[]; flags: { daily?: boolean; advance?: boolean };
 }
-const studentsWord = (n: number) => (n === 1 ? 'طالب واحد' : n === 2 ? 'طالبان' : n <= 10 ? `${n} طلاب` : `${n.toLocaleString('en-US')} طالباً`);
 const openWord = (n: number) => (n === 1 ? 'اشتراك واحد مفتوح' : n === 2 ? 'اشتراكان مفتوحان' : n <= 10 ? `${n} اشتراكات مفتوحة` : `${n.toLocaleString('en-US')} اشتراكاً مفتوحاً`);
-const pricedLines = (preview: LinePreview[], option: string) => preview.filter((l) => (l.options ?? []).some((x) => x.option === option && Number(x.price ?? 0) > 0)).length;
 
 /** «حفظ تغييرين في مواعيد الاشتراك؟» — each change with what it does to students, in real numbers. */
 const SaveDialog: React.FC<SaveProps> = ({ impact, onClose, onConfirm, saving, changes, saved, terms, year, views, preview, flags }) => {
@@ -553,23 +554,14 @@ const SaveDialog: React.FC<SaveProps> = ({ impact, onClose, onConfirm, saving, c
     }
     if ((c.kind === 'stop' || c.kind === 'open') && what === 'sale') {
       const name = code === 'both' ? 'الفصلان معاً' : saved.find((x) => x.code === code)?.name ?? '';
-      const v = views[code as SaleOption];
-      const open = impact?.open?.[code];
-      if (c.kind === 'stop') {
-        blocks.push({ title: `إيقاف بيع «${name}»`, lines: [
-          v.lines ? `يختفي من التطبيق في ${linesWord(v.lines)}، ولا يستطيع طالب جديد أن يشتريه.` : 'لا يظهر الآن في أي خط، فلا يتغيّر شيء عند الطلاب الجدد.',
-          open !== undefined ? `المشتركون فيه الآن (${studentsWord(open)}) يبقى اشتراكهم كما هو.` : 'من اشترك فيه من قبل يبقى اشتراكه كما هو.',
-        ] });
-      } else {
-        const priced = pricedLines(preview, code);
-        blocks.push({ title: `فتح بيع «${name}»`, lines: [priced ? `يظهر للطلاب في ${linesWord(priced)} كتبت له فيها سعراً، في موعده.` : 'لا خط له سعر بعد: لن يراه أحد حتى تكتب سعره في خط واحد على الأقل.'] });
-      }
+      blocks.push({ title: `«${name}» ${c.kind === 'open' ? 'مفتوح' : 'مقفول'} في كل خط جديد`, lines: [
+        'الخطوط الموجودة تبقى كما هي، والطلاب لا يتغيّر عندهم شيء.', 'ما يبيعه كل خط تغيّره من صفحة الخط، خطوة «الأسعار».',
+      ] });
     }
   });
   if (flags.daily !== undefined) {
-    blocks.push(flags.daily
-      ? { title: 'تشغيل الاشتراك اليومي (نقداً)', lines: ['يستطيع الطالب الاشتراك ليوم واحد ويدفع نقداً للمشرف، بسعره في كل خط.'] }
-      : { title: 'إيقاف الاشتراك اليومي (نقداً)', lines: ['لا يظهر للطلاب ولا يُسجَّل اشتراك يومي جديد، ويُقفل سعره في صفحة الخطوط.', 'ما سُجّل من قبل يبقى كما هو.'] });
+    blocks.push({ title: `اليومي (نقداً) ${flags.daily ? 'مفتوح' : 'مقفول'} في كل خط جديد`,
+      lines: ['الخطوط الموجودة تبقى كما هي، والطلاب لا يتغيّر عندهم شيء.', 'ما يبيعه كل خط تغيّره من صفحة الخط، خطوة «الأسعار».'] });
   }
   if (flags.advance !== undefined) {
     blocks.push(flags.advance
@@ -580,22 +572,9 @@ const SaveDialog: React.FC<SaveProps> = ({ impact, onClose, onConfirm, saving, c
     <Button key="c" kind="secondary" onClick={onClose} disabled={saving}>رجوع</Button>,
     <Button key="s" onClick={onConfirm} loading={saving}>{verb}</Button>,
   ];
-  // A term opened for sale and nothing else: the board's own short question.
-  const only = changes.length === 1 && changes[0].kind === 'open' ? changes[0].key.split('.')[0] : null;
-  const t = only ? terms.find((x) => x.code === only) : undefined;
-  if (t) {
-    const r = termRange(t, year);
-    const priced = pricedLines(preview, t.code);
-    return (
-      <Dialog open onClose={onClose} title={`فتح بيع ${t.name}؟`} icon="check" tone="success" actions={actions('حفظ وفتح البيع')}>
-        <p className="m-0">يظهر {t.name} ({day(t, 'start', r.start.slice(0, 4) !== r.end.slice(0, 4))} – {day(t, 'end')}) للطلاب في الخطوط التي كتبت له سعراً.</p>
-        {!priced && <Note tone="warning" title={`لا خط له سعر ${t.name.replace(/^الفصل\s+/, '')} بعد`}>لن يراه أحد حتى تكتب سعره في خط واحد على الأقل، من صفحة «الخطوط».</Note>}
-      </Dialog>
-    );
-  }
   return (
     <Dialog open onClose={onClose} title={`حفظ ${changesWord(changes.length)} في مواعيد الاشتراك؟`} icon="calendar" actions={actions('حفظ التغييرات')} w={560}>
-      <p className="m-0">هذا ما سيحدث عند الطلاب فور الحفظ:</p>
+      <p className="m-0">هذا ما سيتغيّر فور الحفظ:</p>
       {blocks.map((bl, i) => (
         <div key={i} className="flex flex-col gap-1 rounded-inner bg-ground px-4 py-3">
           <div className="text-small font-semibold text-ink">{bl.title}</div>

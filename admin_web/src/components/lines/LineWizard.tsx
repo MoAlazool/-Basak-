@@ -48,7 +48,7 @@ export const LineWizard: React.FC<{ mode: 'new' | 'edit'; line?: LineRow; startS
   const assignments = useSupervisorLines(company.id).data;
   const uniName = useMemo(() => { const m = new Map((universities ?? []).map((u) => [u.id, u.name])); return (id: string) => m.get(id) ?? 'جامعة'; }, [universities]);
 
-  const [saved, setSaved] = useState<LineDraft>(() => (line ? draftFromLine(line, stats?.bus_capacity) : emptyDraft(company.id, sale.sold ?? undefined)));
+  const [saved, setSaved] = useState<LineDraft>(() => (line ? draftFromLine(line, stats?.bus_capacity) : emptyDraft(company.id, sale.defaults ?? undefined, sale.dailyDefault ?? true)));
   const [d, setD] = useState<LineDraft>(saved);
   const [step, setStep] = useState<StepNo>(startStep);
   const [reached, setReached] = useState<number>(edit ? 5 : startStep);
@@ -64,18 +64,18 @@ export const LineWizard: React.FC<{ mode: 'new' | 'edit'; line?: LineRow; startS
   const touchedSeats = useRef(false);
   const patch = (fn: (x: LineDraft) => LineDraft) => setD((cur) => {
     const next = fn(cur);
-    if (next.prices !== cur.prices) touchedPrices.current = true;
+    if (next.prices !== cur.prices || next.daily_enabled !== cur.daily_enabled) touchedPrices.current = true;
     if (next.capacity !== cur.capacity) touchedSeats.current = true;
     return next;
   });
 
-  // What arrives after the first frame: which options the company sells (a new line starts with those on), the bus seats.
+  // What arrives after the first frame: what a new line starts with (the company's switches), the bus seats.
   useEffect(() => {
-    if (edit || !sale.sold || touchedPrices.current) return;
-    const sold = sale.sold;
-    const apply = (x: LineDraft) => ({ ...x, prices: Object.fromEntries(SALE_OPTIONS.map((o) => [o, { ...x.prices[o], enabled: sold[o] }])) as LineDraft['prices'] });
+    if (edit || !sale.defaults || touchedPrices.current) return;
+    const on = sale.defaults; const daily = sale.dailyDefault ?? true;
+    const apply = (x: LineDraft) => ({ ...x, daily_enabled: daily, prices: Object.fromEntries(SALE_OPTIONS.map((o) => [o, { ...x.prices[o], enabled: on[o] }])) as LineDraft['prices'] });
     setD(apply); setSaved(apply);
-  }, [edit, sale.sold]);
+  }, [edit, sale.defaults, sale.dailyDefault]);
   useEffect(() => {
     if (!edit || touchedSeats.current || stats?.bus_capacity == null) return;
     const v = String(stats.bus_capacity);

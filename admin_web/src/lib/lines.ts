@@ -79,10 +79,10 @@ export function fillStopTimes(start: string, gap: number, stations: StationDraft
 const blankPrices = (sold?: Partial<Record<SaleOption, boolean>>): Record<SaleOption, PriceDraft> =>
   Object.fromEntries(SALE_OPTIONS.map((o) => [o, { enabled: sold ? !!sold[o] : o !== 'summer', price: '' }])) as Record<SaleOption, PriceDraft>;
 
-/** A new line: nothing typed, no price written for the admin, one empty station. */
-export function emptyDraft(companyId: string, sold?: Partial<Record<SaleOption, boolean>>): LineDraft {
+/** A new line: nothing typed, no price written for the admin, one empty station; on what the company starts lines with. */
+export function emptyDraft(companyId: string, sold?: Partial<Record<SaleOption, boolean>>, daily = true): LineDraft {
   return {
-    company_id: companyId, name: '', university_ids: [], capacity: '', prices: blankPrices(sold), price_daily: '', daily_enabled: true,
+    company_id: companyId, name: '', university_ids: [], capacity: '', prices: blankPrices(sold), price_daily: '', daily_enabled: daily,
     is_active: true, stations: [{ key: newKey(), name: '' }], trips: [],
   };
 }

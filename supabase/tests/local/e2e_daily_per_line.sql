@@ -1,5 +1,6 @@
--- Test of 20261125000003_daily_per_line: daily is sold on a line only while its
--- company sells daily and the line has a daily price.
+-- Test of 20261125000003_daily_per_line and 20261125000004_line_decides_sale:
+-- daily is sold on a line while the platform sells daily and the line has a
+-- daily price; the company's switch is only a new line's default.
 -- Plain SQL, one transaction, rolled back. Fails (RAISE) unless every check
 -- says ok = true.
 --
@@ -85,20 +86,26 @@ SELECT dl.ok('3 daily on the priced line: active, the line''s price', (SELECT e 
   (SELECT e FROM dl_e3));
 RESET ROLE;
 
--- 4. The company stops selling daily: no line offers it, and a request is refused.
+-- 4. The company's daily switch is only what a new line starts with: off, the
+--    priced line still sells daily. The platform's switch is above every line.
 UPDATE public.companies SET daily_subscription_enabled = false WHERE id = '7d000000-0000-4000-8000-00000000c00d';
 DELETE FROM public.subscriptions WHERE student_id = '7d000000-0000-4000-8000-000000000051';
 SET LOCAL ROLE authenticated;
 SELECT dl.login('7d000000-0000-4000-8000-000000000051');
-SELECT dl.ok('4a company not selling daily: the priced line offers none', (dl.daily('7d000000-0000-4000-8000-00000000a0d1')->>'enabled')::boolean = false);
-SELECT dl.ok('4b and a direct request is refused',
+SELECT dl.ok('4a company switch off: the priced line still offers daily', (dl.daily('7d000000-0000-4000-8000-00000000a0d1')->>'enabled')::boolean);
+RESET ROLE;
+UPDATE public.app_settings SET daily_subscription_enabled = false WHERE id;
+SET LOCAL ROLE authenticated;
+SELECT dl.login('7d000000-0000-4000-8000-000000000051');
+SELECT dl.ok('4b platform not selling daily: no line offers it', (dl.daily('7d000000-0000-4000-8000-00000000a0d1')->>'enabled')::boolean = false);
+SELECT dl.ok('4c and a direct request is refused',
   dl.err($q$INSERT INTO public.subscriptions (student_id, line_id, station_id, type, status, price, departure_trip_id)
            VALUES (auth.uid(), '7d000000-0000-4000-8000-00000000a0d1', '7d000000-0000-4000-8000-00000000b0d1', 'daily', 'active', 40,
                    '7d000000-0000-4000-8000-00000000d0d1')$q$) LIKE '23514%');
 RESET ROLE;
+UPDATE public.app_settings SET daily_subscription_enabled = true WHERE id;
 
 -- 5. The administration is unchanged: it may still register a daily ride on any line.
-UPDATE public.companies SET daily_subscription_enabled = true WHERE id = '7d000000-0000-4000-8000-00000000c00d';
 SET LOCAL ROLE authenticated;
 SELECT dl.login('7d000000-0000-4000-8000-0000000000a5');
 SELECT dl.ok('5 an admin may register daily on a line with no daily price',
@@ -107,13 +114,30 @@ SELECT dl.ok('5 an admin may register daily on a line with no daily price',
                    'daily', 'active', 0, '7d000000-0000-4000-8000-00000000d0d2')$q$) IS NULL);
 RESET ROLE;
 
+-- 6. Terms follow the same rule: the company switched «first» off (its default),
+--    LD sells it, LZ does not; nobody sells the summer term.
+SELECT public.copy_default_terms('7d000000-0000-4000-8000-00000000c00d');
+UPDATE public.company_terms SET is_on_sale = false WHERE company_id = '7d000000-0000-4000-8000-00000000c00d';
+INSERT INTO public.line_period_prices (line_id, company_id, option, price, is_enabled) VALUES
+  ('7d000000-0000-4000-8000-00000000a0d1', '7d000000-0000-4000-8000-00000000c00d', 'first', 3000, true),
+  ('7d000000-0000-4000-8000-00000000a0d2', '7d000000-0000-4000-8000-00000000c00d', 'first', 3000, false)
+ON CONFLICT (line_id, option) DO UPDATE SET price = excluded.price, is_enabled = excluded.is_enabled;
+SELECT dl.ok('6a the line that sells «first» offers it, whatever the company default',
+  (SELECT o.reason IS DISTINCT FROM 'company_not_selling' AND o.reason IS DISTINCT FROM 'line_not_offering'
+   FROM public.line_sale_options_for('7d000000-0000-4000-8000-00000000a0d1', NULL, NULL) o WHERE o.option = 'first'),
+  (SELECT string_agg(o.option || ':' || COALESCE(o.reason, 'ok'), ' ') FROM public.line_sale_options_for('7d000000-0000-4000-8000-00000000a0d1', NULL, NULL) o));
+SELECT dl.ok('6b the line that does not, says so (its own reason first)',
+  (SELECT o.reason = 'line_not_offering' FROM public.line_sale_options_for('7d000000-0000-4000-8000-00000000a0d2', NULL, NULL) o WHERE o.option = 'first'));
+SELECT dl.ok('6c a term no line sells is not sold by the company',
+  (SELECT bool_and(p.reason = 'company_not_selling') FROM public.company_sale_periods('7d000000-0000-4000-8000-00000000c00d', NULL) p WHERE p.option = 'summer'));
+
 SELECT n, step, ok, detail FROM dl.results ORDER BY n;
 DO $$
 DECLARE bad text;
 BEGIN
   SELECT string_agg(step || COALESCE(' — ' || detail, ''), E'\n') INTO bad FROM dl.results WHERE NOT ok;
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'e2e_daily_per_line failed:%', E'\n' || bad; END IF;
-  IF (SELECT count(*) FROM dl.results) <> 7 THEN RAISE EXCEPTION 'e2e_daily_per_line: expected 7 checks'; END IF;
+  IF (SELECT count(*) FROM dl.results) <> 11 THEN RAISE EXCEPTION 'e2e_daily_per_line: expected 11 checks'; END IF;
 END $$;
 
 ROLLBACK;

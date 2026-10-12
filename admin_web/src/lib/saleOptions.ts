@@ -10,7 +10,7 @@ export const optionName: Record<SaleOption, string> = {
 /** Why an option is not offered to students right now. */
 export const reasonText: Record<string, string> = {
   company_inactive: 'الشركة موقوفة',
-  company_not_selling: 'الشركة لا تبيع هذه الفترة',
+  company_not_selling: 'لا يبيعها أي خط',
   line_inactive: 'الخط معطّل',
   line_not_offering: 'معطّل على هذا الخط',
   no_price: 'بدون سعر',

@@ -232,6 +232,7 @@ const PriceRow: React.FC<{
 export const Step4: React.FC<{ d: LineDraft; patch: Patch; ctx: SaleContext; companyId: string; show: boolean }> = ({ d, patch, ctx, companyId, show }) => {
   const setP = (o: SaleOption, p: Partial<LineDraft['prices'][SaleOption]>) => patch((c) => ({ ...c, prices: { ...c.prices, [o]: { ...c.prices[o], ...p } } }));
   const periods = <Link to={`/c/${companyId}/subscription-periods`} className="font-semibold text-teal hover:underline">مواعيد الاشتراك</Link>;
+  const platformOff = 'أوقفته إدارة باصك عند كل الشركات الآن';
   const note = bothPriceNote(d);
   return (
     <div className="flex flex-col gap-4">
@@ -242,17 +243,17 @@ export const Step4: React.FC<{ d: LineDraft; patch: Patch; ctx: SaleContext; com
           return (
             <PriceRow key={o} label={optionName[o]} on={p.enabled} sold={sold} onToggle={(v) => setP(o, { enabled: v })}
               value={p.price} onValue={(v) => setP(o, { price: v })} error={missing ? 'اكتب السعر أو أوقف بيعه.' : undefined}
-              sub={!sold ? <>شركتك لا تبيع {optionName[o]} الآن. تفتحه من {periods}.</> : p.enabled ? 'يُباع على هذا الخط' : 'لا يُباع على هذا الخط'} />
+              sub={!sold ? platformOff : p.enabled ? 'يُباع على هذا الخط' : 'لا يُباع على هذا الخط'} />
           );
         })}
         <PriceRow label="اليومي (نقداً في الباص)" on={d.daily_enabled} sold={ctx.daily} onToggle={(v) => patch((c) => ({ ...c, daily_enabled: v }))}
           value={d.price_daily} onValue={(v) => patch((c) => ({ ...c, price_daily: v }))}
           error={show && ctx.daily && d.daily_enabled && dailyPrice(d) <= 0 ? 'اكتب السعر أو أوقف بيعه.' : undefined}
-          sub={!ctx.daily ? <>شركتك لا تبيع اليومي الآن. تفتحه من {periods}.</> : d.daily_enabled ? 'يدفعه الطالب للمشرف عند الركوب' : 'لا يُباع على هذا الخط'} />
+          sub={!ctx.daily ? platformOff : d.daily_enabled ? 'يدفعه الطالب للمشرف عند الركوب' : 'لا يُباع على هذا الخط'} />
       </div>
       {note && <Note tone="warning" title={note} />}
-      <Note tone="teal" icon="info" title="السعر هنا، وموعد البيع في «مواعيد الاشتراك»">
-        يرى الطالب الاشتراك حين يكون مفتوحاً في المكانين: مفتاحه هنا على هذا الخط، وموعد بيعه عند الشركة.
+      <Note tone="teal" icon="info" title="ما يُباع على هذا الخط تقرره هنا">
+        يرى الطالب الاشتراك المفتوح هنا حين يأتي موعد بيعه. تواريخ الفصول، وما يبدأ به كل خط جديد، في {periods}.
       </Note>
       <p className="m-0 text-label text-ink-2">لا نكتب عنك أي سعر. الاشتراك الذي تتركه مفتوحاً بلا سعر يمنع الحفظ حتى تكتبه أو توقفه.</p>
     </div>

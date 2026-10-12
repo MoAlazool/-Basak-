@@ -123,7 +123,7 @@ export interface OptionView {
 
 /** Why an option is hidden for the whole company, in the board's words. */
 const COMPANY_REASON: Record<string, string> = {
-  company_not_selling: 'أنت أوقفت بيعه',
+  company_not_selling: 'لا يبيعه أي خط',
   company_inactive: 'الشركة موقوفة',
   line_inactive: 'كل الخطوط متوقفة',
   line_not_offering: 'متوقف في كل الخطوط',
@@ -162,7 +162,7 @@ export function cellView(row: SaleRow | undefined): { price?: number; ahead?: bo
   if (!row) return { reason: 'ليس وقته بعد' };
   if (row.available) return { price: Number(row.price ?? 0), ahead: row.phase === 'upcoming' };
   switch (row.reason) {
-    case 'company_not_selling': return { reason: 'أوقفت بيعه' };
+    case 'company_not_selling': return { reason: 'لا يبيعه أي خط' };
     case 'line_inactive': return { reason: 'الخط متوقف' };
     case 'line_not_offering': return { reason: 'متوقف في هذا الخط' };
     case 'no_price': return { reason: 'بلا سعر', warn: true };

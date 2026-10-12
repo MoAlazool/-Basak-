@@ -324,20 +324,32 @@ DO $$ BEGIN
   PERFORM t.ok('E8 company admin cannot change another company',
     t.err($q$SELECT public.set_annual_subscription(false, '22222222-2222-2222-2222-222222222222')$q$) IS NOT NULL);
   PERFORM public.set_annual_subscription(false, '11111111-1111-1111-1111-111111111111');
-  PERFORM t.ok('E9 settings snapshot scoped to own company',
+  -- The company's switch is only what a new line starts with: its lines still sell «both».
+  PERFORM t.ok('E9 settings snapshot scoped to own company; the switch is a default',
     jsonb_array_length(public.get_subscription_settings()->'companies') = 1
-    AND (public.get_subscription_settings()->'companies'->0->>'effective')::boolean = false);
+    AND (public.get_subscription_settings()->'companies'->0->>'annual_enabled')::boolean = false
+    AND (public.get_subscription_settings()->'companies'->0->>'effective')::boolean = true);
 END $$;
 SELECT t.login('c0000000-0000-0000-0000-000000000004');
 DO $$ BEGIN
-  PERFORM t.ok('E10 annual disabled for company 1: not offered',
-    NOT EXISTS (SELECT 1 FROM public.get_purchasable_periods('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') WHERE period_code = 'annual')
+  PERFORM t.ok('E10 company switch off: a line that sells annual still offers it',
+    EXISTS (SELECT 1 FROM public.get_purchasable_periods('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') WHERE period_code = 'annual')
     AND EXISTS (SELECT 1 FROM public.get_purchasable_periods('cccccccc-cccc-cccc-cccc-cccccccccccc') WHERE period_code = 'annual'));
-  PERFORM t.ok('E11 annual disabled for company 1: purchase refused by the database',
-    t.err(format($q$INSERT INTO public.subscriptions (student_id, line_id, station_id, type, price, departure_time, return_time)
-      VALUES (auth.uid(), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', %L, 'yearly', 1, %L, %L)$q$, t.getv('station'), t.getv('dep'), t.getv('ret')))
-      LIKE '%الفصلين معاً غير متاح%');
 END $$;
+-- The line switches «both» off: then it is not offered, and the database refuses it.
+RESET ROLE; SELECT set_config('request.jwt.claims', '', false);
+UPDATE public.line_period_prices SET is_enabled = false WHERE line_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND option = 'both';
+SELECT t.login('c0000000-0000-0000-0000-000000000004');
+DO $$ BEGIN
+  PERFORM t.ok('E11 annual switched off on the line: not offered, purchase refused by the database',
+    NOT EXISTS (SELECT 1 FROM public.get_purchasable_periods('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') WHERE period_code = 'annual')
+    AND EXISTS (SELECT 1 FROM public.get_purchasable_periods('cccccccc-cccc-cccc-cccc-cccccccccccc') WHERE period_code = 'annual')
+    AND t.err(format($q$INSERT INTO public.subscriptions (student_id, line_id, station_id, type, price, departure_time, return_time)
+      VALUES (auth.uid(), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', %L, 'yearly', 1, %L, %L)$q$, t.getv('station'), t.getv('dep'), t.getv('ret')))
+      LIKE '%غير متاحة للاشتراك على هذا الخط%');
+END $$;
+RESET ROLE; SELECT set_config('request.jwt.claims', '', false);
+UPDATE public.line_period_prices SET is_enabled = true WHERE line_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND option = 'both';
 SELECT t.login(:super);
 SELECT public.set_annual_subscription(false);
 SELECT t.login('c0000000-0000-0000-0000-000000000004');
