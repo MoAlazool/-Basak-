@@ -13,6 +13,7 @@
 // POST {action: "create", role: "student"|"supervisor"|"company_admin", from: 1, to: 250}
 // POST {action: "delete", limit: 300}         -> removes up to `limit` benchmark accounts
 // POST {action: "count"}
+// POST {action: "metrics"}                    -> CPU, load and memory lines of the project's metrics endpoint
 // POST {action: "storage_remove", bucket, paths: [...]}
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -138,6 +139,17 @@ Deno.serve(async (request: Request) => {
         out.push({ id, token: s.access_token, expires_at: s.expires_at });
       });
       return json({ action: 'sessions', ...r, sessions: out, seconds: (performance.now() - started) / 1000 });
+    }
+    if (body.action === 'metrics') {
+      // The project's own metrics endpoint (CPU, steal, load, memory): read-only.
+      const ref = new URL(url).hostname.split('.')[0];
+      const res = await fetch(`https://${ref}.supabase.co/customer/v1/privileged/metrics`, {
+        headers: { Authorization: `Basic ${btoa(`service_role:${key}`)}` },
+      });
+      const text = await res.text();
+      const keep = /^(node_cpu_seconds_total|node_load1 |node_load5 |node_memory_MemAvailable_bytes|node_memory_MemTotal_bytes|node_pressure_cpu|node_pressure_memory|node_pressure_io|pg_stat_database_xact_commit_total\{[^}]*datname="postgres")/;
+      return json({ action: 'metrics', status: res.status, at: Date.now(),
+        lines: text.split('\n').filter((l) => keep.test(l)).slice(0, 200) });
     }
     if (body.action === 'count') {
       return json({ action: 'count', bench_accounts: (await benchUsers(service)).length });

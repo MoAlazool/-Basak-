@@ -12,7 +12,11 @@
 // run in parallel for one stage; each returns counters and latency histograms,
 // which the database merges.
 //
-// POST {mode: 'rush'|'mixed'|'scan'|'burst', t0: epoch ms, ramp_s, hold_s, down_s,
+// Modes: rush (each app open as the app made it before 20261125000001: seven
+// requests), bundle (the same open as the new app makes it: get_student_home,
+// one request), mixed (rush plus writes), scan (supervisors scanning), burst.
+//
+// POST {mode: 'rush'|'bundle'|'mixed'|'scan'|'burst', t0: epoch ms, ramp_s, hold_s, down_s,
 //       think: [min_s, max_s], today, week_from, week_to, from30, timeout_ms,
 //       vus: [{role, id, token, ctx}]}
 
@@ -114,7 +118,10 @@ Deno.serve(async (request: Request) => {
 
   async function openApp(vu: any, mixed: boolean) {
     const c = vu.ctx ?? {};
-    if (vu.role === 'student') {
+    if (vu.role === 'student' && p.mode === 'bundle') {
+      // StudentHomeBundle: everything the seven reads below return, in one.
+      await rpc('get_student_home', vu.token, { p_today: p.today, p_ride_from: p.week_from, p_ride_to: p.week_to });
+    } else if (vu.role === 'student') {
       await call('subscriptions.current', vu.token,
         `/rest/v1/subscriptions?select=${encodeURIComponent(SUB_SELECT)}&student_id=eq.${vu.id}` +
         `&status=in.(pending_payment,pending_review,active,rejected)&or=(end_date.is.null,end_date.gte.${p.today})` +

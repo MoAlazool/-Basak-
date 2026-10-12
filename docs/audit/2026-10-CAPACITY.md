@@ -281,7 +281,7 @@ Paid compute (Micro 1 GB, Small 2 GB, Medium 4 GB) was **not measured**. No user
 **Before launch:**
 1. Upgrade to Pro with at least Small compute.
 2. Repeat this load test on that compute, against the clean database.
-3. ~~Consider merging the student home's 7 calls into one RPC.~~ Done (section 5): a launch now makes about 4 API requests instead of about 14, once the app update ships.
+3. ~~Consider merging the student home's 7 calls into one RPC.~~ Done (section 5): a launch now makes about 4 API requests instead of about 14, once the app update ships. MEASURED: at 100 students, 0% errors instead of 5%, and about 2.5× less server load.
 
 Long term:
 1. Plan the retention described in section 2 for scans and votes.
@@ -326,11 +326,39 @@ Each screen's read then takes its own part. Everything else is unchanged.
 
 **Server time:** about 40 ms for the whole answer on the 9,500-scan local test set, the same order as the separate queries together. The saving is in request overhead, which is what ran out on the Nano instance (section 3).
 
-**Expected effect (PROJECTED, not yet measured):**
-- A launch costs about a quarter of the API requests it did.
-- On the same Free/Nano instance, that is roughly 3–4× the launches per second of section 3: ≈ 5 instead of ≈ 1.5.
-- It only applies to phones running the new app version.
-- It should be measured again with the load test once the version is out.
+**Measured (run R4, MEASURED LIVE, 2026-10-12).** The setup was the same as R3:
+- one 100-student company, 26 MB;
+- real signed-in accounts, natural students (an app open every 30–60 s), 90/7/3 role mix.
+
+Each student's open was either the old seven requests (`rush`) or the new single request (`bundle`, `perf/live/bench-load`). CPU, I/O wait and memory come from the project's own metrics endpoint, through `bench-admin`'s `metrics` action. Raw data: `perf/live/results/2026-10-12-live-bundle.json`.
+
+| Stage | Open | Students | Errors (hold) | p50 | p95 | Server busy | of which I/O wait | Memory free |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| B050 | one request | 50 | **0** | 66 ms | 97 ms | | | |
+| B100b | one request | 100 | **0** | 66 ms | 208 ms | | | |
+| B100c (repeat) | one request | 100 | **0** | 66 ms | 156 ms | **21%** | **11%** | 94 MB |
+| N100 (same session, control) | seven requests | 100 | 5.2% | 34 ms | >10 s | **57%** | **43%** | 100 MB |
+| B150 / B150b | one request | 150 | 100% | >10 s | >10 s | 95% | 85% | 111 MB |
+| B200 | one request | 200 | 100% | >10 s | >10 s | | | |
+| B100 (first, right after loading the data) | one request | 100 | 85% | >10 s | >10 s | | | |
+
+**What this shows:**
+- **At 100 students, under the same conditions:**
+  - The one-request launch held with no errors and p95 ≈ 0.2 s, twice.
+  - The old launch timed out 5% of its requests.
+  - The server was 21% busy against 57%.
+  - It waited on the disk a quarter as much: 11% of the time against 43%.
+- **The first bottleneck is disk I/O, not CPU.** The CPU itself did little: under 7% user and under 7% system time in every stage. The time went to waiting for the disk.
+  - The Free/Nano disk has a small baseline and a daily burst allowance.
+  - This session had just spent a lot of disk work: the 400 MB delete, `VACUUM FULL` and the data loads.
+  - So these numbers are probably the pessimistic end. That is not measured.
+- **150 and 200 students failed from the first seconds, at only ≈ 6 requests per second,** with the disk waiting 85% of the time. That is the instance's I/O ceiling on this day, not the work per request.
+- **Not reached:** the PROJECTED 3–4×. Measured, the healthy point moved from ≈ 75 students (R3, old launch) to at least 100 (new launch), with about 2.5× less server load per student. Between 100 and 150 it was not measured.
+- **The first stage after loading the data failed again** (B100, as N050 in R3). Fresh writes and a busy disk make the instance fragile for a few minutes.
+
+**Conclusion:**
+- The one-request launch is a clear gain on the same hardware: fewer requests, less load, no errors where the old launch had them.
+- The Free/Nano disk stays the limit for a real morning peak. Pro with Small compute (more memory, so fewer disk reads; a larger disk allowance) remains the recommendation before launch.
 
 ### Storage kept for nobody
 `supabase/migrations/20261125000002_storage_hygiene.sql` is **not yet applied**: the approval prompt timed out.
