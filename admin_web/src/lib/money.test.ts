@@ -60,7 +60,7 @@ describe('what students see', () => {
   });
   it('says why a hidden option is hidden', () => {
     const off = [{ line_id: 'a', line: 'أ', is_active: true, options: [row('summer', { available: false, reason: 'company_not_selling' })] }];
-    expect(optionView('summer', off)).toMatchObject({ label: 'لا يظهر للطلاب', sub: 'أنت أوقفت بيعه' });
+    expect(optionView('summer', off)).toMatchObject({ label: 'لا يظهر للطلاب', sub: 'لا يبيعه أي خط' });
     const ahead = [{ line_id: 'a', line: 'أ', is_active: true, options: [row('second', { available: false, reason: 'advance_off', start_date: '2027-02-06' })] }];
     expect(optionView('second', ahead).sub).toBe('يبدأ 6 فبراير، والدفع المسبق متوقف');
     expect(optionView('first', []).sub).toBe('لا توجد خطوط بعد');

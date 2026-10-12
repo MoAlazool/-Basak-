@@ -81,6 +81,12 @@ describe('what blocks the save', () => {
     const steps = new Set(draftIssues(d, ctx).map((i) => i.step));
     expect([...steps].sort()).toEqual([1, 2, 3, 4]);
   });
+  it('a new line starts with what the company chose for new lines, daily included', () => {
+    const d = emptyDraft('co', { first: true, second: false, both: false, summer: false }, false);
+    expect(Object.fromEntries(Object.entries(d.prices).map(([o, p]) => [o, p.enabled]))).toEqual({ first: true, second: false, both: false, summer: false });
+    expect(d.daily_enabled).toBe(false);
+    expect(draftIssues({ ...ready(), daily_enabled: false, price_daily: '' }, ctx).filter((i) => i.step === 4)).toEqual([]);
+  });
   it('an option on sale without a price, but not one the company does not sell', () => {
     const d = ready();
     d.prices.second = { enabled: true, price: '' };

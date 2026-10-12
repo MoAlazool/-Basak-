@@ -190,12 +190,12 @@ const PricesCard: React.FC<{ line: LineRow; sold: Record<string, boolean> | null
   const rows = SALE_OPTIONS.map((o) => {
     const p = line.line_period_prices.find((x) => x.option === o);
     const price = p && Number(p.price) > 0 ? Number(p.price) : null;
-    const companySells = sold ? sold[o] : true;
+    const allowed = sold ? sold[o] : true;
     const on = !!p?.is_enabled && price != null;
-    return { key: o, label: optionName[o], price, badge: !on ? <Badge><span className="sm:hidden">لا يُباع</span><span className="hidden sm:inline">لا يُباع على هذا الخط</span></Badge> : companySells ? <Badge tone="success">يُباع</Badge> : <Badge tone="warning">شركتك لا تبيعه الآن</Badge> };
+    return { key: o, label: optionName[o], price, badge: !on ? <Badge><span className="sm:hidden">لا يُباع</span><span className="hidden sm:inline">لا يُباع على هذا الخط</span></Badge> : allowed ? <Badge tone="success">يُباع</Badge> : <Badge tone="warning">أوقفته إدارة باصك</Badge> };
   });
   rows.push({ key: 'daily' as never, label: 'اليومي (نقداً)', price: Number(line.price_daily) > 0 ? Number(line.price_daily) : null,
-    badge: Number(line.price_daily) > 0 ? (daily ? <Badge tone="success">يُباع</Badge> : <Badge tone="warning">شركتك لا تبيعه الآن</Badge>) : <Badge>لا يُباع</Badge> });
+    badge: Number(line.price_daily) > 0 ? (daily ? <Badge tone="success">يُباع</Badge> : <Badge tone="warning">أوقفته إدارة باصك</Badge>) : <Badge>لا يُباع</Badge> });
   return (
     <Card className="px-5 pb-4 pt-5">
       <div className="mb-2 flex items-center gap-3">
@@ -211,7 +211,7 @@ const PricesCard: React.FC<{ line: LineRow; sold: Record<string, boolean> | null
           </div>
         ))}
       </dl>
-      <p className="m-0 mt-3 text-label text-ink-2">السعر يُكتب هنا. متى يُفتح كل اشتراك للبيع يُحدد في <Link to={`/c/${companyId}/subscription-periods`} className="font-semibold text-teal hover:underline">مواعيد الاشتراك</Link>.</p>
+      <p className="m-0 mt-3 text-label text-ink-2">السعر ومفتاح البيع هنا. تواريخ كل فصل تُحدد في <Link to={`/c/${companyId}/subscription-periods`} className="font-semibold text-teal hover:underline">مواعيد الاشتراك</Link>.</p>
     </Card>
   );
 };

@@ -17,7 +17,8 @@ const AFFECTS: Record<string, string[]> = {
   receipts: ['receipts', 'overview', 'students', 'reports'],
   subscriptions: ['students', 'overview', 'reports', 'receipts'],
   company_students: ['students', 'overview'],
-  lines: ['lines', 'lineNames', 'periods', 'overview'],
+  // 'settings', 'switches': what the company sells now follows its lines (daily, «both», each term).
+  lines: ['lines', 'lineNames', 'periods', 'overview', 'settings', 'switches'],
   stations: ['lines'],
   line_trips: ['lines'],
   supervisors: ['supervisors', 'overview'],

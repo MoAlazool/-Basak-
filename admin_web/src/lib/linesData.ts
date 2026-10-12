@@ -21,7 +21,7 @@ import { keys, queryClient, STALE, unwrap, usePageData } from './query';
 import { rpcOr } from './rpc';
 import { rememberApplied } from './recentChanges';
 import { settingsKey, switchesKey, type LineName, type LineRow } from './reference';
-import { SALE_OPTIONS, type SaleOption, type SaleRow } from './saleOptions';
+import { SALE_OPTIONS, type SaleOption } from './saleOptions';
 import type { CompanyNumbers } from './overview';
 import type { SavePayload } from './lines';
 import type { VoteSettings, VoteValues } from './rideConfirmation';
@@ -110,6 +110,9 @@ export function afterLineSaved(companyId: string, lineId: string, rowIds: (strin
   rememberApplied([lineId, ...rowIds], ['lines', 'lineNames', 'periods']);
   void queryClient.invalidateQueries({ queryKey: keys.company(companyId, 'lineNames') });
   void queryClient.invalidateQueries({ queryKey: keys.company(companyId, 'periods') });
+  // What the company sells now follows its lines («مواعيد الاشتراك», adding a student).
+  void queryClient.invalidateQueries({ queryKey: settingsKey(companyId) });
+  void queryClient.invalidateQueries({ queryKey: switchesKey(companyId) });
   return queryClient.invalidateQueries({ queryKey: linesKey(companyId) });
 }
 
@@ -139,21 +142,32 @@ export async function deleteLine(companyId: string, line: LineRow): Promise<'del
 }
 
 // ── What the company sells (the subscription pages' cache) ───────────────────
-export interface SaleContextData { sold: Record<SaleOption, boolean> | null; daily: boolean; known: boolean }
+export interface SaleContextData {
+  /** What the platform lets a line sell (only «both» and daily can be stopped there). */
+  sold: Record<SaleOption, boolean> | null; daily: boolean;
+  /** What a new line starts with: the company's switches in «مواعيد الاشتراك». */
+  defaults: Record<SaleOption, boolean> | null; dailyDefault: boolean | null;
+  known: boolean;
+}
 export function useSaleContext(companyId: string): SaleContextData {
   const switches = usePageData(switchesKey(companyId), () =>
-    unwrap<{ daily_effective?: boolean; annual_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })),
+    unwrap<{ daily_global?: boolean; daily_company?: boolean | null }>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })),
   { staleTime: STALE.reference }).data;
   const settings = usePageData(settingsKey(companyId), () =>
-    unwrap<{ sale_periods?: SaleRow[] }>(supabase.rpc('get_subscription_settings', { p_company_id: companyId })),
+    unwrap<{ annual_global?: boolean; annual_company?: boolean | null; terms?: { code: string; is_on_sale: boolean }[] | null }>(
+      supabase.rpc('get_subscription_settings', { p_company_id: companyId })),
   { staleTime: STALE.reference }).data;
   return useMemo(() => {
-    // The company is the ceiling: an option it does not sell stays off for students whatever the line says.
-    const sold = settings ? Object.fromEntries(SALE_OPTIONS.map((o) => {
-      const row = (settings.sale_periods ?? []).find((r) => r.option === o);
-      return [o, !!row && row.reason !== 'company_not_selling' && row.reason !== 'company_inactive'];
-    })) as Record<SaleOption, boolean> : null;
-    return { sold, daily: switches ? !!switches.daily_effective : true, known: !!settings };
+    // The line decides what it sells; above it only the platform's switches.
+    const annual = settings ? settings.annual_global !== false : true;
+    const sold = settings ? { first: true, second: true, summer: true, both: annual } : null;
+    // A company that never saved its terms starts from the platform's: both terms on, summer off.
+    const term = (code: string, fallback: boolean) => settings?.terms?.find((t) => t.code === code)?.is_on_sale ?? fallback;
+    const defaults = settings ? {
+      first: term('first', true), second: term('second', true), summer: term('summer', false), both: annual && settings.annual_company !== false,
+    } : null;
+    const daily = switches ? switches.daily_global !== false : true;
+    return { sold, daily, defaults, dailyDefault: switches ? daily && switches.daily_company !== false : null, known: !!settings };
   }, [settings, switches]);
 }
 

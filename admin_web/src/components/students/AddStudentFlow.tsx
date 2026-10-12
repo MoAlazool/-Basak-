@@ -246,7 +246,7 @@ export const AddStudentFlow: React.FC<{
                     options={[
                       { value: 'termly', label: 'فصل دراسي' },
                       { value: 'yearly', label: 'الفصلان معاً', sub: yearlyOn ? undefined : 'غير متاح الآن', disabled: !yearlyOn },
-                      { value: 'daily', label: 'يومي', sub: dailyOn ? `${moneyText(line?.price_daily)} نقداً في الباص` : companyDaily ? 'لا يُباع على هذا الخط' : 'غير مفعّل', disabled: !dailyOn },
+                      { value: 'daily', label: 'يومي', sub: dailyOn ? `${moneyText(line?.price_daily)} نقداً في الباص` : lineDaily ? 'غير مفعّل' : 'لا يُباع على هذا الخط', disabled: !dailyOn },
                     ]} />
                   {d.type !== 'daily' && (periodsQuery.loading ? <SkeletonForm rows={1} /> : periodsForType.length === 0
                     ? <Note tone="warning" title="لا فترة متاحة للدفع الآن لهذا النوع">افتح الفترة من صفحة «مواعيد الاشتراك»، أو اختر نوعاً آخر.</Note>
