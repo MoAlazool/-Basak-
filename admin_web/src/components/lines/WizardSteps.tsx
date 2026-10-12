@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, Icon, IconButton, Note, Switch, TextField } from '../../ui';
 import {
-  BUS_CAPACITY_MAX, bothPriceNote, countOf, isSold, joinAnd, newKey, pricesText, stationsText, stepSubs, tripsRangeText, unitWord, W,
+  BUS_CAPACITY_MAX, bothPriceNote, countOf, dailyPrice, isSold, joinAnd, newKey, pricesText, stationsText, stepSubs, tripsRangeText, unitWord, W,
   type Issue, type LineDraft, type SaleContext, type StepNo,
 } from '../../lib/lines';
 import { parseBusCapacity } from '../../lib/lineCapacity';
@@ -212,14 +212,12 @@ export const Step2: React.FC<{
 
 // ── Step 4 ──────────────────────────────────────────────────────────────────
 const PriceRow: React.FC<{
-  label: string; on: boolean; sold: boolean; onToggle?: (on: boolean) => void; locked?: boolean;
+  label: string; on: boolean; sold: boolean; onToggle?: (on: boolean) => void;
   value: number | ''; onValue: (v: number | '') => void; sub: React.ReactNode; error?: string;
-}> = ({ label, on, sold, onToggle, locked, value, onValue, sub, error }) => (
+}> = ({ label, on, sold, onToggle, value, onValue, sub, error }) => (
   <div className="flex flex-col gap-3 border-t border-hair py-4 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:gap-6">
     <div className="flex min-w-0 flex-1 items-center gap-4">
-      {locked && sold
-        ? <span role="switch" aria-checked="true" aria-disabled="true" aria-label={`${label}: يُباع ما دامت شركتك تبيعه`} title="يُباع ما دامت شركتك تبيعه" className="flex h-6 w-11 flex-none items-center justify-end rounded-full bg-teal p-0.5"><span className="h-5 w-5 rounded-full bg-white shadow-[0_1px_2px_rgba(23,56,74,.25)]" /></span>
-        : <Switch checked={sold && on} disabled={!sold || locked} onChange={(v) => onToggle?.(v)} label={`بيع ${label} على هذا الخط`} />}
+      <Switch checked={sold && on} disabled={!sold} onChange={(v) => onToggle?.(v)} label={`بيع ${label} على هذا الخط`} />
       <div className="min-w-0 flex-1">
         <div className={`text-small font-semibold ${sold ? 'text-ink' : 'text-ink-2'}`}>{label}</div>
         <div className="text-label text-ink-2">{sub}</div>
@@ -247,10 +245,10 @@ export const Step4: React.FC<{ d: LineDraft; patch: Patch; ctx: SaleContext; com
               sub={!sold ? <>شركتك لا تبيع {optionName[o]} الآن. تفتحه من {periods}.</> : p.enabled ? 'يُباع على هذا الخط' : 'لا يُباع على هذا الخط'} />
           );
         })}
-        <PriceRow label="اليومي (نقداً في الباص)" on={ctx.daily} sold={ctx.daily} locked value={d.price_daily}
-          onValue={(v) => patch((c) => ({ ...c, price_daily: v }))}
-          error={show && ctx.daily && (d.price_daily === '' || Number(d.price_daily) <= 0) ? 'اكتب سعر اليومي.' : undefined}
-          sub={ctx.daily ? 'يدفعه الطالب للمشرف عند الركوب' : <>شركتك لا تبيع اليومي الآن. تفتحه من {periods}.</>} />
+        <PriceRow label="اليومي (نقداً في الباص)" on={d.daily_enabled} sold={ctx.daily} onToggle={(v) => patch((c) => ({ ...c, daily_enabled: v }))}
+          value={d.price_daily} onValue={(v) => patch((c) => ({ ...c, price_daily: v }))}
+          error={show && ctx.daily && d.daily_enabled && dailyPrice(d) <= 0 ? 'اكتب السعر أو أوقف بيعه.' : undefined}
+          sub={!ctx.daily ? <>شركتك لا تبيع اليومي الآن. تفتحه من {periods}.</> : d.daily_enabled ? 'يدفعه الطالب للمشرف عند الركوب' : 'لا يُباع على هذا الخط'} />
       </div>
       {note && <Note tone="warning" title={note} />}
       <Note tone="teal" icon="info" title="السعر هنا، وموعد البيع في «مواعيد الاشتراك»">

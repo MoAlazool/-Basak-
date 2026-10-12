@@ -213,7 +213,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         key: const ValueKey('forgot-request'),
         onBack: _back,
         title: 'استعادة كلمة المرور',
-        subtitle: 'اكتب رقم هاتفك، ونرسل طلباً لإدارة شركتك لتعطيك رمز الاستعادة.',
+        subtitle: 'اكتب رقم هاتفك، ونرسل طلباً لفريق باصك ليعطيك رمز الاستعادة.',
         actions: [
           BasakButton(
             key: const Key('forgot-send'),
@@ -245,7 +245,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               onSubmitted: (_) => _request(),
             ),
           ]),
-          const InfoNote('الرمز لا يصل برسالة نصية. تأخذه من إدارة الشركة، وهو صالح 30 دقيقة.'),
+          const InfoNote('الرمز لا يصل برسالة نصية. تأخذه من فريق باصك، وهو صالح 30 دقيقة.'),
           if (_failure != null) InlineError(message: _failure!),
         ],
       );
@@ -254,7 +254,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         key: const ValueKey('forgot-code-step'),
         onBack: _back,
         title: 'أدخل الرمز',
-        subtitle: 'ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.',
+        subtitle: 'ستة أرقام من فريق باصك، صالحة 30 دقيقة من لحظة إصدارها.',
         actions: [
           if (_whatsapp != null)
             BasakButton(

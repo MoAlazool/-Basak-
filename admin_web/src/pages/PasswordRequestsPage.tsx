@@ -4,7 +4,6 @@ import { ExportButton } from '../ui/Transfer';
 import { exportSheet } from '../lib/excel';
 import { excelMoment, MOMENT_FORMAT } from '../lib/excelCells';
 import { BulkDialog, BulkExportButton } from '../components/BulkDialog';
-import { useCompany } from '../lib/adminScope';
 import { cairoToday } from '../lib/time';
 import { useGuard } from '../lib/guard';
 import { notify } from '../lib/toasts';
@@ -21,12 +20,6 @@ const requestsObj = (n: number) => (n === 2 ? 'طلبين' : countText(n, NOUN.r
 const SUB = 'طالب نسي كلمة المرور وطلب المساعدة من التطبيق. اتصل به لتتأكد أنه هو، ثم أعطه رمزاً يكتبه في التطبيق مع كلمة مرور جديدة.';
 const SUB_PHONE = 'اتصل بالطالب لتتأكد أنه هو، ثم أعطه رمزاً يكتبه في التطبيق مع كلمة مرور جديدة.';
 const PLATFORM_SUB = 'طلاب كل الشركات، ومعهم من لا شركة له. اتصل بالطالب لتتأكد أنه هو، ثم أعطه رمزاً يدخل به مرة واحدة ويختار كلمة مرور جديدة.';
-
-/** «طلبات كلمة المرور» of one company: its members' requests. */
-export const PasswordRequestsPage: React.FC = () => {
-  const company = useCompany();
-  return <RequestsView companyId={company.id} view="company" />;
-};
 
 /** «طلبات كلمة المرور» of the platform: every company's students, and those with no company. */
 export const PlatformPasswordRequestsPage: React.FC = () => <RequestsView companyId={null} view="platform" />;

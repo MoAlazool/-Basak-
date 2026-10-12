@@ -76,7 +76,10 @@ export const AddStudentFlow: React.FC<{
     (d.lineId ? unwrap<Period[]>(supabase.rpc('get_purchasable_periods', { p_line_id: d.lineId })) : []), { enabled: !!d.lineId, staleTime: STALE.reference });
   const periods = useMemo(() => periodsQuery.data ?? [], [periodsQuery.data]);
   const switches = usePageData(switchesKey(companyId), () => unwrap<{ daily_effective?: boolean }>(supabase.rpc('get_subscription_switches', { p_company_id: companyId })), { staleTime: STALE.reference });
-  const dailyOn = switches.data ? !!switches.data.daily_effective : true;
+  const companyDaily = switches.data ? !!switches.data.daily_effective : true;
+  // A line whose daily is switched off (price 0) sells no daily ride.
+  const lineDaily = !line || Number(line.price_daily) > 0;
+  const dailyOn = companyDaily && lineDaily;
   const yearlyOn = periods.some((p) => p.subscription_type === 'yearly');
   const periodsForType = periods.filter((p) => p.subscription_type === d.type);
   const periodKey = (p: Period) => `${p.period_code}:${p.academic_year}`;
@@ -243,7 +246,7 @@ export const AddStudentFlow: React.FC<{
                     options={[
                       { value: 'termly', label: 'فصل دراسي' },
                       { value: 'yearly', label: 'الفصلان معاً', sub: yearlyOn ? undefined : 'غير متاح الآن', disabled: !yearlyOn },
-                      { value: 'daily', label: 'يومي', sub: dailyOn ? `${moneyText(line?.price_daily)} نقداً في الباص` : 'غير مفعّل', disabled: !dailyOn },
+                      { value: 'daily', label: 'يومي', sub: dailyOn ? `${moneyText(line?.price_daily)} نقداً في الباص` : companyDaily ? 'لا يُباع على هذا الخط' : 'غير مفعّل', disabled: !dailyOn },
                     ]} />
                   {d.type !== 'daily' && (periodsQuery.loading ? <SkeletonForm rows={1} /> : periodsForType.length === 0
                     ? <Note tone="warning" title="لا فترة متاحة للدفع الآن لهذا النوع">افتح الفترة من صفحة «مواعيد الاشتراك»، أو اختر نوعاً آخر.</Note>

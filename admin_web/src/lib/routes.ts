@@ -43,7 +43,6 @@ export const OffersPage = page(() => import('../pages/platform/OffersPage'), 'Of
 // One company's workspace.
 export const TodayPage = page(() => import('../pages/TodayPage'), 'TodayPage');
 export const ReceiptsPage = page(() => import('../pages/ReceiptsPage'), 'ReceiptsPage');
-export const PasswordRequestsPage = page(() => import('../pages/PasswordRequestsPage'), 'PasswordRequestsPage');
 export const NotificationsPage = page(() => import('../pages/NotificationsPage'), 'NotificationsPage');
 export const StudentsPage = page(() => import('../pages/StudentsPage'), 'StudentsPage');
 export const SupervisorsPage = page(() => import('../pages/SupervisorsPage'), 'SupervisorsPage');

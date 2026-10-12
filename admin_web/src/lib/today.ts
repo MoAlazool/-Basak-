@@ -169,10 +169,10 @@ export const names = (list: string[], max = 3) => (list.length <= max ? list.joi
 
 /**
  * The company's «يحتاج منك الآن», in the order of the board: what blocks money
- * first, then receipts, password requests, lines without a supervisor, lines
- * students cannot see, trips over the bus.
+ * first, then receipts, lines without a supervisor, lines students cannot
+ * see, trips over the bus. Password requests are the platform's (platformToday).
  */
-export function companyAttention(d: CompanyToday, o: { base: string; passwordRequests: number; now?: Date }): Attention[] {
+export function companyAttention(d: CompanyToday, o: { base: string; now?: Date }): Attention[] {
   const out: Attention[] = [];
   const { base } = o;
   const live = d.lines.filter((l) => l.is_active);
@@ -184,9 +184,6 @@ export function companyAttention(d: CompanyToday, o: { base: string; passwordReq
     const parts = [r.waiting === 1 ? agoText(r.oldest_at, o.now) : oldestText(r.oldest_at, o.now)];
     if (r.last_attempt) parts.push(r.waiting === 1 ? 'في آخر محاولة' : `${someOf(r.last_attempt)} منها في آخر محاولة`);
     out.push({ key: 'receipts', count: r.waiting, tone: 'warning', title: receiptsTitle(r.waiting), sub: parts.filter(Boolean).join(' · ') || 'راجعها ليبدأ اشتراك أصحابها', action: 'راجع الإيصالات', to: `${base}/receipts` });
-  }
-  if (o.passwordRequests > 0) {
-    out.push({ key: 'passwords', count: o.passwordRequests, tone: 'teal', title: forgotTitle(o.passwordRequests), sub: o.passwordRequests === 1 ? 'أعطِه رمزاً مؤقتاً يدخل به' : 'أعطِ كل طالب رمزاً مؤقتاً يدخل به', action: 'افتح الطلبات', to: `${base}/password-requests` });
   }
   const alone = live.filter((l) => l.supervisors.length === 0);
   if (alone.length === 1) {

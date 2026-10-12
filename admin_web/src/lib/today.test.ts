@@ -87,30 +87,30 @@ describe('companyAttention', () => {
         line({ id: 'd', name: 'فارسكور', over: [{ id: 't', time: '07:15', riders: 47, direction: 'departure' }] }),
       ],
     });
-    const items = companyAttention(d, { base, passwordRequests: 2, now: NOW });
+    const items = companyAttention(d, { base, now: NOW });
     expect(items.map((a) => [a.title, a.sub, a.action])).toEqual([
       ['7 إيصالات تنتظر مراجعتك', 'أقدمها منذ 3 ساعات · واحد منها في آخر محاولة', 'راجع الإيصالات'],
-      ['طالبان نسيا كلمة المرور', 'أعطِ كل طالب رمزاً مؤقتاً يدخل به', 'افتح الطلبات'],
       ['خط شربين بلا مشرف', 'لا أحد يسجّل ركابه عند الصعود', 'عيّن مشرفاً'],
       ['خط كفر البطيخ لا يظهر للطلاب', 'تنقصه رحلة ذهاب إلى جامعة دمياط', 'أكمل الخط'],
       ['رحلة فارسكور 7:15 ص أكبر من الباص', '47 راكباً أكّدوا والباص 45 مقعداً', 'اعرض الرحلة'],
     ]);
-    expect(items[3].to).toBe('/c/c1/lines/c');
+    expect(items[2].to).toBe('/c/c1/lines/c');
+    expect(items.some((a) => a.key === 'passwords')).toBe(false);
   });
   it('is empty when nothing waits; a stopped line is not a problem', () => {
-    expect(companyAttention(company({ lines: [line({ is_active: false, visible: false, hidden: 'line_inactive', supervisors: [] })] }), { base, passwordRequests: 0 })).toEqual([]);
+    expect(companyAttention(company({ lines: [line({ is_active: false, visible: false, hidden: 'line_inactive', supervisors: [] })] }), { base })).toEqual([]);
   });
   it('groups several lines into one row and puts a missing payment method first', () => {
     const d = company({
       setup: { ...company().setup, payment_methods: 0 },
       lines: [line({ id: 'a', name: 'أ', supervisors: [] }), line({ id: 'b', name: 'ب', supervisors: [] }), line({ id: 'c', name: 'ج', supervisors: [] })],
     });
-    const items = companyAttention(d, { base, passwordRequests: 0 });
+    const items = companyAttention(d, { base });
     expect(items[0].key).toBe('pay');
     expect(items[1]).toMatchObject({ title: '3 خطوط بلا مشرف', sub: 'أ · ب · ج', to: '/c/c1/supervisors' });
   });
   it('one receipt reads in the singular', () => {
-    const [r] = companyAttention(company({ receipts: { waiting: 1, oldest_at: hoursAgo(2), last_attempt: 1 } }), { base, passwordRequests: 0, now: NOW });
+    const [r] = companyAttention(company({ receipts: { waiting: 1, oldest_at: hoursAgo(2), last_attempt: 1 } }), { base, now: NOW });
     expect([r.title, r.sub]).toEqual(['إيصال ينتظر مراجعتك', 'منذ ساعتين · في آخر محاولة']);
   });
 });

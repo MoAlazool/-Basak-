@@ -633,8 +633,8 @@ void main() {
     testWidgets('step 1 asks for the phone and says where the code comes from', (tester) async {
       await open(tester);
       expect(find.text('استعادة كلمة المرور'), findsOneWidget);
-      expect(find.text('اكتب رقم هاتفك، ونرسل طلباً لإدارة شركتك لتعطيك رمز الاستعادة.'), findsOneWidget);
-      expect(find.text('الرمز لا يصل برسالة نصية. تأخذه من إدارة الشركة، وهو صالح 30 دقيقة.'), findsOneWidget);
+      expect(find.text('اكتب رقم هاتفك، ونرسل طلباً لفريق باصك ليعطيك رمز الاستعادة.'), findsOneWidget);
+      expect(find.text('الرمز لا يصل برسالة نصية. تأخذه من فريق باصك، وهو صالح 30 دقيقة.'), findsOneWidget);
 
       // Neither way forward works without a phone number.
       await _tap(tester, 'forgot-send');
@@ -647,7 +647,7 @@ void main() {
       await _tap(tester, 'forgot-send');
       expect(repo.resetRequests, ['01012345678']);
       expect(find.text('أدخل الرمز'), findsOneWidget);
-      expect(find.text('ستة أرقام من إدارة الشركة، صالحة 30 دقيقة من لحظة إصدارها.'), findsOneWidget);
+      expect(find.text('ستة أرقام من فريق باصك، صالحة 30 دقيقة من لحظة إصدارها.'), findsOneWidget);
     });
 
     testWidgets('step 2 checks the six digits before the new password has a page of its own', (tester) async {

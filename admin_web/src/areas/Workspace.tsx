@@ -15,7 +15,7 @@ import { OPEN_RESET_STATUSES } from '../lib/resetRequests';
 import { COMPANY_NAV, MOVED_SLUGS } from '../lib/nav';
 import { AdminProfile, CompanyScope, CompanyScopeProvider, companyAccountStatusLabel } from '../lib/adminScope';
 import {
-  AnalyticsPage, GovernoratesPage, LineNewPage, LinePage, LinesPage, NotificationsPage, PasswordRequestsPage, PaymentMethodsPage, ReceiptDetailsPage,
+  AnalyticsPage, GovernoratesPage, LineNewPage, LinePage, LinesPage, NotificationsPage, PaymentMethodsPage, ReceiptDetailsPage,
   ReceiptsPage, ReportsPage, RideConfirmationPage, StudentsPage, SubscriptionPeriodsPage, SupervisorsPage, TeamPage,
   TodayPage, WalletCardPage,
 } from '../lib/routes';
@@ -87,7 +87,8 @@ export const Workspace: React.FC<{ admin: AdminProfile; onLogout: () => void }> 
           <Routes>
             <Route index element={<TodayPage />} />
             <Route path="receipts" element={<ReceiptsPage />} />
-            <Route path="password-requests" element={<PasswordRequestsPage />} />
+            {/* Password requests are the platform's alone (/platform/password-requests). */}
+            <Route path="password-requests" element={<Navigate to={admin.role === 'super_admin' ? '/platform/password-requests' : `/c/${company.id}`} replace />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="students" element={<StudentsPage />} />
             <Route path="supervisors" element={<SupervisorsPage />} />
@@ -126,21 +127,20 @@ export const useResetRequestCount = (companyId: string | null) =>
   usePageData(companyId ? keys.company(companyId, 'resetRequests', 'count') : keys.platform('resetRequests', 'count'), () => countResetRequests(companyId)).data ?? 0;
 
 /**
- * The workspace frame with what is waiting for the admin: receipts to review
- * and password-reset requests, as red counts. The total is in the browser tab's
- * title too, for when the tab is in the back.
+ * The workspace frame with what is waiting for the admin: receipts to review,
+ * as a red count. The count is in the browser tab's title too, for when the tab
+ * is in the back. Password-reset requests are the platform's (PlatformArea).
  */
 const WorkspaceShell: React.FC<{ admin: AdminProfile; company: CompanyScope; onLogout: () => void; children: React.ReactNode }> = ({ admin, company, onLogout, children }) => {
   const overview = useCompanyOverview(company.id).data;
   const receipts = overview?.pending_receipts ?? 0;
-  const requests = useResetRequestCount(company.id);
-  useTabCount(receipts + requests);
+  useTabCount(receipts);
   const isPlatform = admin.role === 'super_admin';
   return (
     <AppShell role={isPlatform ? 'workspace' : 'company'} groups={COMPANY_NAV} base={`/c/${company.id}`} scope="لوحة الشركة"
       companyName={company.name} companyId={company.id} who={whoOf(admin)} onLogout={onLogout}
       mark={overview?.company && (overview.company.emblem_path || overview.company.logo_path) ? <CompanyMark name={company.name} brand={overview.company} size="md" className="!h-9 !w-9 !rounded-control" /> : undefined}
-      badges={{ receipts, requests }} workspaceBar={isPlatform ? <Suspense fallback={<div className="h-12 flex-none bg-ink" />}><WorkspaceBar company={company} /></Suspense> : undefined}>
+      badges={{ receipts }} workspaceBar={isPlatform ? <Suspense fallback={<div className="h-12 flex-none bg-ink" />}><WorkspaceBar company={company} /></Suspense> : undefined}>
       {children}
     </AppShell>
   );
