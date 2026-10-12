@@ -76,6 +76,7 @@ describe('what blocks the save', () => {
     const d = emptyDraft('co', ctx.sold);
     expect(Object.values(d.prices).every((p) => p.price === '')).toBe(true);
     expect(d.price_daily).toBe('');
+    expect(d.daily_enabled).toBe(true);
     expect(d.prices.summer.enabled).toBe(false);
     const steps = new Set(draftIssues(d, ctx).map((i) => i.step));
     expect([...steps].sort()).toEqual([1, 2, 3, 4]);
@@ -109,11 +110,12 @@ describe('what blocks the save', () => {
     d.stations[1].name = ' ';
     expect(draftIssues(d, ctx).map((i) => i.step)).toEqual([1, 2]);
   });
-  it('the daily price only when the company sells the daily ride', () => {
+  it('the daily price only when the company sells the daily ride and it is on for the line', () => {
     const d = ready();
     d.price_daily = '';
-    expect(draftIssues(d, ctx).map((i) => i.message)).toEqual(['اليومي (نقداً في الباص) بلا سعر.']);
+    expect(draftIssues(d, ctx).map((i) => i.message)).toEqual(['اليومي (نقداً في الباص) مفتوح للبيع وبلا سعر.']);
     expect(draftIssues(d, { ...ctx, daily: false })).toEqual([]);
+    expect(draftIssues({ ...d, daily_enabled: false }, ctx)).toEqual([]);
   });
 });
 
@@ -132,6 +134,12 @@ describe('the save payload', () => {
       { option: 'both', price: null, is_enabled: false }, { option: 'summer', price: null, is_enabled: false },
     ]);
     expect(p).toMatchObject({ price_termly: 3200, price_yearly: 0, price_daily: 45, destination_university_id: null, origin_name: '' });
+  });
+  it('daily switched off saves the line with no daily price, whatever was typed', () => {
+    const d = { ...ready(), daily_enabled: false };
+    expect(buildSavePayload(d).price_daily).toBe(0);
+    expect(pricesText(d)).toBe('الأول 3,200 ج.م · الثاني 3,200 ج.م');
+    expect(buildSavePayload({ ...d, daily_enabled: true }).price_daily).toBe(45);
   });
   it('keeps the line id once known, so a second save edits instead of adding a line', () => {
     const d = { ...ready(), id: 'line-1' };
@@ -172,6 +180,12 @@ describe('a saved line as a draft', () => {
     expect(d.prices.second).toEqual({ enabled: false, price: '' });
     expect(d.prices.summer).toEqual({ enabled: false, price: '' });
     expect(d.capacity).toBe('50');
+    expect([d.price_daily, d.daily_enabled]).toEqual([45, true]);
+  });
+  it('a line with no daily price opens with daily switched off', () => {
+    const d = draftFromLine({ ...saved, price_daily: 0 }, 50);
+    expect([d.price_daily, d.daily_enabled]).toEqual(['', false]);
+    expect(draftIssues(d, ctx).filter((i) => i.step === 4)).toEqual([]);
   });
 });
 

@@ -160,14 +160,14 @@ export const StudentPanel: React.FC<{
 
       <section className="flex flex-col gap-3">
         <PanelHead>كلمة المرور</PanelHead>
-        {student.open_reset && (
+        {isSuper && student.open_reset && (
           <div className="flex items-start gap-3 rounded-inner bg-warn-bg px-4 py-3">
             <Icon name="key" size={18} className="mt-0.5 text-warn" />
             <div className="min-w-0 flex-1">
               <div className="text-small font-semibold">طلب المساعدة في كلمة المرور {agoText(student.open_reset.requested_at)}</div>
               <div className="text-label text-ink-2">اتصل به لتتأكد أنه هو ثم أعطه رمزاً.</div>
             </div>
-            <Button sm kind="tonal" to={`${base}/password-requests?request=${student.open_reset.id}`} className="!bg-surface">افتح الطلب</Button>
+            <Button sm kind="tonal" to={`/platform/password-requests?request=${student.open_reset.id}`} className="!bg-surface">افتح الطلب</Button>
           </div>
         )}
         {isSuper ? (
@@ -176,8 +176,8 @@ export const StudentPanel: React.FC<{
             <p className="m-0 text-label text-ink-2">تتوقف كلمته الحالية، ويُطلب منه تغيير المؤقتة عند أول دخول.</p>
             <Button sm kind="secondary" icon="key" disabled={!online} className="self-start max-sm:!h-12 max-sm:self-stretch" onClick={() => setDialog('reset')}>إعادة تعيين كلمة المرور</Button>
           </div>
-        ) : !student.open_reset && (
-          <p className="m-0 text-label text-ink-2">لا تظهر كلمة المرور لأحد. إن نسيها يضغط «نسيت كلمة المرور» في التطبيق، فيصلك طلبه في صفحة «طلبات كلمة المرور».</p>
+        ) : (
+          <p className="m-0 text-label text-ink-2">لا تظهر كلمة المرور لأحد. إن نسيها يضغط «نسيت كلمة المرور» في التطبيق، ويتولّى فريق باصك طلبه.</p>
         )}
       </section>
 

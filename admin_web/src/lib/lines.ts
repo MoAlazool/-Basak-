@@ -28,6 +28,8 @@ export interface LineDraft {
   capacity: string;
   prices: Record<SaleOption, PriceDraft>;
   price_daily: number | '';
+  /** Daily is sold on this line. Off saves the daily price as 0 (the line then sells no daily). */
+  daily_enabled: boolean;
   is_active: boolean;
   stations: StationDraft[];
   trips: TripDraft[];
@@ -80,7 +82,7 @@ const blankPrices = (sold?: Partial<Record<SaleOption, boolean>>): Record<SaleOp
 /** A new line: nothing typed, no price written for the admin, one empty station. */
 export function emptyDraft(companyId: string, sold?: Partial<Record<SaleOption, boolean>>): LineDraft {
   return {
-    company_id: companyId, name: '', university_ids: [], capacity: '', prices: blankPrices(sold), price_daily: '',
+    company_id: companyId, name: '', university_ids: [], capacity: '', prices: blankPrices(sold), price_daily: '', daily_enabled: true,
     is_active: true, stations: [{ key: newKey(), name: '' }], trips: [],
   };
 }
@@ -103,6 +105,7 @@ export function draftFromLine(line: LineLike, capacity: number | null | undefine
       return [o, row ? { enabled: row.is_enabled, price: row.price > 0 ? Number(row.price) : '' } : { enabled: false, price: '' }];
     })) as Record<SaleOption, PriceDraft>,
     price_daily: line.price_daily > 0 ? Number(line.price_daily) : '',
+    daily_enabled: line.price_daily > 0,
     is_active: line.is_active, stations,
     trips: line.line_trips.filter((t) => t.is_active)
       .sort((a, b) => a.direction.localeCompare(b.direction) || a.start_time.localeCompare(b.start_time))
@@ -172,6 +175,8 @@ export interface SaleContext {
   uniName: (id: string) => string;
 }
 export const priceOf = (p: PriceDraft) => (p.price === '' ? 0 : Number(p.price));
+/** The daily price the line sells at: 0 while daily is switched off on it. */
+export const dailyPrice = (d: Pick<LineDraft, 'price_daily' | 'daily_enabled'>) => (d.daily_enabled && d.price_daily !== '' ? Number(d.price_daily) : 0);
 export const isSold = (ctx: Pick<SaleContext, 'sold'>, o: SaleOption) => (ctx.sold ? !!ctx.sold[o] : true);
 
 /** Every reason the line cannot be saved yet, by step. Nothing here is a warning: each one blocks the save. */
@@ -207,7 +212,7 @@ export function draftIssues(d: LineDraft, ctx: SaleContext): Issue[] {
   SALE_OPTIONS.forEach((o) => {
     if (isSold(ctx, o) && d.prices[o].enabled && priceOf(d.prices[o]) <= 0) out.push({ step: 4, message: `${optionName[o]} مفتوح للبيع وبلا سعر.` });
   });
-  if (ctx.daily && (d.price_daily === '' || Number(d.price_daily) <= 0)) out.push({ step: 4, message: 'اليومي (نقداً في الباص) بلا سعر.' });
+  if (ctx.daily && d.daily_enabled && dailyPrice(d) <= 0) out.push({ step: 4, message: 'اليومي (نقداً في الباص) مفتوح للبيع وبلا سعر.' });
   return out;
 }
 
@@ -251,7 +256,7 @@ export function buildSavePayload(d: LineDraft): SavePayload {
     id: d.id ?? null, company_id: d.company_id, name: d.name.trim(), origin_name: '', destination_university_id: null,
     university_ids: [...d.university_ids],
     price_termly: priceOf(d.prices.first), price_yearly: priceOf(d.prices.both),
-    price_daily: d.price_daily === '' ? 0 : Number(d.price_daily), ...(d.id ? {} : { is_active: d.is_active }),
+    price_daily: dailyPrice(d), ...(d.id ? {} : { is_active: d.is_active }),
     bus_capacity: seats.ok ? seats.value : null,
     stations: d.stations.map((s) => ({ id: s.id ?? null, name: s.name.trim() })),
     trips: d.trips.map((t) => ({
@@ -307,7 +312,7 @@ export function stepSubs(d: LineDraft): Record<1 | 2 | 3 | 4, string> {
   const seats = parseBusCapacity(d.capacity);
   const unis = d.university_ids.length;
   const uniText = unis === 1 ? 'جامعة واحدة' : unis === 2 ? 'جامعتان' : `${unis} ${unitWord(unis, W.university)}`;
-  const priced = SALE_OPTIONS.filter((o) => d.prices[o].enabled && priceOf(d.prices[o]) > 0).length + (Number(d.price_daily) > 0 ? 1 : 0);
+  const priced = SALE_OPTIONS.filter((o) => d.prices[o].enabled && priceOf(d.prices[o]) > 0).length + (dailyPrice(d) > 0 ? 1 : 0);
   return {
     1: [name, unis ? uniText : null, seats.ok && seats.value ? `${seats.value} ${unitWord(seats.value, W.seat)}` : null].filter(Boolean).join(' · '),
     2: d.stations.length ? countOf(d.stations.length, W.station) : '',
@@ -335,7 +340,7 @@ export function tripsRangeText(d: Pick<LineDraft, 'trips'>, direction: Direction
 export function pricesText(d: LineDraft, long = false): string {
   const short: Record<SaleOption, string> = { first: long ? 'الفصل الأول' : 'الأول', second: 'الثاني', both: 'الفصلان معاً', summer: 'الصيفي' };
   const parts = SALE_OPTIONS.filter((o) => d.prices[o].enabled && priceOf(d.prices[o]) > 0).map((o) => `${short[o]} ${priceOf(d.prices[o]).toLocaleString('en-US')} ج.م`);
-  if (Number(d.price_daily) > 0) parts.push(`اليومي ${Number(d.price_daily).toLocaleString('en-US')} ج.م`);
+  if (dailyPrice(d) > 0) parts.push(`اليومي ${dailyPrice(d).toLocaleString('en-US')} ج.م`);
   return parts.join(' · ');
 }
 
@@ -412,7 +417,7 @@ export function changeCount(saved: LineDraft, d: LineDraft): number {
   d.trips.forEach((t) => { const o = oldTr.get(t.key); if (!o || !sameTrip(o, t, keep)) n += 1; });
   saved.trips.forEach((t) => { if (!d.trips.some((x) => x.key === t.key)) n += 1; });
   SALE_OPTIONS.forEach((o) => { if (saved.prices[o].enabled !== d.prices[o].enabled || priceOf(saved.prices[o]) !== priceOf(d.prices[o])) n += 1; });
-  if (Number(saved.price_daily || 0) !== Number(d.price_daily || 0)) n += 1;
+  if (dailyPrice(saved) !== dailyPrice(d)) n += 1;
   return n;
 }
 /** «تعديل واحد لم يُحفظ», «تعديلان لم يُحفظا», «3 تعديلات لم تُحفظ». */

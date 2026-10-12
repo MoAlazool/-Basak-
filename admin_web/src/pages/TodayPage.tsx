@@ -4,7 +4,6 @@ import {
   cairo, clock, countText, dayText, num, NOUN, useOnline,
 } from '../ui';
 import { useAdminScope, useCompany } from '../lib/adminScope';
-import { useResetRequestCount } from '../areas/Workspace';
 import { SUBSCRIBER, companyAttention, isFirstRun, nOf, rideDayText, ridersTitle, useCompanyToday, type CompanyToday } from '../lib/today';
 
 const loadLinesTable = () => import('../components/today/LinesTable');
@@ -20,7 +19,6 @@ export const TodayPage: React.FC = () => {
   const company = useCompany();
   const base = `/c/${company.id}`;
   const { data, loading, error, updatedAt, refresh } = useCompanyToday(company.id);
-  const passwordRequests = useResetRequestCount(company.id);
   const online = useOnline();
   const today = data?.today ?? cairo(new Date()).day;
 
@@ -49,7 +47,7 @@ export const TodayPage: React.FC = () => {
           )}
           <Riders data={data} loading={loading} base={base} />
           <div className="grid grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-            <Attention data={data} base={base} passwordRequests={passwordRequests} stale={!online && !!updatedAt ? updatedAt : 0} loading={loading} platformAdmin={platformAdmin} stopped={stopped} />
+            <Attention data={data} base={base} stale={!online && !!updatedAt ? updatedAt : 0} loading={loading} stopped={stopped} />
             {!stopped && <Suspense fallback={<SkeletonList rows={3} />}><TodayInsights base={base} companyId={company.id} /></Suspense>}
           </div>
           {loading ? <SkeletonTable rows={6} cols={7} /> : data && <Suspense fallback={<SkeletonTable rows={6} cols={7} />}><LinesTable data={data} base={base} /></Suspense>}
@@ -61,9 +59,8 @@ export const TodayPage: React.FC = () => {
 };
 
 /* ── يحتاج منك الآن ─────────────────────────────────────────────────── */
-const Attention: React.FC<{ data: CompanyToday | null; base: string; passwordRequests: number; stale: number; loading: boolean; platformAdmin?: boolean; stopped?: boolean }> = ({ data, base, passwordRequests, stale, loading, platformAdmin, stopped }) => {
-  const items = useMemo(() => (data && !stopped ? companyAttention(data, { base, passwordRequests }).map((a) => (
-    platformAdmin && a.key === 'passwords' ? { ...a, sub: a.count === 1 ? 'يظهر أيضاً في طلبات المنصة' : 'يظهرون أيضاً في طلبات المنصة' } : a)) : []), [data, base, passwordRequests, platformAdmin, stopped]);
+const Attention: React.FC<{ data: CompanyToday | null; base: string; stale: number; loading: boolean; stopped?: boolean }> = ({ data, base, stale, loading, stopped }) => {
+  const items = useMemo(() => (data && !stopped ? companyAttention(data, { base }) : []), [data, base, stopped]);
   return (
     <Section title="يحتاج منك الآن"
       meta={data && items.length > 0 ? <Badge>{countText(items.length, NOUN.item)}</Badge> : undefined}

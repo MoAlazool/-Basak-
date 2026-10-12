@@ -29,6 +29,9 @@ replacement, and that every answer naming a company carries both paths.
 `e2e_student_home.sql` covers `get_student_home` (migration 20261125000001):
 who may call it, that a student's answer holds their own rows only, and that
 each part equals the function or read the app makes for it on its own.
+`e2e_daily_per_line.sql` covers daily per line (migration 20261125000003): a
+line with no daily price offers no daily in the catalog and refuses a student's
+daily subscription, as does a company not selling daily; admins are unchanged.
 
 ## 2. HTTP (GoTrue + PostgREST + Edge Functions, through supabase-js)
 

@@ -21,7 +21,6 @@ export const COMPANY_NAV: NavGroup[] = [
   { group: null, items: [{ id: 'today', slug: '', label: 'اليوم', icon: 'home', preload: routes.TodayPage.preload }] },
   { group: 'كل يوم', items: [
     { id: 'receipts', slug: 'receipts', label: 'الإيصالات', icon: 'receipt', badge: 'receipts', preload: routes.ReceiptsPage.preload },
-    { id: 'password-requests', slug: 'password-requests', label: 'طلبات كلمة المرور', icon: 'key', badge: 'requests', preload: routes.PasswordRequestsPage.preload },
     { id: 'notifications', slug: 'notifications', label: 'الإشعارات', icon: 'megaphone', preload: routes.NotificationsPage.preload }] },
   { group: 'الطلاب والفريق', items: [
     { id: 'students', slug: 'students', label: 'الطلاب', icon: 'users', preload: routes.StudentsPage.preload },
