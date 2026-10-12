@@ -282,7 +282,7 @@ class OffersState {
   /// it, or nothing known yet. Nothing about offers is then shown anywhere.
   final bool available;
 
-  /// The student's own switch («إظهار العروض» off).
+  /// Switched off for this student on the server (no switch in the app).
   final bool hidden;
 
   /// Already filtered to this student and ordered, the special ones first.
@@ -329,7 +329,6 @@ abstract class OffersGateway {
   Future<void> opened(String id);
   Future<dynamic> redeem(String offerId);
   Future<dynamic> confirm(String redemptionId, String pin);
-  Future<dynamic> setHidden(bool hidden);
 }
 
 class SupabaseOffersGateway implements OffersGateway {
@@ -365,12 +364,6 @@ class SupabaseOffersGateway implements OffersGateway {
   Future<dynamic> confirm(String redemptionId, String pin) {
     PerfTrace.count('offers.confirm');
     return _client.rpc('confirm_offer_redemption', params: {'p_redemption': redemptionId, 'p_pin': pin});
-  }
-
-  @override
-  Future<dynamic> setHidden(bool hidden) {
-    PerfTrace.count('offers.hide');
-    return _client.rpc('set_offers_hidden', params: {'p_hidden': hidden});
   }
 }
 
@@ -464,18 +457,6 @@ class OffersRepository {
     final answer = await _ask(() => _gateway.confirm(redemptionId, pin));
     if (answer is! Map) throw Exception(noCoupon);
     return (confirmed: answer['confirmed'] == true, triesLeft: _int(answer['tries_left'], 0));
-  }
-
-  /// The student's own switch. Returns what the server now holds.
-  ///
-  /// Hidden, the server has no offers for the student: that is written into
-  /// what this phone holds, so the caller's re-read is answered without a
-  /// request. Shown again, the offers have to be read.
-  Future<bool> setHidden(bool hidden) async {
-    final answer = await _ask(() => _gateway.setHidden(hidden));
-    final now = answer is bool ? answer : hidden;
-    if (now) await OfflineCache.applyLocal(cacheKey, (_) => {'hidden': true, 'offers': const <Object>[]});
-    return now;
   }
 
   Future<dynamic> _ask(Future<dynamic> Function() request) async {

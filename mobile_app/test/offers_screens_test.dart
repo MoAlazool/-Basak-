@@ -1,7 +1,6 @@
 // «عروض باصك» on screen: the strip on Home, the page of all offers, one offer
 // in full, the coupon at the till, the switch on the account page, and the
 // way in from a notification.
-import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -27,7 +26,6 @@ import 'package:basak_mobile/features/student/offers/offer_details_screen.dart';
 import 'package:basak_mobile/features/student/offers/offer_widgets.dart';
 import 'package:basak_mobile/features/student/offers/offers_repository.dart';
 import 'package:basak_mobile/features/student/offers/offers_screen.dart';
-import 'package:basak_mobile/features/student/offers/offers_setting.dart';
 import 'package:basak_mobile/features/student/offers/offers_strip.dart';
 import 'package:basak_mobile/features/student/profile/presentation/profile_screen.dart';
 import 'package:basak_mobile/features/student/qr/presentation/student_qr_screen.dart';
@@ -902,79 +900,17 @@ void main() {
     });
   });
 
-  group('«إظهار العروض» on the account page', () {
-    Future<void> open(WidgetTester tester) async {
-      _phone(tester, const Size(400, 1400));
-      PackageInfo.setMockInitialValues(
-          appName: 'باصك', packageName: 'basak', version: '1.0.6', buildNumber: '35', buildSignature: '');
-      await tester.pumpWidget(offersApp(
-        const Scaffold(body: ProfileScreen()),
-        _homeOverrides(gateway, clock, profile: {'full_name': 'سارة أحمد محمود', 'phone': '01023456789'}),
-      ));
-      await _settle(tester);
-    }
-
-    BasakSwitch toggle(WidgetTester tester) => tester.widget<BasakSwitch>(find.byKey(const Key('offers-switch')));
-
-    testWidgets('on while offers are shown; switching it off hides them, at once', (tester) async {
-      gateway.answer = offersJson([offerJson(1)]);
-      final answer = Completer<Object?>();
-      gateway.onHide = (hidden) {
-        gateway.answer = offersJson([offerJson(1)], hidden: hidden);
-        return answer.future;
-      };
-      await open(tester);
-      expect(find.byKey(const Key('profile-offers')), findsOneWidget);
-      expect(find.text('إظهار العروض'), findsOneWidget);
-      expect(toggle(tester).value, isTrue);
-
-      await tester.tap(find.byKey(const Key('offers-switch')));
-      await tester.pump();
-      expect(gateway.hides, [true]);
-      expect(toggle(tester).value, isFalse, reason: 'moved before the server answered');
-      expect(toggle(tester).onChanged, isNull, reason: 'one change at a time');
-
-      answer.complete(true);
-      await _settle(tester);
-      expect(toggle(tester).value, isFalse);
-      expect(toggle(tester).onChanged, isNotNull);
-      expect(find.byKey(const Key('profile-offers')), findsOneWidget, reason: 'hidden is not unavailable');
-
-      // And back on.
-      gateway.onHide = (hidden) {
-        gateway.answer = offersJson([offerJson(1)], hidden: hidden);
-        return hidden;
-      };
-      await tester.tap(find.byKey(const Key('offers-switch')));
-      await _settle(tester);
-      expect(gateway.hides, [true, false]);
-      expect(toggle(tester).value, isTrue);
-    });
-
-    testWidgets('the server cannot be told: the switch goes back and the reason is said', (tester) async {
-      gateway.answer = offersJson([offerJson(1)]);
-      final answer = Completer<Object?>();
-      gateway.onHide = (_) => answer.future;
-      await open(tester);
-      await tester.tap(find.byKey(const Key('offers-switch')));
-      await tester.pump();
-      expect(toggle(tester).value, isFalse);
-
-      answer.completeError(refusal('العروض للطلاب فقط.'));
-      await _settle(tester);
-      expect(toggle(tester).value, isTrue);
-      expect(find.text('العروض للطلاب فقط.'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 4));
-    });
-
-    testWidgets('a server without offers: no row at all', (tester) async {
-      gateway.failure = noSuchFunction;
-      await open(tester);
-      expect(find.text('حسابي'), findsOneWidget);
-      expect(find.byKey(const Key('profile-offers')), findsNothing);
-      expect(find.byType(OffersSwitch), findsNothing);
-      expect(find.text('إظهار العروض'), findsNothing);
-    });
+  testWidgets('the account page has no switch for offers', (tester) async {
+    _phone(tester, const Size(400, 1400));
+    PackageInfo.setMockInitialValues(
+        appName: 'باصك', packageName: 'basak', version: '1.0.6', buildNumber: '35', buildSignature: '');
+    await tester.pumpWidget(offersApp(
+      const Scaffold(body: ProfileScreen()),
+      _homeOverrides(gateway, clock, profile: {'full_name': 'سارة أحمد محمود', 'phone': '01023456789'}),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('إظهار العروض'), findsNothing);
+    expect(find.byKey(const Key('profile-offers')), findsNothing);
   });
 
   group('from a notification', () {

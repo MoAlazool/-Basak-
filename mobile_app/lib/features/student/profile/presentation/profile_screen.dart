@@ -8,13 +8,9 @@ import '../../../../core/ui/ui.dart';
 import '../../../../core/widgets/skeleton.dart';
 import '../../../auth/biometrics/presentation/biometric_setting_row.dart';
 import '../../../auth/providers/auth_provider.dart';
-import '../../../notifications/push/notification_platform.dart';
-import '../../../notifications/push/push_messaging.dart';
-import '../../../notifications/push/push_providers.dart';
 import '../../../rating/rating.dart';
 import '../../home/presentation/student_home_screen.dart';
 import '../../offers/offers_repository.dart';
-import '../../offers/offers_setting.dart';
 import 'help_sheet.dart';
 import 'profile_editor.dart';
 
@@ -29,7 +25,7 @@ final appVersionProvider = FutureProvider<String?>((ref) async {
 });
 
 /// «حسابي»: who is signed in, their details behind one «تعديل», what the app
-/// itself offers (help, the phone's notification setting), signing out, and
+/// itself offers (help, signing in with Face ID), signing out, and
 /// deleting the account as a quiet link beside the version. The company, the
 /// line and the supervisor are on Home and the subscription tab, not here.
 class ProfileScreen extends ConsumerWidget {
@@ -53,16 +49,14 @@ class ProfileScreen extends ConsumerWidget {
     }
   }
 
-  /// «التطبيق»: help, signing in with Face ID or a fingerprint (on a phone
-  /// that has one enrolled), the phone's own notification setting, then
-  /// whether merchants' offers are shown (where the server has them).
+  /// «التطبيق»: help, and signing in with Face ID or a fingerprint (on a
+  /// phone that has one enrolled). Notifications and offers have no switch
+  /// here: the phone's own settings hold the first, and offers are part of
+  /// the app.
   List<SettingRow> _appRows(BuildContext context, WidgetRef ref) {
     final journey = ref.watch(helpJourneyProvider);
     final support = ref.watch(helpSupportProvider);
-    final pushReady = ref.watch(pushReadyProvider).valueOrNull == true;
-    final permission = pushReady ? ref.watch(pushPermissionProvider).valueOrNull : null;
     final biometric = biometricSettingRow(context, ref);
-    final offers = offersSettingRow(ref);
     return [
       // Nobody to turn to yet (no subscription, no channels): no row.
       if (journey.isNotEmpty || support.isNotEmpty)
@@ -72,15 +66,6 @@ class ProfileScreen extends ConsumerWidget {
           onTap: () => HelpSheet.show(context, journey: journey, support: support),
         ),
       if (biometric != null) biometric,
-      if (permission != null)
-        SettingRow(
-          key: const Key('profile-phone-notifications'),
-          label: 'إشعارات الهاتف',
-          value: permission == PushPermission.granted ? 'مفعّلة' : 'متوقفة',
-          external: true,
-          onTap: NotificationPlatform.openSystemSettings,
-        ),
-      if (offers != null) offers,
       // Always there: the store's page for the app, asked for by the student.
       SettingRow(
         key: const Key('profile-rate'),
@@ -113,7 +98,6 @@ class ProfileScreen extends ConsumerWidget {
         if (user != null) ref.invalidate(studentProfileSummaryProvider(user.id));
         if (authState.isStudent) ref.invalidate(currentSubscriptionProvider);
         if (authState.isStudent) ref.invalidate(offersProvider);
-        ref.invalidate(pushPermissionProvider);
       },
       children: [
         Semantics(header: true, child: Text('حسابي', style: context.text.display)),

@@ -107,8 +107,6 @@ class FakeOffersGateway implements OffersGateway {
   final List<({String id, String pin})> pins = [];
   FutureOr<Object?> Function(String pin)? onConfirm;
 
-  final List<bool> hides = [];
-  FutureOr<Object?> Function(bool hidden)? onHide;
 
   @override
   Future<dynamic> myOffers() async {
@@ -136,12 +134,6 @@ class FakeOffersGateway implements OffersGateway {
   Future<dynamic> confirm(String redemptionId, String pin) async {
     pins.add((id: redemptionId, pin: pin));
     return await onConfirm?.call(pin);
-  }
-
-  @override
-  Future<dynamic> setHidden(bool hidden) async {
-    hides.add(hidden);
-    return onHide == null ? hidden : await onHide!(hidden);
   }
 }
 
