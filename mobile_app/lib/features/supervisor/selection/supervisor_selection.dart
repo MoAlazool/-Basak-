@@ -8,7 +8,9 @@
 //     TripDirection.fromWire(s)  -> the enum for a server string
 //
 //   class SupervisorSelection
-//     lineId     String?         the chosen line; null = the first line
+//     lineId     String?         the chosen line; null = the first line;
+//                                [allLines] = every line together
+//     isAllLines bool
 //     direction  TripDirection?  the chosen trip's direction; null = no trip
 //     tripTime   String?         the chosen trip's start time as the server
 //                                sends it ('06:55:00'); null = no trip
@@ -57,6 +59,11 @@ class SupervisorSelection {
   final String? tripId;
 
   const SupervisorSelection({this.lineId, this.direction, this.tripTime, this.tripId});
+
+  /// [lineId] for every line of the supervisor at once.
+  static const allLines = '*';
+
+  bool get isAllLines => lineId == allLines;
 
   bool get hasTrip => direction != null && tripTime != null;
 

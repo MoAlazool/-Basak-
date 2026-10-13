@@ -33,16 +33,51 @@ class TripCount {
   /// server sent them.
   final SupervisorTripTime? breakdown;
 
+  /// The line this trip is on; null on a trip of every line together.
+  final String? lineId;
+  final String? lineName;
+
+  /// Every line together: the trip of each line leaving at this time.
+  final List<TripCount> parts;
+
   const TripCount({
     required this.direction,
     required this.time,
     required this.tripId,
     required this.riders,
     this.breakdown,
+    this.lineId,
+    this.lineName,
+    this.parts = const [],
   });
 
   bool get isReturn => direction == 'return';
+
+  /// Riders per university, most first; of every line when [parts] are.
+  List<TripTimeUniversity> get universities {
+    final sums = <String, int>{};
+    for (final trip in parts.isEmpty ? [this] : parts) {
+      final b = trip.breakdown;
+      if (b == null) continue;
+      if (b.universities.isNotEmpty) {
+        for (final u in b.universities) {
+          sums[u.name] = (sums[u.name] ?? 0) + u.students;
+        }
+      } else {
+        for (final r in b.riders) {
+          sums[r.universityName] = (sums[r.universityName] ?? 0) + 1;
+        }
+      }
+    }
+    return byUniversity(sums);
+  }
 }
+
+/// `{university: riders}` as rows, most riders first, then by name.
+List<TripTimeUniversity> byUniversity(Map<String, int> sums) => [
+      for (final e in sums.entries)
+        if (e.value > 0) TripTimeUniversity(name: e.key, students: e.value),
+    ]..sort((a, b) => b.students != a.students ? b.students.compareTo(a.students) : a.name.compareTo(b.name));
 
 /// The numbers of one line on one day: every trip of both directions with its
 /// riders, trips nobody rides included.
@@ -75,16 +110,54 @@ class DayCounts {
             : r.tripId == null && _hhmm(r.time) == _hhmm(trip.startTime));
         final row = index < 0 ? null : left.removeAt(index);
         trips.add(TripCount(
-            direction: direction, time: trip.startTime, tripId: trip.id, riders: row?.students ?? 0, breakdown: row));
+            direction: direction,
+            time: trip.startTime,
+            tripId: trip.id,
+            riders: row?.students ?? 0,
+            breakdown: row,
+            lineId: line.id,
+            lineName: line.name));
       }
       for (final row in left) {
         trips.add(TripCount(
-            direction: direction, time: row.time, tripId: row.tripId, riders: row.students, breakdown: row));
+            direction: direction,
+            time: row.time,
+            tripId: row.tripId,
+            riders: row.students,
+            breakdown: row,
+            lineId: line.id,
+            lineName: line.name));
       }
       return trips..sort((a, b) => _hhmm(a.time).compareTo(_hhmm(b.time)));
     }
 
     return DayCounts(day: DateTime(day.year, day.month, day.day), going: side('departure'), returning: side('return'));
+  }
+
+  /// Every line of [lines] together: the trips leaving at the same time are
+  /// one, their riders added up, each line's kept in [TripCount.parts].
+  factory DayCounts.ofLines(SupervisorDashboard data, List<SupervisorLine> lines, DateTime day) {
+    final each = [for (final line in lines) DayCounts.of(data, line, day)];
+    List<TripCount> merged(String direction) {
+      final byTime = <String, List<TripCount>>{};
+      for (final counts in each) {
+        for (final trip in counts.of(direction)) {
+          byTime.putIfAbsent(_hhmm(trip.time), () => []).add(trip);
+        }
+      }
+      return [
+        for (final parts in byTime.values)
+          TripCount(
+            direction: direction,
+            time: parts.first.time,
+            tripId: null,
+            riders: parts.fold(0, (sum, t) => sum + t.riders),
+            parts: parts..sort((a, b) => b.riders.compareTo(a.riders)),
+          ),
+      ]..sort((a, b) => _hhmm(a.time).compareTo(_hhmm(b.time)));
+    }
+
+    return DayCounts(day: DateTime(day.year, day.month, day.day), going: merged('departure'), returning: merged('return'));
   }
 }
 

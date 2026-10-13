@@ -85,6 +85,11 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
 
   String _lineName(String name) => name.startsWith('خط ') ? name : 'خط $name';
 
+  static String _universityOf(ManifestStudent s) {
+    final name = (s.university ?? '').trim();
+    return name.isEmpty ? unknownUniversity : name;
+  }
+
   Widget _header(String date) => Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
@@ -160,6 +165,19 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     final direction = _directionOf(selection);
     final day = ref.watch(supervisorTripDayProvider);
     final tomorrow = day != null && !DateUtils.isSameDay(day, data.today);
+
+    if (selection.isAllLines && data.lines.length > 1) {
+      final shown = tomorrow ? day : data.today;
+      return BasakPage(
+        bottomInset: bottom,
+        onRefresh: () => _refresh(null),
+        children: [
+          _header(tomorrow ? SupervisorWords.dayTitle(day, now) : SupervisorWords.date(data.today)),
+          ..._allLines(data, DayCounts.ofLines(data, data.lines, shown), direction, selection, shown,
+              today: !tomorrow, now: now),
+        ],
+      );
+    }
     final counts = DayCounts.of(data, line, tomorrow ? day : data.today);
     final capacity = ref.watch(lineCapacitiesProvider).valueOrNull?[line.id];
 
@@ -196,7 +214,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
   }
 
   /// "لا توجد رحلات عودة": the two directions to look at, and one sentence.
-  List<Widget> _noTrips(SupervisorLine line, String direction, DayCounts counts) => [
+  List<Widget> _noTrips(String lineName, String direction, DayCounts counts) => [
         BasakSegmented<String>(
           options: const ['departure', 'return'],
           value: direction,
@@ -209,30 +227,162 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
           page: true,
           icon: LucideIcons.calendarX2,
           title: 'لا توجد رحلات ${SupervisorWords.direction(direction)}',
-          message: '${TripSheet.noTrips(direction, _lineName(line.name))} تظهر هنا فور إضافتها.',
+          message: '${TripSheet.noTrips(direction, lineName)} تظهر هنا فور إضافتها.',
         ),
       ];
 
-  Widget _stopsHead(int stops) => Padding(
+  Widget _sectionHead(String title, String trailing) => Padding(
         padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s4),
         child: Row(
           children: [
-            Expanded(child: Text('المحطات', style: context.text.label.copyWith(color: context.colors.ink2))),
-            Text(ArabicCount.stops(stops),
+            Expanded(child: Text(title, style: context.text.label.copyWith(color: context.colors.ink2))),
+            Text(trailing,
                 style: context.text.label.copyWith(color: context.colors.ink3, fontWeight: FontWeight.w400)),
           ],
         ),
       );
 
+  Widget _stopsHead(int stops) => _sectionHead('المحطات', ArabicCount.stops(stops));
+
+  /// Said on every return (who goes home from where), and on a departure
+  /// that serves more than one university.
+  static bool _byUniversityShown(String direction, List<TripTimeUniversity> rows) =>
+      rows.isNotEmpty && (direction == 'return' || rows.length > 1);
+
+  /// The riders of the trip by university, most first.
+  Widget _universities(List<TripTimeUniversity> rows) {
+    final most = rows.first.students;
+    return Column(
+      key: const Key('by-university'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHead('حسب الجامعة', ArabicCount.students(rows.fold(0, (sum, u) => sum + u.students))),
+        const SizedBox(height: BasakSpace.s8),
+        BasakCard(
+          padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final u in rows)
+                Meter(
+                  key: Key('university-${u.name}'),
+                  label: u.name,
+                  value: '${u.students}',
+                  share: most == 0 ? 0 : u.students / most,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Every line together, one time of [day]: how many confirmed, by
+  /// university and by line; a line opens its own trip.
+  List<Widget> _allLines(SupervisorDashboard data, DayCounts counts, String direction, SupervisorSelection selection,
+      DateTime day, {required bool today, required DateTime now}) {
+    const name = 'كل الخطوط';
+    final trips = counts.of(direction);
+    final backToToday = Center(
+      child: BasakButton(
+        key: const Key('back-to-today'),
+        label: 'عرض رحلات اليوم',
+        variant: BasakButtonVariant.quiet,
+        size: BasakButtonSize.small,
+        expand: false,
+        onPressed: () => ref.read(supervisorTripDayProvider.notifier).state = null,
+      ),
+    );
+    if (trips.isEmpty) return [..._noTrips(name, direction, counts), if (!today) backToToday];
+
+    // The one chosen; else today's next to leave; else the first.
+    final trip = trips
+            .where((t) => selection.tripTime != null && minutesOf(t.time) == minutesOf(selection.tripTime!))
+            .firstOrNull ??
+        (today ? trips.where((t) => !SupervisorWords.isPast(t.time, now)).firstOrNull : null) ??
+        trips.first;
+    final firm = SupervisorWords.firmness(data.profile.vote, day, now);
+    final universities = trip.universities;
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final verb = firm.isFinal ? 'سيركب' : 'أكّد';
+
+    return [
+      TripCard(
+        key: const Key('trip-card'),
+        time: BasakUi.time12(trip.time),
+        direction: SupervisorWords.direction(trip.direction),
+        detail: '$name · ${ArabicCount.lines(trip.parts.length)}',
+        onChange: () => _changeTrip(counts: counts, current: trip, direction: direction, lineName: name, today: today),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              trip.riders == 0 ? 'لم يؤكّد أحد بعد' : '$verb ${ArabicCount.students(trip.riders)}',
+              style: context.text.body.copyWith(fontWeight: FontWeight.w600),
+            ),
+            Text(firm.text,
+                style: context.text.label.copyWith(color: context.colors.ink3, fontWeight: FontWeight.w400)),
+          ],
+        ),
+      ),
+      if (_byUniversityShown(direction, universities)) _universities(universities),
+      Column(
+        key: const Key('by-line'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _sectionHead('حسب الخط', ArabicCount.lines(trip.parts.length)),
+          const SizedBox(height: BasakSpace.s8),
+          BasakCard(
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s16, vertical: BasakSpace.s4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (i, part) in trip.parts.indexed) ...[
+                  if (i > 0) Divider(height: 1, thickness: 1, color: context.colors.hairline),
+                  PersonRow(
+                    key: Key('by-line-${part.lineId}'),
+                    name: _lineName(part.lineName ?? ''),
+                    caption: part.riders == 0 ? 'لم يؤكّد أحد' : ArabicCount.students(part.riders),
+                    trailing: Icon(rtl ? LucideIcons.chevronLeft : LucideIcons.chevronRight,
+                        size: 18, color: context.colors.ink3),
+                    onTap: () {
+                      final selected = ref.read(supervisorSelectionProvider.notifier);
+                      selected.selectLine(part.lineId!);
+                      selected.selectTrip(
+                          direction: TripDirection.fromWire(part.direction), time: part.time, tripId: part.tripId);
+                      setState(() {
+                        _direction = null;
+                        _openStations.clear();
+                      });
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+      if (!today) backToToday,
+    ];
+  }
+
   List<Widget> _today(TripManifest m, SupervisorLine line, DayCounts counts, int? capacity) {
     final trip = m.trip;
-    if (m.trips.isEmpty || trip == null) return _noTrips(line, m.direction, counts);
+    if (m.trips.isEmpty || trip == null) return _noTrips(_lineName(line.name), m.direction, counts);
 
     final lineName = _lineName(m.lineName.isEmpty ? line.name : m.lineName);
     final current = counts.of(m.direction).where((t) => t.tripId == trip.id).firstOrNull ??
         counts.of(m.direction).where((t) => minutesOf(t.time) == minutesOf(trip.startTime)).firstOrNull;
     final total = m.totalStudents, boarded = m.checkedIn;
     final seats = CapacityNote.forTrip(total, capacity);
+    final perUniversity = <String, int>{};
+    for (final s in m.students) {
+      perUniversity[_universityOf(s)] = (perUniversity[_universityOf(s)] ?? 0) + 1;
+    }
+    final universities = byUniversity(perUniversity);
     final stations = m.stations.where((s) => s.stopTime != null || s.students.isNotEmpty).toList();
     // The stop the bus is at: the first one where someone has yet to board,
     // once boarding has begun.
@@ -305,6 +455,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
                 value: boarded / total,
               ),
       ),
+      if (_byUniversityShown(m.direction, universities)) _universities(universities),
       if (stations.isNotEmpty)
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -389,7 +540,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
         onPressed: () => ref.read(supervisorTripDayProvider.notifier).state = null,
       ),
     );
-    if (trips.isEmpty) return [..._noTrips(line, direction, counts), backToToday];
+    if (trips.isEmpty) return [..._noTrips(lineName, direction, counts), backToToday];
 
     final trip = trips
             .where((t) => selection.tripId != null
@@ -402,6 +553,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     final breakdown = trip.breakdown;
     final stations = breakdown?.stations ?? const <TripTimeStation>[];
     final dayName = SupervisorWords.dayName(day, now);
+    final universities = trip.universities;
 
     return [
       TripCard(
@@ -426,6 +578,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
           ],
         ),
       ),
+      if (_byUniversityShown(direction, universities)) _universities(universities),
       if (trip.riders > 0 && stations.isEmpty)
         const EmptyState(icon: LucideIcons.users, title: 'التفاصيل غير متاحة')
       else if (stations.isNotEmpty)
