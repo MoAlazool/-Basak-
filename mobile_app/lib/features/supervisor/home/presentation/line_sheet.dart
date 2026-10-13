@@ -33,11 +33,9 @@ class SupervisorLineSheet extends ConsumerStatefulWidget {
         ArabicCount.subscribers(lines.fold(0, (sum, l) => sum + l.registeredStudents)),
       ].join(' · ');
 
-  /// "جامعة المنصورة الجديدة · 124 مشتركاً".
-  static String caption(SupervisorLine line) => [
-        if (line.destination != null) line.destination!,
-        ArabicCount.subscribers(line.registeredStudents),
-      ].join(' · ');
+  /// "124 مشتركاً". No university: a line serves several, and one named
+  /// would read as the only one.
+  static String caption(SupervisorLine line) => ArabicCount.subscribers(line.registeredStudents);
 
   @override
   ConsumerState<SupervisorLineSheet> createState() => _SupervisorLineSheetState();

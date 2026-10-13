@@ -20,6 +20,7 @@ class SupabaseRpcs {
   static const String getSupervisorMonthlySummary = 'get_supervisor_monthly_summary';
   static const String getSupervisorTripManifest = 'get_supervisor_trip_manifest';
   static const String getMyLineCapacities = 'get_my_line_capacities';
+  static const String getMyLineUniversities = 'get_my_line_universities';
   static const String getSubscriptionCatalog = 'get_subscription_catalog';
   static const String getSubscriptionSwitches = 'get_subscription_switches';
   static const String getVoteSettings = 'get_vote_settings';

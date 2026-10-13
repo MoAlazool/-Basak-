@@ -160,6 +160,25 @@ class SupervisorRepository {
     }
   }
 
+  /// The universities each line serves: `{line id: [names]}`. Empty on a
+  /// database without `get_my_line_universities` yet, and whenever it cannot
+  /// be read: Trips then lists only the universities someone rides from.
+  Future<Map<String, List<String>>> getLineUniversities() async {
+    try {
+      final response = await OfflineCache.readThrough(
+          'supervisor.universities', () => _gateway.rpc(SupabaseRpcs.getMyLineUniversities));
+      final served = <String, List<String>>{};
+      for (final row in response as List? ?? const []) {
+        if (row is Map && row['line_id'] != null && '${row['name'] ?? ''}'.trim().isNotEmpty) {
+          served.putIfAbsent('${row['line_id']}', () => []).add('${row['name']}'.trim());
+        }
+      }
+      return served;
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Where the supervisor's own photo is stored (null: none).
   Future<String?> getPhotoPath(String userId) async {
     final row = await OfflineCache.readThrough('supervisor.photo', () => _gateway.photoRow(userId));
@@ -225,6 +244,12 @@ final supervisorCompanyBrandProvider = FutureProvider.family<CompanyBrand, Strin
   } catch (_) {
     return CompanyBrand.none;
   }
+});
+
+/// The universities each line serves (`{line id: [names]}`), kept for the session.
+final lineUniversitiesProvider = FutureProvider<Map<String, List<String>>>((ref) {
+  ref.watch(sessionUserIdProvider);
+  return ref.watch(supervisorRepoProvider).getLineUniversities();
 });
 
 /// Seats of one bus per line (`{line id: seats}`), kept for the session.

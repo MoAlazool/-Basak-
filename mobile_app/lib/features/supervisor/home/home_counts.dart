@@ -73,6 +73,16 @@ class TripCount {
   }
 }
 
+/// [rows] and, after them, every university of [served] nobody rides from, with 0.
+List<TripTimeUniversity> withServed(List<TripTimeUniversity> rows, Iterable<String> served) {
+  final named = {for (final r in rows) r.name};
+  return [
+    ...rows,
+    for (final name in ({...served}.toList()..sort()))
+      if (!named.contains(name)) TripTimeUniversity(name: name, students: 0),
+  ];
+}
+
 /// `{university: riders}` as rows, most riders first, then by name.
 List<TripTimeUniversity> byUniversity(Map<String, int> sums) => [
       for (final e in sums.entries)
