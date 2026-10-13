@@ -170,16 +170,21 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
     final now = ref.watch(supervisorClockProvider)();
     final selection = ref.watch(supervisorSelectionProvider);
     final lines = data.lines;
+    // Every line together: their trips at the same time added up, no one bus's seats.
+    final all = selection.isAllLines && lines.length > 1;
     final line = lines.firstWhere((l) => l.id == selection.lineId, orElse: () => lines.first);
-    final capacity = ref.watch(lineCapacitiesProvider).valueOrNull?[line.id];
+    final capacity = all ? null : ref.watch(lineCapacitiesProvider).valueOrNull?[line.id];
     final vote = data.profile.vote;
+    final registered = all ? lines.fold(0, (sum, l) => sum + l.registeredStudents) : line.registeredStudents;
 
     final days = [data.today, DateTime(data.today.year, data.today.month, data.today.day + 1)];
     // Opens on tomorrow once tomorrow's confirmation has opened.
     _day ??= DateUtils.isSameDay(vote.rideDateFor(now), days[1]) ? 1 : 0;
     final index = _day!;
-    final counts = [for (final day in days) DayCounts.of(data, line, day)];
-    final lineName = line.name.startsWith('خط ') ? line.name : 'خط ${line.name}';
+    final counts = [
+      for (final day in days) all ? DayCounts.ofLines(data, lines, day) : DayCounts.of(data, line, day),
+    ];
+    final lineName = all ? 'كل الخطوط' : line.name.startsWith('خط ') ? line.name : 'خط ${line.name}';
 
     Widget hero(int i) {
       final day = days[i];
@@ -195,8 +200,8 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
         goingTrips: SupervisorWords.inTrips(c.going.length),
         returning: c.returningTotal,
         returningTrips: SupervisorWords.inTrips(c.returning.length),
-        shareSentence: SupervisorWords.shareSentence(c.goingTotal, line.registeredStudents, isFinal: firm.isFinal),
-        share: line.registeredStudents == 0 ? 0 : c.goingTotal / line.registeredStudents,
+        shareSentence: SupervisorWords.shareSentence(c.goingTotal, registered, isFinal: firm.isFinal),
+        share: registered == 0 ? 0 : c.goingTotal / registered,
         onShare: () => _share(SupervisorWords.shareText(
             lineName: lineName, dayTitle: title, firmness: firm.text, counts: c)),
       );
@@ -256,9 +261,12 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
           name: lineName,
           caption: [
             if ((data.profile.companyName ?? '').isNotEmpty) data.profile.companyName!,
-            if (lines.length > 1) '${lines.indexOf(line) + 1} من ${ArabicCount.lines(lines.length, oblique: true)}',
+            if (all)
+              ArabicCount.lines(lines.length)
+            else if (lines.length > 1)
+              '${lines.indexOf(line) + 1} من ${ArabicCount.lines(lines.length, oblique: true)}',
           ].join(' · '),
-          tag: line.isActive ? null : 'خط متوقف',
+          tag: all || line.isActive ? null : 'خط متوقف',
           onTap: lines.length > 1 ? () => SupervisorLineSheet.show(context) : null,
         ),
       Column(

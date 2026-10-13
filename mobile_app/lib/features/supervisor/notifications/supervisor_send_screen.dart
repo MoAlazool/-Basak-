@@ -11,6 +11,7 @@ import '../../notifications/data/notifications_repository.dart';
 import '../../notifications/data/quick_templates.dart';
 import '../data/supervisor_repository.dart';
 import '../models/supervisor_models.dart';
+import '../home/presentation/line_sheet.dart';
 import '../selection/supervisor_selection.dart';
 import '../supervisor_copy.dart';
 import 'supervisor_notifications_screen.dart' show sendAnnouncedOnce;
@@ -104,9 +105,26 @@ class _SupervisorSendScreenState extends ConsumerState<SupervisorSendScreen> {
   bool? _riders;
   SupervisorTripTime? _trip;
 
+  /// The line written to while the app shows every line together: chosen
+  /// here, the first one until then.
+  String? _lineId;
+
+  bool _allLines(SupervisorDashboard dashboard) =>
+      ref.watch(supervisorSelectionProvider).isAllLines && dashboard.lines.length > 1;
+
   SupervisorLine _line(SupervisorDashboard dashboard) {
-    final chosen = ref.watch(supervisorSelectionProvider).lineId;
+    final chosen = _allLines(dashboard) ? _lineId : ref.watch(supervisorSelectionProvider).lineId;
     return dashboard.lines.firstWhere((l) => l.id == chosen, orElse: () => dashboard.lines.first);
+  }
+
+  Future<void> _pickLine(SupervisorLine current) async {
+    final id = await SupervisorLineSheet.pick(context, initial: current.id);
+    if (id == null || id == current.id || !mounted) return;
+    setState(() {
+      _lineId = id;
+      _riders = null;
+      _trip = null;
+    });
   }
 
   /// Only trips someone rides can be written to.
@@ -239,6 +257,16 @@ class _SupervisorSendScreenState extends ConsumerState<SupervisorSendScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Every line on screen: a message still goes to one of them.
+            if (_allLines(dashboard)) ...[
+              PickRow(
+                key: const Key('send-line'),
+                label: 'الخط',
+                value: audience.lineName,
+                onTap: () => _pickLine(line),
+              ),
+              const SizedBox(height: BasakSpace.s8),
+            ],
             IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
