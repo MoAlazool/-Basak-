@@ -148,6 +148,48 @@ void main() {
     expect(tester.widget<Meter>(find.byKey(const Key('university-جامعة الدلتا'))).value, '6');
   });
 
+  testWidgets('every university the lines serve is listed, nobody confirmed from it said with 0', (tester) async {
+    final world = BoardWorld(
+      dashboard: _dashboard(),
+      now: DateTime(2026, 10, 11, 13, 0),
+      universities: {
+        'line-a': ['جامعة المنصورة الجديدة', 'جامعة الدلتا'],
+        'line-b': ['جامعة الدلتا', 'جامعة حورس'],
+      },
+    );
+    await pumpBoard(tester, world, const SupervisorTripsScreen(), tab: 1, size: const Size(390, 1400));
+    await tester.pumpAndSettle();
+    final c = _container(tester, SupervisorTripsScreen);
+    c.read(supervisorSelectionProvider.notifier).selectLine(SupervisorSelection.allLines);
+    c.read(supervisorSelectionProvider.notifier).selectTrip(direction: TripDirection.returning, time: '13:30:00');
+    await tester.pumpAndSettle();
+    expect(tester.widget<Meter>(find.byKey(const Key('university-جامعة حورس'))).value, '0');
+    expect(tester.getTopLeft(find.byKey(const Key('university-جامعة حورس'))).dy,
+        greaterThan(tester.getTopLeft(find.byKey(const Key('university-جامعة المنصورة الجديدة'))).dy),
+        reason: 'after those riders come from');
+
+    // A trip nobody confirmed still lists them.
+    c.read(supervisorSelectionProvider.notifier).selectTrip(direction: TripDirection.returning, time: '17:30:00');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('by-university')), findsOneWidget);
+    expect(tester.widget<Meter>(find.byKey(const Key('university-جامعة الدلتا'))).value, '0');
+  });
+
+  testWidgets('one line, today, nobody confirmed the return: its universities with 0', (tester) async {
+    final world = BoardWorld(
+      now: DateTime(2026, 10, 11, 15, 0),
+      universities: {'line-a': ['جامعة المنصورة الجديدة', 'جامعة الدلتا']},
+      manifest: (key) => boardManifest(direction: key.direction)..['stations'] = <Map<String, dynamic>>[],
+    );
+    await pumpBoard(tester, world, const SupervisorTripsScreen(), tab: 1, size: const Size(390, 1400));
+    await tester.pumpAndSettle();
+    _container(tester, SupervisorTripsScreen).read(supervisorSelectionProvider.notifier)
+        .selectTrip(direction: TripDirection.returning, time: '15:30:00', tripId: 'r-15:30');
+    await tester.pumpAndSettle();
+    expect(tester.widget<Meter>(find.byKey(const Key('university-جامعة الدلتا'))).value, '0');
+    expect(tester.widget<Meter>(find.byKey(const Key('university-جامعة المنصورة الجديدة'))).value, '0');
+  });
+
   testWidgets('a departure from one university says nothing by university', (tester) async {
     await pumpBoard(tester, BoardWorld(now: DateTime(2026, 10, 11, 7, 18)), const SupervisorTripsScreen(),
         tab: 1, size: const Size(390, 1190));

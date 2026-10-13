@@ -172,9 +172,10 @@ void main() {
     expect(find.byType(SupervisorLineSheet), findsOneWidget);
     expect(find.text('الخط'), findsOneWidget);
     expect(find.text('يُطبَّق اختيارك على الرحلات والمسح والإشعارات.'), findsOneWidget);
-    expect(find.text('جامعة المنصورة الجديدة · 124 مشتركاً'), findsOneWidget);
-    expect(find.text('جامعة دمياط · 86 مشتركاً'), findsOneWidget);
-    expect(find.text('جامعة المنصورة · 52 مشتركاً'), findsOneWidget);
+    expect(find.text('124 مشتركاً'), findsOneWidget);
+    expect(find.text('86 مشتركاً'), findsOneWidget);
+    expect(find.text('52 مشتركاً'), findsOneWidget);
+    expect(find.textContaining('جامعة'), findsNothing, reason: 'a line serves several universities');
     expect(find.text('متوقف'), findsOneWidget);
     expect(tester.widget<RadioCard>(find.byKey(const Key('line-line-a'))).selected, isTrue);
 

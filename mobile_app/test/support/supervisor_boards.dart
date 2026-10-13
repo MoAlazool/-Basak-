@@ -204,6 +204,9 @@ class BoardWorld {
   Map<String, dynamic> dashboard;
   Map<String, dynamic> Function(ManifestKey key) manifest;
   Map<String, int> capacities;
+
+  /// The universities each line serves, `{line id: [names]}`.
+  Map<String, List<String>> universities;
   DateTime now;
   int unread;
   bool loading;
@@ -217,6 +220,7 @@ class BoardWorld {
     Map<String, dynamic>? dashboard,
     Map<String, dynamic> Function(ManifestKey key)? manifest,
     this.capacities = const {},
+    this.universities = const {},
     DateTime? now,
     this.unread = 2,
     this.loading = false,
@@ -232,6 +236,7 @@ class BoardWorld {
         supervisorDashboardProvider.overrideWith(() => _Dashboard(this)),
         supervisorPhotoUrlProvider.overrideWith((ref) async => null),
         lineCapacitiesProvider.overrideWith((ref) async => capacities),
+        lineUniversitiesProvider.overrideWith((ref) async => universities),
         tripManifestProvider.overrideWith((ref, key) async {
           manifestKeys.add(key);
           if (manifestFails) throw Exception('PostgrestException(message: relation does not exist, code: 42P01)');

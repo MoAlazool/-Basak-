@@ -85,6 +85,16 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
 
   String _lineName(String name) => name.startsWith('خط ') ? name : 'خط $name';
 
+  /// The universities a trip of [lineId] carries: the one it is reserved
+  /// for, else every one the line serves.
+  Iterable<String> _served(SupervisorDashboard data, String? lineId, String? reserved) {
+    if ((reserved ?? '').trim().isNotEmpty) return [reserved!.trim()];
+    final served = ref.watch(lineUniversitiesProvider).valueOrNull?[lineId];
+    if (served != null && served.isNotEmpty) return served;
+    final destination = data.lines.where((l) => l.id == lineId).firstOrNull?.destination;
+    return [if (destination != null) destination];
+  }
+
   static String _universityOf(ManifestStudent s) {
     final name = (s.university ?? '').trim();
     return name.isEmpty ? unknownUniversity : name;
@@ -207,7 +217,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
           error: (_, __) => [
             _failed(title: 'تعذّر تحميل الرحلة', onRetry: () => ref.invalidate(tripManifestProvider(key))),
           ],
-          data: (m) => _today(m, line, counts, capacity),
+          data: (m) => _today(data, m, line, counts, capacity),
         ),
       ],
     );
@@ -303,7 +313,9 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
         (today ? trips.where((t) => !SupervisorWords.isPast(t.time, now)).firstOrNull : null) ??
         trips.first;
     final firm = SupervisorWords.firmness(data.profile.vote, day, now);
-    final universities = trip.universities;
+    final universities = withServed(trip.universities, [
+      for (final part in trip.parts) ..._served(data, part.lineId, part.breakdown?.university),
+    ]);
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final verb = firm.isFinal ? 'سيركب' : 'أكّد';
 
@@ -369,7 +381,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     ];
   }
 
-  List<Widget> _today(TripManifest m, SupervisorLine line, DayCounts counts, int? capacity) {
+  List<Widget> _today(SupervisorDashboard data, TripManifest m, SupervisorLine line, DayCounts counts, int? capacity) {
     final trip = m.trip;
     if (m.trips.isEmpty || trip == null) return _noTrips(_lineName(line.name), m.direction, counts);
 
@@ -382,7 +394,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     for (final s in m.students) {
       perUniversity[_universityOf(s)] = (perUniversity[_universityOf(s)] ?? 0) + 1;
     }
-    final universities = byUniversity(perUniversity);
+    final universities = withServed(byUniversity(perUniversity), _served(data, line.id, trip.university));
     final stations = m.stations.where((s) => s.stopTime != null || s.students.isNotEmpty).toList();
     // The stop the bus is at: the first one where someone has yet to board,
     // once boarding has begun.
@@ -553,7 +565,7 @@ class _SupervisorTripsScreenState extends ConsumerState<SupervisorTripsScreen> {
     final breakdown = trip.breakdown;
     final stations = breakdown?.stations ?? const <TripTimeStation>[];
     final dayName = SupervisorWords.dayName(day, now);
-    final universities = trip.universities;
+    final universities = withServed(trip.universities, _served(data, line.id, breakdown?.university));
 
     return [
       TripCard(
