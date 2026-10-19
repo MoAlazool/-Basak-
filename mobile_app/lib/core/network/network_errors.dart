@@ -36,6 +36,14 @@ bool isNetworkFailure(Object error) {
 /// failures, otherwise the error without Dart's "Exception: " prefix.
 String errorMessage(Object error) {
   if (isNetworkFailure(error)) return offlineActionMessage;
+  // A server function's refusal: its own words, never the raw exception.
+  if (error is FunctionException) {
+    final details = error.details;
+    if (details is Map && details['error'] is String && (details['error'] as String).trim().isNotEmpty) {
+      return details['error'] as String;
+    }
+    return 'تعذّر إتمام الطلب الآن. حاول مرة أخرى بعد قليل.';
+  }
   return error.toString().replaceFirst('Exception: ', '');
 }
 

@@ -9,6 +9,7 @@ import '../../../../core/storage/prefetched_reads.dart';
 import '../../daily_ride/data/daily_ride_repository.dart';
 import '../../daily_ride/models/vote_settings.dart';
 import '../../offers/offers_repository.dart';
+import 'package:basak_mobile/core/time/cairo_clock.dart';
 
 /// The one request behind a student's launch (replaced in tests).
 abstract class StudentHomeGateway {
@@ -68,7 +69,7 @@ class StudentHomeBundle {
 
   static Future<Map<String, Object?>?> _answers(VoteSettings? vote) async {
     try {
-      final now = DateTime.now();
+      final now = CairoClock.now();
       final settings = vote ?? await _savedVoteSettings();
       final range = homeRideRange(settings, now);
       final from = _day(range.start), to = _day(range.end);

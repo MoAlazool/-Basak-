@@ -13,6 +13,7 @@ import '../../home/presentation/student_home_screen.dart';
 import '../../offers/offers_repository.dart';
 import 'help_sheet.dart';
 import 'profile_editor.dart';
+import 'package:basak_mobile/core/constants/legal_links.dart';
 
 /// The installed build's version ("1.0.6"); null where it cannot be read.
 final appVersionProvider = FutureProvider<String?>((ref) async {
@@ -36,7 +37,7 @@ class ProfileScreen extends ConsumerWidget {
       context,
       icon: LucideIcons.trash2,
       title: 'حذف الحساب نهائياً؟',
-      message: 'يُحذف حسابك وبياناتك، وتتوقف بطاقتك عن العمل. لا يمكن التراجع عن الحذف.',
+      message: 'يُحذف حسابك وبياناتك وصورك، وتتوقف بطاقتك عن العمل. الإيصالات الرسمية التي صدرت لك تبقى لدى شركتك سجلاً مالياً. لا يمكن التراجع عن الحذف.',
       confirmLabel: 'تأكيد الحذف',
     );
     if (!confirmed) return;
@@ -72,6 +73,19 @@ class ProfileScreen extends ConsumerWidget {
         label: 'قيّم التطبيق',
         external: true,
         onTap: () => rateFromSettings(context, ref),
+      ),
+      // The privacy policy and the terms, reachable after sign-up too.
+      SettingRow(
+        key: const Key('profile-privacy'),
+        label: 'سياسة الخصوصية',
+        external: true,
+        onTap: () => LegalLinks.open(context, LegalLinks.privacy),
+      ),
+      SettingRow(
+        key: const Key('profile-terms'),
+        label: 'شروط الاستخدام',
+        external: true,
+        onTap: () => LegalLinks.open(context, LegalLinks.terms),
       ),
     ];
   }

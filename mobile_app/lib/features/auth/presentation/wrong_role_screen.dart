@@ -7,7 +7,9 @@ import 'package:basak_mobile/core/ui/ui.dart';
 import '../providers/auth_provider.dart';
 
 /// Shown to an account this app is not for (an admin, or one with no role):
-/// what the app is for, where such an account belongs, and the way out.
+/// what the app is for, where such an account belongs, and the way out. When
+/// the role could not be read at all (no connection on a first launch), it
+/// says so instead and offers to try again.
 class WrongRoleScreen extends ConsumerWidget {
   const WrongRoleScreen({super.key});
 
@@ -15,6 +17,8 @@ class WrongRoleScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
     final text = context.text;
+    final auth = ref.watch(authStateProvider);
+    final unchecked = auth.errorMessage == AuthNotifier.roleUnchecked;
     return MediaQuery.withClampedTextScaling(
       maxScaleFactor: basakMaxTextScale,
       child: Scaffold(
@@ -46,22 +50,36 @@ class WrongRoleScreen extends ConsumerWidget {
                                       height: 64,
                                       decoration: BoxDecoration(
                                           color: colors.warningTint, borderRadius: BasakRadius.all(22)),
-                                      child: Icon(LucideIcons.ban, size: 28, color: colors.warning),
+                                      child: Icon(unchecked ? LucideIcons.wifiOff : LucideIcons.ban,
+                                          size: 28, color: colors.warning),
                                     ),
                                   ),
                                   const SizedBox(height: BasakSpace.s16),
                                   Semantics(
                                     header: true,
-                                    child: Text('هذا الحساب لا يعمل هنا',
+                                    child: Text(unchecked ? 'تعذّر الاتصال' : 'هذا الحساب لا يعمل هنا',
                                         textAlign: TextAlign.center, style: text.sheetTitle),
                                   ),
                                   const SizedBox(height: BasakSpace.s10),
-                                  Text('تطبيق باصك للطلاب والمشرفين. حسابات الإدارة تدخل من لوحة التحكم على الويب.',
+                                  Text(
+                                      unchecked
+                                          ? 'لم نستطع التحقق من حسابك. تأكّد من الاتصال بالإنترنت ثم أعد المحاولة.'
+                                          : 'تطبيق باصك للطلاب والمشرفين. حسابات الإدارة تدخل من لوحة التحكم على الويب.',
                                       textAlign: TextAlign.center, style: text.body.copyWith(color: colors.ink2)),
                                 ],
                               ),
                             ),
                           ),
+                          if (unchecked) ...[
+                            BasakButton(
+                              key: const Key('wrong-role-retry'),
+                              label: 'إعادة المحاولة',
+                              icon: LucideIcons.refreshCw,
+                              loading: auth.isLoading,
+                              onPressed: () => ref.read(authStateProvider.notifier).recheckRole(),
+                            ),
+                            const SizedBox(height: BasakSpace.s10),
+                          ],
                           BasakButton(
                             key: const Key('wrong-role-sign-out'),
                             label: 'تسجيل الخروج',

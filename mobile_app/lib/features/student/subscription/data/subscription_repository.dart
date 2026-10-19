@@ -8,6 +8,7 @@ import '../models/payment_method_model.dart';
 import '../models/sale_catalog.dart';
 import 'pending_receipts.dart';
 import 'subscription_gateway.dart';
+import 'package:basak_mobile/core/time/cairo_clock.dart';
 
 /// One submission of a receipt image: the image the student chose for a
 /// subscription. Its key is made once, when the image is chosen, and names
@@ -37,7 +38,7 @@ class SubscriptionRepository {
 
   SubscriptionRepository({SubscriptionGateway? gateway}) : _gateway = gateway ?? const SupabaseSubscriptionGateway();
 
-  static String _today() => DateTime.now().toIso8601String().substring(0, 10);
+  static String _today() => CairoClock.today();
 
   /// Every subscription of the signed-in student: current, upcoming (paid in
   /// advance or awaiting payment) and expired, newest period first.

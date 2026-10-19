@@ -11,8 +11,14 @@ class AppStore {
   /// What this phone's store is called. Latin, as the stores write it.
   static String get name => defaultTargetPlatform == TargetPlatform.iOS ? 'App Store' : 'Google Play';
 
+  /// The App Store's numeric id of the app (App Store Connect → App
+  /// Information → Apple ID), set at build time: --dart-define=APP_STORE_ID=…
+  /// iOS cannot open the listing without it.
+  static const String appStoreId = String.fromEnvironment('APP_STORE_ID');
+
   /// Opens the app's page: [url] when the dashboard has one, otherwise the
-  /// store's own listing (which Google Play finds by itself).
+  /// store's own listing (Google Play finds it by itself; the App Store by
+  /// [appStoreId]).
   Future<bool> open(String? url) async {
     final link = url == null ? null : Uri.tryParse(url);
     if (link != null) {
@@ -21,7 +27,7 @@ class AppStore {
       } catch (_) {}
     }
     try {
-      await InAppReview.instance.openStoreListing();
+      await InAppReview.instance.openStoreListing(appStoreId: appStoreId.isEmpty ? null : appStoreId);
       return true;
     } catch (_) {
       return false;

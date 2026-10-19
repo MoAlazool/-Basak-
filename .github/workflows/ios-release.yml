@@ -1,8 +1,9 @@
 # iOS build for the App Store, on GitHub's macOS runners (no Mac needed).
 #
-# verify  — every push/PR touching the app: Xcode 26+, flutter analyze and
-#           tests, the App Store preflight, and an unsigned release build of
-#           the real Xcode project (proves the iOS 26 SDK build compiles).
+# checks  — every push/PR touching the app (Linux): the App Store preflight,
+#           flutter analyze and every test.
+# verify  — then, on macOS with Xcode 26+: an unsigned release build of the
+#           real Xcode project (proves the iOS 26 SDK build compiles).
 # ipa     — only when started by hand (Actions → iOS release → Run workflow):
 #           archives and signs with the team's App Store Connect API key,
 #           exports an App Store IPA, verifies its signature, entitlements,
@@ -18,8 +19,13 @@
 #   ASC_KEY_P8_BASE64              the .p8 key, base64-encoded
 #   IOS_DIST_CERT_P12_BASE64       optional: an Apple Distribution certificate
 #   IOS_DIST_CERT_PASSWORD         (.p12, base64) instead of cloud signing
-# Variable (optional): IOS_BUNDLE_ID — the App Store bundle id when it differs
-#   from the Xcode project's (it must equal the Firebase iOS app's).
+# Variables (Settings → Secrets and variables → Actions → Variables):
+#   IOS_BUNDLE_ID   the App Store bundle id when it differs from the Xcode
+#                   project's (it must equal the Firebase iOS app's)
+#   PRIVACY_URL     the published privacy policy (required for `ipa`)
+#   TERMS_URL       the published terms of use (required for `ipa`)
+#   APP_STORE_ID    the app's Apple ID in App Store Connect (numeric)
+#   WALLET_ENABLED  'false' while the server cannot sign Apple Wallet passes
 # The `ipa` job runs in the `app-store` environment: add required reviewers
 # there so a signed build always needs an owner's approval.
 name: iOS release
@@ -52,7 +58,30 @@ env:
   FLUTTER_VERSION: '3.47.7'
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: App Store preflight
+        run: python3 tool/ios_preflight.py --bundle-id "${{ vars.IOS_BUNDLE_ID || '' }}"
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Tests
+        run: flutter test
+
   verify:
+    needs: checks
     runs-on: macos-26
     timeout-minutes: 60
     defaults:
@@ -78,20 +107,20 @@ jobs:
           channel: stable
           cache: true
 
-      - name: App Store preflight
-        run: python3 tool/ios_preflight.py --bundle-id "${{ vars.IOS_BUNDLE_ID || '' }}"
-
       - name: Dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Tests
-        run: flutter test --reporter expanded
-
       - name: Unsigned release build (iOS 26 SDK)
-        run: flutter build ios --release --no-codesign --dart-define-from-file=firebase.defines.json
+        env:
+          PRIVACY_URL: ${{ vars.PRIVACY_URL }}
+          TERMS_URL: ${{ vars.TERMS_URL }}
+          APP_STORE_ID: ${{ vars.APP_STORE_ID }}
+          WALLET_ENABLED: ${{ vars.WALLET_ENABLED }}
+        run: |
+          set -euo pipefail
+          ARGS=(--release --no-codesign --dart-define-from-file=firebase.defines.json)
+          for v in PRIVACY_URL TERMS_URL APP_STORE_ID WALLET_ENABLED; do [ -z "${!v}" ] || ARGS+=("--dart-define=$v=${!v}"); done
+          flutter build ios "${ARGS[@]}"
 
       - name: Check the built app
         run: |
@@ -173,12 +202,25 @@ jobs:
           rm -f "$RUNNER_TEMP/dist.p12"
 
       - name: Flutter configuration
+        env:
+          PRIVACY_URL: ${{ vars.PRIVACY_URL }}
+          TERMS_URL: ${{ vars.TERMS_URL }}
+          APP_STORE_ID: ${{ vars.APP_STORE_ID }}
+          WALLET_ENABLED: ${{ vars.WALLET_ENABLED }}
         run: |
           set -euo pipefail
+          # The in-app privacy and terms links must open real pages (5.1.1).
+          for v in PRIVACY_URL TERMS_URL; do
+            [ -n "${!v}" ] || { echo "::error::Repository variable $v is not set"; exit 1; }
+            code=$(curl -s -o "$RUNNER_TEMP/page.html" -w '%{http_code}' -L -m 20 "${!v}" || true)
+            [ "$code" = 200 ] || { echo "::error::$v (${!v}) answers HTTP $code"; exit 1; }
+            ! grep -q REPLACE_BEFORE_PUBLISHING "$RUNNER_TEMP/page.html" || { echo "::error::$v still has placeholders (the support contact)"; exit 1; }
+          done
           flutter pub get
           NUM="${{ inputs.build_number }}"
           ARGS=(--release --config-only --dart-define-from-file=firebase.defines.json)
           [ -z "$NUM" ] || ARGS+=(--build-number "$NUM")
+          for v in PRIVACY_URL TERMS_URL APP_STORE_ID WALLET_ENABLED; do [ -z "${!v}" ] || ARGS+=("--dart-define=$v=${!v}"); done
           flutter build ios "${ARGS[@]}"
 
       - name: Archive (signed)
