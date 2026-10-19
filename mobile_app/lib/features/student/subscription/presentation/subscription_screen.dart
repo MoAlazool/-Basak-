@@ -430,7 +430,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             meta: _year(sub),
             metaLtr: true,
             title: sub.periodName,
-            note: latest == null ? null : SubscriptionScreenWords.sentAt(latest.createdAt),
+            // When it was sent is said once: on the receipt's own card when there is one.
+            note: latest == null || uploaded != null ? null : SubscriptionScreenWords.sentAt(latest.createdAt),
           ),
           if (uploaded != null) uploaded,
           InfoRows(rows: [

@@ -1,0 +1,244 @@
+# iOS build for the App Store, on GitHub's macOS runners (no Mac needed).
+#
+# verify  — every push/PR touching the app: Xcode 26+, flutter analyze and
+#           tests, the App Store preflight, and an unsigned release build of
+#           the real Xcode project (proves the iOS 26 SDK build compiles).
+# ipa     — only when started by hand (Actions → iOS release → Run workflow):
+#           archives and signs with the team's App Store Connect API key,
+#           exports an App Store IPA, verifies its signature, entitlements,
+#           bundle id and version, and keeps it as a build artifact. With
+#           "upload to TestFlight" ticked it also uploads that IPA. It never
+#           submits for review: that stays a manual step in App Store Connect.
+#
+# Secrets (Settings → Secrets and variables → Actions), used by `ipa` only:
+#   APPLE_TEAM_ID                  10-character Team ID
+#   ASC_KEY_ID, ASC_ISSUER_ID      App Store Connect API key (role: Admin, so
+#                                  Xcode may create the distribution certificate
+#                                  and profile in the cloud)
+#   ASC_KEY_P8_BASE64              the .p8 key, base64-encoded
+#   IOS_DIST_CERT_P12_BASE64       optional: an Apple Distribution certificate
+#   IOS_DIST_CERT_PASSWORD         (.p12, base64) instead of cloud signing
+# Variable (optional): IOS_BUNDLE_ID — the App Store bundle id when it differs
+#   from the Xcode project's (it must equal the Firebase iOS app's).
+# The `ipa` job runs in the `app-store` environment: add required reviewers
+# there so a signed build always needs an owner's approval.
+name: iOS release
+
+on:
+  push:
+    branches: [main, 'release/**']
+    paths: ['mobile_app/**', '.github/workflows/ios-release.yml']
+  pull_request:
+    paths: ['mobile_app/**', '.github/workflows/ios-release.yml']
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Build number (CFBundleVersion). Empty: the one in pubspec.yaml. Must be higher than any upload.'
+        required: false
+        default: ''
+      upload_testflight:
+        description: 'Upload the verified IPA to TestFlight'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+
+jobs:
+  verify:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26 or newer
+        run: |
+          set -euo pipefail
+          XC=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | grep -vi beta | sort -V | tail -1 || true)
+          if [ -z "$XC" ]; then echo "::error::No Xcode 26+ on this runner"; ls -d /Applications/Xcode*.app; exit 1; fi
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+          SDK=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS SDK $SDK"
+          [ "${SDK%%.*}" -ge 26 ] || { echo "::error::iOS SDK $SDK is older than 26"; exit 1; }
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: App Store preflight
+        run: python3 tool/ios_preflight.py --bundle-id "${{ vars.IOS_BUNDLE_ID || '' }}"
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Tests
+        run: flutter test --reporter expanded
+
+      - name: Unsigned release build (iOS 26 SDK)
+        run: flutter build ios --release --no-codesign --dart-define-from-file=firebase.defines.json
+
+      - name: Check the built app
+        run: |
+          set -euo pipefail
+          APP=build/ios/iphoneos/Runner.app
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' -c 'Print :CFBundleVersion' -c 'Print :MinimumOSVersion' -c 'Print :DTSDKName' "$APP/Info.plist"
+          test -f "$APP/PrivacyInfo.xcprivacy" || { echo "::error::PrivacyInfo.xcprivacy is not in the app"; exit 1; }
+          du -sh "$APP"
+
+  ipa:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: app-store
+    defaults:
+      run:
+        working-directory: mobile_app
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26 or newer
+        run: |
+          set -euo pipefail
+          XC=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | grep -vi beta | sort -V | tail -1 || true)
+          [ -n "$XC" ] || { echo "::error::No Xcode 26+ on this runner"; exit 1; }
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Check signing secrets
+        env:
+          P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          missing=""
+          for v in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID; do [ -n "${!v}" ] || missing="$missing $v"; done
+          [ -n "$P8" ] || missing="$missing ASC_KEY_P8_BASE64"
+          [ -z "$missing" ] || { echo "::error::Missing secrets:$missing"; exit 1; }
+
+      - name: App Store preflight (strict)
+        id: preflight
+        run: |
+          python3 tool/ios_preflight.py --strict --bundle-id "${{ vars.IOS_BUNDLE_ID || '' }}"
+          BID="${{ vars.IOS_BUNDLE_ID || '' }}"
+          [ -n "$BID" ] || BID=$(grep -m1 -E 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*;' ios/Runner.xcodeproj/project.pbxproj | grep -v RunnerTests | sed -E 's/.*= ([^;]+);/\1/')
+          echo "bundle_id=$BID" >> "$GITHUB_OUTPUT"
+
+      - name: App Store Connect key
+        env:
+          P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$P8" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Distribution certificate (optional)
+        env:
+          P12: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          [ -n "$P12" ] || { echo "No certificate secret: Xcode cloud signing with the API key."; exit 0; }
+          KC="$RUNNER_TEMP/signing.keychain-db"; KCP=$(uuidgen)
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p "$KCP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCP" "$KC"
+          security import "$RUNNER_TEMP/dist.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KCP" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/dist.p12"
+
+      - name: Flutter configuration
+        run: |
+          set -euo pipefail
+          flutter pub get
+          NUM="${{ inputs.build_number }}"
+          ARGS=(--release --config-only --dart-define-from-file=firebase.defines.json)
+          [ -z "$NUM" ] || ARGS+=(--build-number "$NUM")
+          flutter build ios "${ARGS[@]}"
+
+      - name: Archive (signed)
+        working-directory: mobile_app/ios
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            PRODUCT_BUNDLE_IDENTIFIER="${{ steps.preflight.outputs.bundle_id }}" \
+            -quiet archive
+
+      - name: Export IPA
+        working-directory: mobile_app/ios
+        run: |
+          set -euo pipefail
+          sed "s/TEAM_ID_PLACEHOLDER/$APPLE_TEAM_ID/" ExportOptions.plist > "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/ipa" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          ls -l "$RUNNER_TEMP/ipa"
+
+      - name: Verify the IPA
+        run: |
+          set -euo pipefail
+          IPA=$(ls "$RUNNER_TEMP"/ipa/*.ipa); D="$RUNNER_TEMP/check"; rm -rf "$D"; mkdir -p "$D"
+          unzip -q "$IPA" -d "$D"; APP=$(ls -d "$D"/Payload/*.app)
+          PB=/usr/libexec/PlistBuddy
+          BID=$($PB -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          echo "bundle $BID, version $($PB -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") ($($PB -c 'Print :CFBundleVersion' "$APP/Info.plist")), SDK $($PB -c 'Print :DTSDKName' "$APP/Info.plist")"
+          [ "$BID" = "${{ steps.preflight.outputs.bundle_id }}" ] || { echo "::error::Bundle id $BID"; exit 1; }
+          codesign --verify --deep --strict "$APP"
+          codesign -d --entitlements :- "$APP" > "$D/ent.plist" 2>/dev/null
+          APS=$($PB -c 'Print :aps-environment' "$D/ent.plist")
+          [ "$APS" = "production" ] || { echo "::error::aps-environment is $APS"; exit 1; }
+          codesign -dvv "$APP" 2>&1 | grep -E '^Authority=Apple Distribution|^TeamIdentifier'
+          test -f "$APP/PrivacyInfo.xcprivacy"
+          $PB -c 'Print :ITSAppUsesNonExemptEncryption' "$APP/Info.plist" | grep -q false
+          echo "IPA verified: $IPA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: basak-ios-ipa-${{ github.run_number }}
+          path: ${{ runner.temp }}/ipa/*.ipa
+          retention-days: 14
+
+      - name: Upload to TestFlight
+        if: inputs.upload_testflight
+        run: |
+          set -euo pipefail
+          IPA=$(ls "$RUNNER_TEMP"/ipa/*.ipa)
+          xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -rf ~/.appstoreconnect/private_keys
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
