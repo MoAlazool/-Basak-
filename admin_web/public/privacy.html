@@ -286,10 +286,14 @@ footer{padding:40px 0 30px;border-top:1px solid var(--ln);background:var(--bg2)}
 #privacy ul{padding-inline-start:22px;margin:8px 0}
 #privacy .meta{color:#58707F;font-size:14px;margin:0 0 18px}
 #privacy a{color:#00658D}
-#privacy .pvnav{font-size:14px;color:#58707F;margin:0 0 16px;text-align:center}
+#privacy .pvlang{display:flex;gap:8px;justify-content:center;margin:0 0 22px}
+#privacy .pvl{appearance:none;-webkit-appearance:none;border:1px solid #D9E3EA;background:#fff;color:#3E5A6B;font:inherit;font-size:14px;font-weight:600;padding:9px 22px;border-radius:999px;cursor:pointer;transition:all .15s}
+#privacy .pvl:hover{border-color:#9DB6C4}
+#privacy .pvl.on{background:#00658D;border-color:#00658D;color:#fff}
+#privacy article[hidden]{display:none}
 </style>
 <div class="pv">
-<p class="pvnav"><a href="#ar">العربية</a> · <a href="#en">English</a></p>
+<div class="pvlang"><button type="button" class="pvl on" data-lang="ar">العربية</button><button type="button" class="pvl" data-lang="en">English</button></div>
 <article id="ar">
 <h1>سياسة الخصوصية</h1>
 <p class="meta">تطبيق باصك · آخر تحديث: 19 أكتوبر 2026</p>
@@ -358,7 +362,7 @@ footer{padding:40px 0 30px;border-top:1px solid var(--ln);background:var(--bg2)}
 <p>لأي سؤال أو طلب بخصوص بياناتك: <a href="mailto:basy1102000@gmail.com">basy1102000@gmail.com</a></p>
 </article>
 
-<article id="en" class="en" lang="en">
+<article id="en" class="en" lang="en" hidden>
 <h1>Privacy Policy</h1>
 <p class="meta">Basak app · Last updated: 19 October 2026</p>
 

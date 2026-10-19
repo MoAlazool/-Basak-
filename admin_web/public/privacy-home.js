@@ -13,3 +13,6 @@ var det=document.getElementById('det');
 function show(i){var d=D[i];det.innerHTML='<span class="ic"><svg><use href="#'+d[0]+'"/></svg></span><h3>'+d[1]+'</h3><p>'+d[2]+'</p><ul>'+d[3].map(function(x){return'<li>'+x+'</li>'}).join('')+'</ul>';det.classList.remove('fd');void det.offsetWidth;det.classList.add('fd')}
 show(0);
 document.querySelectorAll('.tb').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.tb').forEach(function(x){x.classList.remove('on')});b.classList.add('on');show(+b.dataset.i)})});
+
+// Language toggle for the privacy section (Arabic default; one shown at a time).
+(function(){var box=document.getElementById('privacy');if(!box)return;var ar=document.getElementById('ar'),en=document.getElementById('en');var btns=box.querySelectorAll('.pvl');function set(l){if(ar)ar.hidden=l!=='ar';if(en)en.hidden=l!=='en';btns.forEach(function(b){b.classList.toggle('on',b.dataset.lang===l)})}btns.forEach(function(b){b.addEventListener('click',function(){set(b.dataset.lang)})});set('ar')})();
