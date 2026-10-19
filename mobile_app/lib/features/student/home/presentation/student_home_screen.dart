@@ -41,6 +41,7 @@ import 'notifications_screen.dart';
 import 'ride_card.dart';
 import 'ride_sheet.dart';
 import 'supervisor_contact_sheet.dart';
+import 'package:basak_mobile/core/time/cairo_clock.dart';
 
 final subscriptionRepoProvider = Provider((ref) => SubscriptionRepository());
 final dailyRideRepoProvider = Provider((ref) => DailyRideRepository());
@@ -123,7 +124,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     }
     _votingWindowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
-      final targetDate = _vote.rideDateFor(DateTime.now());
+      final targetDate = _vote.rideDateFor(CairoClock.now());
       final loadedDate = _loadedRideDate;
       if (loadedDate == null ||
           loadedDate.year != targetDate.year ||
@@ -149,7 +150,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   Future<void> _loadTodayRideStatus() async {
     try {
-      final now = DateTime.now();
+      final now = CairoClock.now();
       final rideDate = _vote.rideDateFor(now);
       final repository = ref.read(dailyRideRepoProvider);
       // One read for the week shown here, the ride day's own choices and
@@ -192,7 +193,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
       return;
     }
     try {
-      final first = settings.rideDateFor(DateTime.now());
+      final first = settings.rideDateFor(CairoClock.now());
       final loaded = _loadedRideDate;
       // The votes just read for the home screen cover these days already.
       final voted = loaded != null && DateUtils.isSameDay(loaded, first)
@@ -252,7 +253,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
 
   /// "نعم، سأركب" and "تعديل": the times are chosen in the sheet.
   Future<void> _askRide(SubscriptionModel sub, RideMoment moment) async {
-    final now = DateTime.now();
+    final now = CairoClock.now();
     final choice = await RideSheet.show(
       context,
       title: RideWords.rideOf(moment.day, now),
@@ -276,7 +277,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
     if (_isSavingRide) return;
     final repository = ref.read(dailyRideRepoProvider);
     final vote = _vote;
-    final now = DateTime.now();
+    final now = CairoClock.now();
     final rideDate = vote.rideDateFor(now);
     if (!vote.isOpenAt(now)) {
       // Closed while the sheet was open: the card says so from now on.
@@ -577,7 +578,7 @@ class _StudentHomeScreenState extends ConsumerState<StudentHomeScreen> {
   }
 
   Widget _ride(SubscriptionModel sub, VoteSettings vote) {
-    final now = DateTime.now();
+    final now = CairoClock.now();
     final rideDay = vote.rideDateFor(now);
     final loaded = _loadedRideDate;
     // What was read is about this ride day (not the one before a roll-over).

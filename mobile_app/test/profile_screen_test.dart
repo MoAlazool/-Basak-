@@ -228,6 +228,9 @@ void main() {
     // The group is never empty now: «قيّم التطبيق» is always there, alone here.
     expect(find.text('التطبيق'), findsOneWidget);
     expect(find.byKey(const Key('profile-rate')), findsOneWidget);
+    // The privacy policy and the terms stay reachable after sign-up (App Store 5.1.1).
+    expect(find.byKey(const Key('profile-privacy'), skipOffstage: false), findsOneWidget);
+    expect(find.byKey(const Key('profile-terms'), skipOffstage: false), findsOneWidget);
     expect(find.byKey(const Key('profile-help')), findsNothing);
     expect(find.byKey(const Key('profile-phone-notifications')), findsNothing);
 
@@ -257,7 +260,7 @@ void main() {
     await tester.tap(find.byKey(const Key('profile-delete')));
     await tester.pumpAndSettle();
     expect(find.text('حذف الحساب نهائياً؟'), findsOneWidget);
-    expect(find.text('يُحذف حسابك وبياناتك، وتتوقف بطاقتك عن العمل. لا يمكن التراجع عن الحذف.'), findsOneWidget);
+    expect(find.text('يُحذف حسابك وبياناتك وصورك، وتتوقف بطاقتك عن العمل. الإيصالات الرسمية التي صدرت لك تبقى لدى شركتك سجلاً مالياً. لا يمكن التراجع عن الحذف.'), findsOneWidget);
 
     await tester.tap(find.text('إلغاء'));
     await tester.pumpAndSettle();

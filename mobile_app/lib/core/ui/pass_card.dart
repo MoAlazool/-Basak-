@@ -470,34 +470,51 @@ class PassAction extends StatelessWidget {
     required this.onAction,
   });
 
+  /// Below this width (at text scale 1) the button goes under the words, so
+  /// neither is cut on a small phone or with large text.
+  static const double sideBySideWidth = 320;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final text = context.text;
-    return Row(
+    final words = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(caption, style: text.caption.copyWith(color: colors.ink3)),
-              Text(value,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.body.copyWith(fontWeight: FontWeight.w500)),
-            ],
-          ),
-        ),
-        const SizedBox(width: BasakSpace.s12),
-        BasakButton(
-          label: actionLabel,
-          onPressed: onAction,
-          size: BasakButtonSize.small,
-          expand: false,
-        ),
+        Text(caption, style: text.caption.copyWith(color: colors.ink3)),
+        Text(value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: text.body.copyWith(fontWeight: FontWeight.w500)),
       ],
     );
+    return LayoutBuilder(builder: (context, constraints) {
+      final scale = MediaQuery.textScalerOf(context).scale(1);
+      if (constraints.maxWidth < sideBySideWidth * scale) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            words,
+            const SizedBox(height: BasakSpace.s12),
+            BasakButton(label: actionLabel, onPressed: onAction, size: BasakButtonSize.small),
+          ],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: words),
+          const SizedBox(width: BasakSpace.s12),
+          BasakButton(
+            label: actionLabel,
+            onPressed: onAction,
+            size: BasakButtonSize.small,
+            expand: false,
+          ),
+        ],
+      );
+    });
   }
 }
 

@@ -14,6 +14,13 @@ if [ -f firebase.defines.json ]; then
 else
   echo "warning: firebase.defines.json is missing: this build will have no push notifications." >&2
 fi
+# The same optional build values as CI (.github/workflows/ios-release.yml),
+# from the environment: PRIVACY_URL, TERMS_URL, APP_STORE_ID, WALLET_ENABLED.
+for v in PRIVACY_URL TERMS_URL APP_STORE_ID WALLET_ENABLED; do
+  eval "val=\${$v:-}"
+  [ -z "$val" ] || set -- "$@" "--dart-define=$v=$val"
+done
+python3 tool/ios_preflight.py
 flutter pub get
 flutter build ipa --release "$@"
 echo "IPA: $(pwd)/build/ios/ipa/"

@@ -9,6 +9,7 @@ import '../../../core/sync/own_changes.dart';
 import '../../../core/sync/session.dart';
 import '../models/supervisor_models.dart';
 import '../qr_scanner/data/qr_scanner_repository.dart';
+import 'package:basak_mobile/core/time/cairo_clock.dart';
 
 /// The requests behind the supervisor's screens (replaced in tests).
 abstract class SupervisorGateway {
@@ -113,7 +114,7 @@ class SupervisorRepository {
   /// students per station with their check-in state for today.
   Future<TripManifest> getTripManifest(
       {required String lineId, required String direction, String? tripId}) async {
-    final day = DateTime.now().toIso8601String().substring(0, 10);
+    final day = CairoClock.today();
     final response = await OfflineCache.readThrough(
         'supervisor.manifest.$day.$lineId.$direction.${tripId ?? '-'}',
         () => _gateway.rpc(SupabaseRpcs.getSupervisorTripManifest, {

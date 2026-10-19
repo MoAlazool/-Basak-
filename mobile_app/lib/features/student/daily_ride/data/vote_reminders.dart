@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../../notifications/local/local_notifier.dart';
 import '../models/vote_settings.dart';
+import 'package:basak_mobile/core/time/cairo_clock.dart';
 
 /// Notifications that remind a student to confirm a ride before its vote closes.
 ///
@@ -49,7 +50,7 @@ class VoteReminders {
         if (!await LocalNotifier.ready()) return;
         await _cancelOwn();
 
-        final now = DateTime.now();
+        final now = CairoClock.now();
         final first = settings.rideDateFor(now);
         final reminders = <({DateTime day, DateTime at})>[];
         for (var i = 0; i < _days; i++) {

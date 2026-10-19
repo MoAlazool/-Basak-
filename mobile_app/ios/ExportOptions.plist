@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App Store export of the archive (CI: .github/workflows/ios-release.yml).
+  TEAM_ID_PLACEHOLDER is replaced with the APPLE_TEAM_ID secret at build time.
+  The IPA is exported locally and verified before any upload; uploading to
+  TestFlight is a separate, opt-in step of the workflow.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>teamID</key>
+	<string>TEAM_ID_PLACEHOLDER</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>stripSwiftSymbols</key>
+	<true/>
+</dict>
+</plist>

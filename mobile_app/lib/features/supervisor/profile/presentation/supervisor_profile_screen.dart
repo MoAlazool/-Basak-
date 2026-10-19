@@ -18,6 +18,7 @@ import '../../data/supervisor_repository.dart';
 import '../../home/presentation/line_sheet.dart';
 import '../../models/supervisor_models.dart';
 import '../../monthly/presentation/supervisor_monthly_screen.dart';
+import 'package:basak_mobile/core/constants/legal_links.dart';
 
 /// Asks before a supervisor is signed out of this phone, then does it. Used
 /// by the account page and by the suspended-account screen.
@@ -92,6 +93,18 @@ class SupervisorProfileScreen extends ConsumerWidget {
         onTap: () => NotificationPreferencesScreen.open(context),
       ),
       if (biometric != null) biometric,
+      SettingRow(
+        key: const Key('supervisor-privacy'),
+        label: 'سياسة الخصوصية',
+        external: true,
+        onTap: () => LegalLinks.open(context, LegalLinks.privacy),
+      ),
+      SettingRow(
+        key: const Key('supervisor-terms'),
+        label: 'شروط الاستخدام',
+        external: true,
+        onTap: () => LegalLinks.open(context, LegalLinks.terms),
+      ),
     ];
   }
 
@@ -154,7 +167,7 @@ class SupervisorProfileScreen extends ConsumerWidget {
         Padding(
           padding: const EdgeInsetsDirectional.symmetric(horizontal: BasakSpace.s4),
           child: Text(
-            'بياناتك وكلمة المرور تديرها شركتك. لتغييرها تواصل مع إدارة الشركة.',
+            'بياناتك وكلمة المرور تديرها شركتك. لتغييرها أو لحذف حسابك تواصل مع إدارة الشركة.',
             style: text.label.copyWith(color: colors.ink3, fontWeight: FontWeight.w400),
           ),
         ),

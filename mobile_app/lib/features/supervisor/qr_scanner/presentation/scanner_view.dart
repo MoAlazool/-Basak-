@@ -12,6 +12,7 @@ import '../../supervisor_copy.dart';
 import '../../trips/presentation/supervisor_trips_screen.dart' show tripManifestProvider;
 import 'scan_result_sheet.dart';
 import 'scan_session.dart';
+import 'package:basak_mobile/core/time/cairo_clock.dart';
 
 /// Whether there is a camera picture to scan with.
 enum ScanCameraState {
@@ -96,7 +97,7 @@ class ScannerViewState extends ConsumerState<ScannerView> {
     if (chosen != null) return chosen;
     final selection = ref.read(supervisorSelectionProvider);
     if (selection.hasTrip) return selection.direction!.wire;
-    return DateTime.now().hour < 12 ? 'departure' : 'return';
+    return CairoClock.now().hour < 12 ? 'departure' : 'return';
   }
 
   /// Checks one scanned code and shows what the server said. A code read

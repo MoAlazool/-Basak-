@@ -197,7 +197,7 @@ void main() {
       expect(find.text('مفعّلة'), findsOneWidget);
       expect(find.text('اللغة'), findsNothing, reason: 'Arabic only');
 
-      expect(find.text('بياناتك وكلمة المرور تديرها شركتك. لتغييرها تواصل مع إدارة الشركة.'), findsOneWidget);
+      expect(find.text('بياناتك وكلمة المرور تديرها شركتك. لتغييرها أو لحذف حسابك تواصل مع إدارة الشركة.'), findsOneWidget);
       expect(find.text('تسجيل الخروج'), findsOneWidget);
       expect(find.text('باصك 2.4.0'), findsOneWidget);
       // What the old page listed and the new one leaves to Home and Trips.
@@ -254,6 +254,8 @@ void main() {
       expect(find.textContaining('تعذّر تحميل بيانات الحساب'), findsOneWidget);
       expect(find.textContaining('Postgrest'), findsNothing);
       expect(find.text('إشعارات الهاتف'), findsOneWidget);
+      // Below the app rows (privacy and terms among them).
+      await tester.scrollUntilVisible(find.text('تسجيل الخروج'), 200, scrollable: find.byType(Scrollable).first);
       expect(find.text('تسجيل الخروج'), findsOneWidget);
     });
   });

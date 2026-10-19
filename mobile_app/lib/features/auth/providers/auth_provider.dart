@@ -142,7 +142,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
             role = await _repo.detectUserRole(current.id);
             await OfflineCache.saveSession(current, role.name);
           } catch (_) {
-            role = UserRole.fromString(null);
+            // Not known yet (no connection on a first launch): the account is
+            // not the wrong one, it is unchecked; the screen offers a retry.
+            state = AuthState(
+                user: current, role: UserRole.unknown, isInitialLoading: false, errorMessage: roleUnchecked);
+            return;
           }
         }
         state = AuthState(user: current, role: role, isInitialLoading: false);
@@ -154,6 +158,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Keep the app usable at the sign-in screen when the backend is offline
       // or has not been initialized (for example, in a widget preview).
       state = const AuthState(isInitialLoading: false);
+    }
+  }
+
+  /// [AuthState.errorMessage] while the account's role could not be read.
+  static const roleUnchecked = 'role-unchecked';
+
+  /// Reads the role again after [roleUnchecked] (the connection is back).
+  Future<void> recheckRole() async {
+    final user = state.user;
+    if (user == null) return;
+    state = state.copyWith(isLoading: true, errorMessage: roleUnchecked);
+    try {
+      final role = await _repo.detectUserRole(user.id);
+      await OfflineCache.saveSession(user, role.name);
+      if (!mounted || state.user?.id != user.id) return;
+      state = AuthState(user: user, role: role, isInitialLoading: false);
+      if (role == UserRole.student) unawaited(_refreshOfflineStudentPass());
+    } catch (_) {
+      if (mounted) state = state.copyWith(isLoading: false, errorMessage: roleUnchecked);
     }
   }
 

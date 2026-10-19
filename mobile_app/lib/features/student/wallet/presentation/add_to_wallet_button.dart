@@ -20,10 +20,16 @@ class AddToWalletButton extends ConsumerStatefulWidget {
 
   const AddToWalletButton({super.key, required this.pass, this.platform});
 
+  /// Off for a build whose server cannot sign passes yet (no Pass Type ID
+  /// certificate): the button would only answer «غير مفعّلة بعد».
+  ///   --dart-define=WALLET_ENABLED=false
+  static const bool walletEnabled = bool.fromEnvironment('WALLET_ENABLED', defaultValue: true);
+
   /// The card is the student's identity, so it is offered whenever there is a
   /// QR to put on it — with or without an active subscription. Issuing needs
   /// the server, so it is hidden while the screen shows offline-cached data.
   static bool canOffer(StudentPassDetails pass, WalletPlatform? platform) =>
+      walletEnabled &&
       platform != null &&
       !pass.isOfflineCache &&
       (pass.qrValue ?? '').isNotEmpty;
