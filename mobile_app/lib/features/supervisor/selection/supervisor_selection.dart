@@ -27,11 +27,14 @@
 //     .selectTrip({required TripDirection direction, required String time,
 //                  String? tripId})
 //     .clearTrip()
-//     .reset()                     nothing chosen (a new sign-in)
+//     .restore()                   the account's remembered line (a new launch)
 //
 // It stores a selection and fetches nothing. A selection that no longer exists
 // in the dashboard (a line taken away) is the reader's job to ignore.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/sync/session.dart';
 
 /// A trip's direction. The models and the server use the [wire] strings.
 enum TripDirection {
@@ -103,8 +106,27 @@ class SupervisorSelectionNotifier extends Notifier<SupervisorSelection> {
   @override
   SupervisorSelection build() => const SupervisorSelection();
 
-  /// Picks a line; the trip chosen on the previous line no longer applies.
-  void selectLine(String lineId) => state = SupervisorSelection(lineId: lineId);
+  /// The chosen line is kept per account, so it survives closing the app.
+  static const _prefix = 'basak.sup.line.';
+  String? _key() {
+    final id = ref.read(sessionUserIdProvider);
+    return id == null ? null : '$_prefix$id';
+  }
+
+  /// Picks a line (or [SupervisorSelection.allLines]); the trip no longer
+  /// applies, and the choice is remembered for this account.
+  void selectLine(String lineId) {
+    state = SupervisorSelection(lineId: lineId);
+    _save(lineId);
+  }
+
+  Future<void> _save(String lineId) async {
+    final key = _key();
+    if (key == null) return;
+    try {
+      (await SharedPreferences.getInstance()).setString(key, lineId);
+    } catch (_) {/* private storage unavailable */}
+  }
 
   void selectTrip({required TripDirection direction, required String time, String? tripId}) =>
       state = SupervisorSelection(
@@ -112,8 +134,18 @@ class SupervisorSelectionNotifier extends Notifier<SupervisorSelection> {
 
   void clearTrip() => state = SupervisorSelection(lineId: state.lineId);
 
-  /// Nothing chosen: the next account on this phone starts from its own first line.
-  void reset() => state = const SupervisorSelection();
+  /// On launch (or a new sign-in): the account's remembered line, if any; the
+  /// trip is for the day, so it starts cleared.
+  Future<void> restore() async {
+    final key = _key();
+    String? saved;
+    if (key != null) {
+      try {
+        saved = (await SharedPreferences.getInstance()).getString(key);
+      } catch (_) {/* private storage unavailable */}
+    }
+    state = SupervisorSelection(lineId: saved);
+  }
 }
 
 final supervisorSelectionProvider =

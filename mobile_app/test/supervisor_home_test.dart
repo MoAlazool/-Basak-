@@ -336,7 +336,7 @@ void main() {
     expect(find.text('إشعار للطلاب'), findsOneWidget);
   });
 
-  test('the selection: a line clears the trip, a trip keeps the line, and the key is direction and time', () {
+  test('the selection: a line clears the trip, a trip keeps the line, and the key is direction and time', () async {
     final c = ProviderContainer();
     addTearDown(c.dispose);
     final chosen = c.read(supervisorSelectionProvider.notifier);
@@ -351,7 +351,7 @@ void main() {
     chosen.selectTrip(direction: TripDirection.departure, time: '07:00', tripId: 't');
     chosen.selectLine('line-b');
     expect(c.read(supervisorSelectionProvider), const SupervisorSelection(lineId: 'line-b'));
-    chosen.reset();
+    await chosen.restore();
     expect(c.read(supervisorSelectionProvider), const SupervisorSelection());
     expect(TripDirection.fromWire('return'), TripDirection.returning);
     expect(TripDirection.fromWire('departure'), TripDirection.departure);

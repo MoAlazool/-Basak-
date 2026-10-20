@@ -304,20 +304,23 @@ class BarRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(time,
-                    maxLines: 1,
-                    style: text.body.copyWith(fontWeight: FontWeight.w600, height: 22 / 15, color: ink)),
-                const SizedBox(width: BasakSpace.s6),
-                // The mark takes the room between the time and the count.
+                // Fills the start and ellipsizes, so a long line name (the all-lines view) fits.
                 Expanded(
-                  child: state == BarRowState.next
-                      ? Text('القادمة',
-                          maxLines: 1,
-                          overflow: TextOverflow.clip,
-                          softWrap: false,
-                          style: text.tab.copyWith(fontWeight: FontWeight.w500, color: ink))
-                      : const SizedBox.shrink(),
+                  child: Text(time,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: text.body.copyWith(fontWeight: FontWeight.w600, height: 22 / 15, color: ink)),
                 ),
+                if (state == BarRowState.next) ...[
+                  const SizedBox(width: BasakSpace.s6),
+                  Text('القادمة',
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      softWrap: false,
+                      style: text.tab.copyWith(fontWeight: FontWeight.w500, color: ink)),
+                ],
+                const SizedBox(width: BasakSpace.s6),
                 Text('$count', style: text.headline.copyWith(height: 22 / 17, color: ink)),
               ],
             ),

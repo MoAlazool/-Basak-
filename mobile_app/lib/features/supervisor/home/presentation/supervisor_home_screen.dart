@@ -252,6 +252,34 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
       );
     }
 
+    // Every line together: a column lists the lines (most riders first), not the
+    // times. Tapping a line opens its own trips. Computed once per line for the day.
+    final perLine = all ? {for (final l in lines) l.id: DayCounts.of(data, l, days[index])} : null;
+    Widget lineColumn(String direction) {
+      final rows = [for (final l in lines) (l, perLine![l.id]!.of(direction).fold<int>(0, (s, t) => s + t.riders))]
+        ..sort((a, b) => b.$2.compareTo(a.$2));
+      final busiest = rows.fold<int>(0, (m, r) => r.$2 > m ? r.$2 : m);
+      return BarList(
+        key: Key('lines-$direction'),
+        title: SupervisorWords.directionTitle(direction),
+        trailing: ArabicCount.lines(lines.length),
+        rows: [
+          for (final (l, c) in rows)
+            BarRow(
+              key: Key('line-$direction-${l.id}'),
+              time: l.name,
+              count: c,
+              share: busiest == 0 ? 0 : c / busiest,
+              onTap: () {
+                ref.read(supervisorSelectionProvider.notifier).selectLine(l.id);
+                ref.read(supervisorTripDayProvider.notifier).state = index == 0 ? null : days[index];
+                widget.onOpenTrips();
+              },
+            ),
+        ],
+      );
+    }
+
     final noTrips = shown.going.isEmpty && shown.returning.isEmpty;
 
     return [
@@ -303,15 +331,19 @@ class _SupervisorHomeScreenState extends ConsumerState<SupervisorHomeScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: column('departure', shown.going)),
+                Expanded(child: all ? lineColumn('departure') : column('departure', shown.going)),
                 const SizedBox(width: BasakSpace.s8),
-                Expanded(child: column('return', shown.returning)),
+                Expanded(child: all ? lineColumn('return') : column('return', shown.returning)),
               ],
             ),
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(BasakSpace.s4, BasakSpace.s8, BasakSpace.s4, 0),
               child: Text(
-                shown.isEmpty ? 'لا توجد تأكيدات بعد' : 'اضغط أي رحلة لعرض ركابها ومحطاتها.',
+                shown.isEmpty
+                    ? 'لا توجد تأكيدات بعد'
+                    : all
+                        ? 'اضغط أي خط لعرض رحلاته وركابه.'
+                        : 'اضغط أي رحلة لعرض ركابها ومحطاتها.',
                 style: text.caption.copyWith(color: colors.ink3),
               ),
             ),
