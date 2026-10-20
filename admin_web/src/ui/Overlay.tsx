@@ -48,7 +48,7 @@ function useLayer(open: boolean, onClose: () => void) {
 const Scrim: React.FC<{ where: 'center' | 'end' | 'start' | 'sheet'; onClose: () => void; children: React.ReactNode }> = ({ where, onClose, children }) => {
   const lay = { center: 'items-end justify-center sm:items-center', end: 'items-stretch justify-end', start: 'items-stretch justify-start', sheet: 'items-end justify-center sm:items-stretch sm:justify-end' }[where];
   return createPortal(
-    <div className={`fixed inset-x-0 bottom-0 top-[var(--ws-top,0px)] z-[60] flex bg-[rgba(23,56,74,.45)] ${lay}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>{children}</div>,
+    <div className={`scrim-enter fixed inset-x-0 bottom-0 top-[var(--ws-top,0px)] z-[60] flex bg-[rgba(23,56,74,.45)] ${lay}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>{children}</div>,
     document.body,
   );
 };
@@ -144,7 +144,7 @@ export const Drawer: React.FC<{ open: boolean; onClose: () => void; label: strin
   if (!open) return null;
   return (
     <Scrim where="start" onClose={onClose}>
-      <nav ref={ref} tabIndex={-1} aria-label={label} className={`flex h-full w-[320px] max-w-[88vw] flex-col bg-surface shadow-floating outline-none ${className}`}>{children}</nav>
+      <nav ref={ref} tabIndex={-1} aria-label={label} className={`drawer-enter flex h-full w-[320px] max-w-[88vw] flex-col bg-surface shadow-floating outline-none ${className}`}>{children}</nav>
     </Scrim>
   );
 };

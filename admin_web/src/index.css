@@ -51,6 +51,11 @@
 .enter { animation: basak-in .16s ease-out; }
 @keyframes basak-panel { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .panel-enter { animation: basak-panel .18s ease-out; }
+/* The phone navigation drawer slides in from the start edge (right, in this RTL app). */
+@keyframes basak-drawer { from { transform: translateX(100%); } to { transform: none; } }
+.drawer-enter { animation: basak-drawer .26s cubic-bezier(.2,.72,.2,1); will-change: transform; }
+@keyframes basak-scrim { from { opacity: 0; } to { opacity: 1; } }
+.scrim-enter { animation: basak-scrim .2s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .skeleton, .enter, .panel-enter { animation: none; }
+  .skeleton, .enter, .panel-enter, .drawer-enter, .scrim-enter { animation: none; }
 }
