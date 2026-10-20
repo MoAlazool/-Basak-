@@ -51,8 +51,8 @@ class _SupervisorMainScreenState extends ConsumerState<SupervisorMainScreen>
       // app was starting is shown now).
       final userId = ref.read(sessionUserIdProvider);
       if (userId != null) _router.attach(userId, this);
-      // A new sign-in starts from its own first line, on today.
-      ref.read(supervisorSelectionProvider.notifier).reset();
+      // Restore the account's remembered line; the trip is for today.
+      ref.read(supervisorSelectionProvider.notifier).restore();
       ref.read(supervisorTripDayProvider.notifier).state = null;
     });
     // Once the home screen has settled, and only the first time on this phone.

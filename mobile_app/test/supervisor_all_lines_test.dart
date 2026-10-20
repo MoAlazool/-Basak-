@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:basak_mobile/core/storage/offline_cache.dart';
@@ -65,15 +66,53 @@ void main() {
     // 107 going on الزرقا and 4 on دمياط الجديدة; 105 + 7 returning.
     expect((hero.going, hero.returning), (111, 112));
     expect(hero.shareSentence, 'سيركب 111 من 262 مشتركاً');
-    // The same time on two lines is one row.
-    expect(tester.widget<BarRow>(find.byKey(const Key('trip-departure-06:15:00'))).count, 16);
-    expect(tester.widget<BarRow>(find.byKey(const Key('trip-return-13:30:00'))).count, 21);
+    // Each column lists the lines with their rider totals, not the times.
+    expect(tester.widget<BarRow>(find.byKey(const Key('line-departure-line-a'))).count, 107);
+    expect(tester.widget<BarRow>(find.byKey(const Key('line-departure-line-b'))).count, 4);
+    expect(tester.widget<BarRow>(find.byKey(const Key('line-return-line-a'))).count, 105);
+    expect(tester.widget<BarRow>(find.byKey(const Key('line-return-line-b'))).count, 7);
+    expect(find.byKey(const Key('trip-departure-06:15:00')), findsNothing, reason: 'every line together lists lines, not times');
 
     // The sheet opens on the choice.
     await tester.tap(find.byKey(const Key('line-row')));
     await tester.pumpAndSettle();
     expect(tester.widget<RadioCard>(find.byKey(const Key('line-all'))).selected, isTrue);
     expect(find.byType(SupervisorLineSheet), findsOneWidget);
+  });
+
+  testWidgets('tapping a line in the every-lines view opens its own trips', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var opened = 0;
+    final world = BoardWorld(dashboard: _dashboard());
+    await pumpBoard(tester, world, SupervisorHomeScreen(onOpenTrips: () => opened++), size: const Size(390, 1100));
+    await tester.pumpAndSettle();
+    final c = _container(tester, SupervisorHomeScreen);
+    c.read(supervisorSelectionProvider.notifier).selectLine(SupervisorSelection.allLines);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('line-departure-line-b')));
+    await tester.pumpAndSettle();
+    expect(opened, 1);
+    expect(c.read(supervisorSelectionProvider).lineId, 'line-b');
+    expect(c.read(supervisorSelectionProvider).isAllLines, isFalse);
+  });
+
+  testWidgets('the chosen line is remembered for the account, through a restart', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final world = BoardWorld();
+    await pumpBoard(tester, world, SupervisorHomeScreen(onOpenTrips: () {}), size: const Size(390, 1100));
+    await tester.pumpAndSettle();
+    final c = _container(tester, SupervisorHomeScreen);
+
+    c.read(supervisorSelectionProvider.notifier).selectLine('line-b');
+    await tester.pumpAndSettle();
+    expect((await SharedPreferences.getInstance()).getString('basak.sup.line.supervisor-1'), 'line-b');
+
+    // A fresh launch restores the line from storage (the trip starts cleared).
+    c.read(supervisorSelectionProvider.notifier).selectTrip(direction: TripDirection.departure, time: '07:00:00');
+    await c.read(supervisorSelectionProvider.notifier).restore();
+    await tester.pumpAndSettle();
+    expect(c.read(supervisorSelectionProvider).lineId, 'line-b');
   });
 
   testWidgets('one line only: no «كل الخطوط» in the sheet', (tester) async {
