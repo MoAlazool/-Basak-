@@ -44,13 +44,17 @@ export const TimeField: React.FC<{
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
         onChange={(e) => setText(e.target.value)}
         className="h-full min-w-0 flex-1 bg-transparent text-start tabular outline-none placeholder:text-ink-3 disabled:cursor-not-allowed" />
-      <button type="button" tabIndex={-1} disabled={disabled} aria-hidden="true" onClick={() => openPicker(native.current)}
-        className="-me-1 flex h-8 w-8 flex-none items-center justify-center rounded-control text-ink-2 hover:bg-sunken disabled:text-disabled">
-        <Icon name="clock" size={17} />
-      </button>
-      <input ref={native} type="time" tabIndex={-1} aria-hidden="true" value={value} disabled={disabled}
-        onChange={(e) => { onChange(e.target.value); setText(clockLabel(e.target.value)); setBad(false); }}
-        className="pointer-events-none absolute bottom-0 end-0 h-px w-px opacity-0" />
+      {/* The clock icon is the tap target: the native time input sits over it (opacity 0),
+          so a tap opens the phone's own picker (iOS included, where showPicker is unavailable),
+          and a desktop click calls showPicker. */}
+      <span className="relative -me-1 flex h-9 w-9 flex-none items-center justify-center rounded-control text-ink-2">
+        <Icon name="clock" size={17} className={disabled ? 'text-disabled' : ''} />
+        <input ref={native} type="time" tabIndex={-1} value={value} disabled={disabled}
+          aria-label={ariaLabel ?? (typeof label === 'string' ? label : 'الوقت')}
+          onClick={() => openPicker(native.current)}
+          onChange={(e) => { onChange(e.target.value); setText(clockLabel(e.target.value)); setBad(false); }}
+          className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed" />
+      </span>
     </div>
   );
   if (!label) return message ? <div className={`flex flex-col gap-1.5 ${className}`}>{field}<FieldMsg id={id} text={message} /></div> : field;
@@ -70,13 +74,16 @@ export const DayField: React.FC<{
   return (
     <div className={`flex min-w-0 flex-col gap-1.5 ${className}`}>
       <div className={frame(!!error, disabled)}>
-        <button type="button" disabled={disabled} aria-label={`${label}: ${value ? text : 'اختر يوماً'}`} aria-describedby={error ? `${id}-msg` : undefined}
-          onClick={() => openPicker(native.current)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-start outline-none">
+        {/* The native date input overlays the whole field (opacity 0), so a tap opens the
+            phone's own calendar (iOS included); a desktop click calls showPicker. */}
+        <div aria-hidden="true" className="flex h-full min-w-0 flex-1 items-center gap-2">
           <span className={`min-w-0 flex-1 truncate ${value ? 'text-ink' : 'text-ink-3'}`}>{value ? text : 'اختر يوماً'}</span>
-          <Icon name="calendar" size={17} className="text-ink-2" />
-        </button>
-        <input ref={native} type="date" tabIndex={-1} aria-hidden="true" value={value} min={min} disabled={disabled}
-          onChange={(e) => onChange(e.target.value)} className="pointer-events-none absolute bottom-0 end-0 h-px w-px opacity-0" />
+          <Icon name="calendar" size={17} className={disabled ? 'text-disabled' : 'text-ink-2'} />
+        </div>
+        <input ref={native} type="date" tabIndex={disabled ? -1 : 0} value={value} min={min} disabled={disabled}
+          aria-label={`${label}: ${value ? text : 'اختر يوماً'}`} aria-describedby={error ? `${id}-msg` : undefined}
+          onClick={() => openPicker(native.current)} onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed" />
       </div>
       {error && <FieldMsg id={id} text={error} />}
     </div>
