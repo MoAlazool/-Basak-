@@ -15,8 +15,8 @@ import 'package:basak_mobile/core/ui/ui.dart';
 class LegalLinks {
   LegalLinks._();
 
-  static const String terms = String.fromEnvironment('TERMS_URL', defaultValue: 'https://basak.app/terms');
-  static const String privacy = String.fromEnvironment('PRIVACY_URL', defaultValue: 'https://basak.app/privacy');
+  static const String terms = String.fromEnvironment('TERMS_URL', defaultValue: 'https://basak-sand.vercel.app/terms');
+  static const String privacy = String.fromEnvironment('PRIVACY_URL', defaultValue: 'https://basak-sand.vercel.app/privacy#privacy');
 
   /// Opens [url] in the browser; says so on the page when it cannot.
   static Future<void> open(BuildContext context, String url) async {
