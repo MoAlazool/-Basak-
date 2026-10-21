@@ -59,7 +59,8 @@ starts them, and submission for review stays a manual step in App Store Connect.
 
 ## 3. Owner decisions and steps (Apple Developer / App Store Connect)
 
-1. **Bundle id. The preflight fails until this is decided.**
+1. **Bundle id — done (2026-10-21).** App Store id `com.basak.basakMobile` on team `ELD3N9M4AP`. A Firebase iOS app is registered under it («Basak iOS (App Store)», `1:1011211335071:ios:3631efffa56c5bc21a79aa`) and `firebase.defines.json` carries its values; the preflight passes. The App ID exists with Push Notifications (Xcode automatic signing). The older Firebase iOS app `com.mohamedadel.basak` was only for development builds.
+   - Previous note, for history:
    - Xcode is `com.basak.basakMobile`. The Firebase iOS app is `com.mohamedadel.basak`. iOS push needs them to match.
    - Pick the App Store id. Then either register a new Firebase iOS app under `com.basak.basakMobile` and update `FIREBASE_IOS_APP_ID` / `FIREBASE_IOS_API_KEY` (removing `FIREBASE_IOS_BUNDLE_ID`), or keep the Firebase one and set the repository variable `IOS_BUNDLE_ID=com.mohamedadel.basak`.
    - Create the App ID in Certificates, Identifiers & Profiles with **Push Notifications** enabled.
