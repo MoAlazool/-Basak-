@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شروط الاستخدام · باصك Basak Terms</title>
+<meta name="description" content="شروط استخدام تطبيق باصك لاشتراكات باصات الجامعات.">
+<style>
+  :root{
+    --ink:#17384A;--ink2:#3E5A6B;--ink3:#647C8B;--ground:#EEF4F8;--surface:#fff;
+    --line:#DCE6EC;--accent:#00658D;--accent2:#0A7FB0;--bad:#C0392B;--badbg:#FCEDEC;
+    --shadow:0 18px 40px -22px rgba(14,54,74,.45);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:
+    radial-gradient(1100px 520px at 85% -8%,#DCEAF2 0,rgba(220,234,242,0) 60%),
+    radial-gradient(900px 480px at -5% 8%,#E3F0F5 0,rgba(227,240,245,0) 55%),
+    var(--ground);
+    color:var(--ink);font-family:'Segoe UI',Tahoma,'Noto Sans Arabic',system-ui,Arial,sans-serif;
+    font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased}
+  main{max-width:960px;margin:0 auto;padding:36px 18px 80px}
+  .en{direction:ltr;text-align:left}
+
+  /* Language toggle (CSS-only) */
+  .lang-in{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .pvlang{display:flex;gap:8px;justify-content:center;margin:0 0 30px}
+  .pvl{border:1px solid var(--line);background:#fff;color:var(--ink2);font-weight:700;font-size:14px;
+    padding:9px 24px;border-radius:999px;cursor:pointer;user-select:none;box-shadow:0 2px 8px -4px rgba(14,54,74,.3);transition:.15s}
+  .pvl:hover{border-color:#B9CBD6}
+  #lang-ar:checked~main label[for="lang-ar"],#lang-en:checked~main label[for="lang-en"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .i18n{display:none}
+  #lang-ar:checked~main .i18n.ar{display:block}
+  #lang-en:checked~main .i18n.en{display:block}
+
+  /* Entrance animations */
+  @keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+  @keyframes pop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+  @keyframes floatPhone{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.0)}50%{box-shadow:0 0 0 8px rgba(192,57,43,.14)}}
+  @keyframes point{0%,100%{transform:translateX(0)}50%{transform:translateX(-7px)}}
+  @keyframes dash{to{stroke-dashoffset:0}}
+  .rise{animation:rise .7s cubic-bezier(.2,.7,.2,1) both}
+  .d1{animation-delay:.08s}.d2{animation-delay:.16s}.d3{animation-delay:.24s}.d4{animation-delay:.32s}.d5{animation-delay:.4s}
+
+  /* Hero */
+  .hero{text-align:center;margin-bottom:10px}
+  .hero .ic{width:74px;height:74px;border-radius:22px;display:grid;place-items:center;margin:0 auto 16px;
+    background:linear-gradient(140deg,#fde7e4,#f8d4cf);box-shadow:0 14px 30px -14px rgba(192,57,43,.5);animation:pop .6s both}
+  .hero svg{width:38px;height:38px;stroke:var(--bad);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  h1{font-size:30px;line-height:1.25;margin:0 0 8px}
+  .lead{color:var(--ink2);max-width:640px;margin:0 auto;font-size:17px}
+  .meta{color:var(--ink3);font-size:13.5px;margin-top:10px}
+
+  .sec{margin-top:52px}
+  .sec-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .num{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;display:grid;place-items:center;font-size:15px;box-shadow:0 8px 18px -8px rgba(0,101,141,.7)}
+  .sec h2{font-size:22px;margin:0}
+  .sec .sub{color:var(--ink2);margin:2px 0 22px;padding-inline-start:46px}
+
+  .split{display:grid;grid-template-columns:300px 1fr;gap:34px;align-items:center}
+  @media(max-width:720px){.split{grid-template-columns:1fr;gap:26px}}
+
+  /* Steps */
+  .steps{list-style:none;margin:0;padding:0;counter-reset:s}
+  .steps li{counter-increment:s;position:relative;background:var(--surface);border:1px solid var(--line);
+    border-radius:16px;padding:16px 60px 16px 18px;margin-bottom:12px;box-shadow:0 10px 24px -20px rgba(14,54,74,.5)}
+  .steps.en li{padding:16px 18px 16px 60px}
+  .steps li::before{content:counter(s);position:absolute;inset-inline-start:14px;top:50%;transform:translateY(-50%);
+    width:32px;height:32px;border-radius:50%;background:#EAF3F7;color:var(--accent);font-weight:800;display:grid;place-items:center}
+  .steps b{color:var(--ink)}
+  .mail{display:inline-block;margin-top:8px;color:var(--accent);font-weight:700}
+
+  /* Phone mockup */
+  .phone-wrap{display:flex;justify-content:center}
+  .phone{width:270px;border-radius:42px;background:#0E2B3A;padding:12px;box-shadow:var(--shadow);animation:floatPhone 6s ease-in-out infinite}
+  .screen{background:var(--ground);border-radius:32px;overflow:hidden;position:relative}
+  .sbar{display:flex;justify-content:space-between;align-items:center;padding:9px 18px 4px;font-size:11px;color:var(--ink2);font-weight:700}
+  .scr-body{padding:12px 12px 0}
+  .pcard{background:#fff;border-radius:18px;padding:12px;margin-bottom:12px;box-shadow:0 6px 16px -12px rgba(14,54,74,.5)}
+  .prof{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+  .prof .av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#0A7FB0,#004E6E);color:#fff;display:grid;place-items:center;font-weight:800}
+  .prof .nm{font-weight:800;font-size:14px}.prof .ph{font-size:11px;color:var(--ink3);direction:ltr}
+  .lbl{font-size:11px;color:var(--ink3);font-weight:700;margin:2px 2px 6px;text-align:right}
+  .row{display:flex;justify-content:space-between;gap:8px;padding:8px 2px;font-size:12px;border-top:1px solid #EEF3F6}
+  .row:first-of-type{border-top:0}
+  .row .k{color:var(--ink3)}.row .v{color:var(--ink);font-weight:700;text-align:left}
+  .toggle{width:34px;height:20px;border-radius:999px;background:#CBD8DF;position:relative;flex:0 0 auto}
+  .toggle::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;inset-inline-start:2px}
+  .logout{text-align:center;font-weight:800;color:var(--ink);font-size:13px;background:#fff;border-radius:16px;padding:12px;margin-bottom:10px;box-shadow:0 6px 16px -12px rgba(14,54,74,.5)}
+  .del{position:relative;text-align:center;font-weight:800;color:var(--bad);font-size:14px;background:var(--badbg);border:1.5px solid #F3C9C4;border-radius:14px;padding:12px;animation:glow 2s ease-in-out infinite}
+  .del .v{font-size:10px;color:var(--ink3);font-weight:700;display:block;margin-top:2px}
+  .bnav{display:flex;justify-content:space-around;padding:12px 0 14px;margin-top:8px;background:#fff;border-top:1px solid #EEF3F6}
+  .bnav i{width:20px;height:20px;border-radius:7px;background:#CBD8DF;display:block}
+  .bnav i.on{background:var(--accent)}
+  .arrow{position:absolute;inset-inline-start:-6px;bottom:70px;display:flex;align-items:center;gap:4px;color:var(--bad);font-weight:800;font-size:12px;animation:point 1.2s ease-in-out infinite}
+  .arrow svg{width:26px;height:26px;stroke:var(--bad);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Browser mockup (dashboard) */
+  .browser{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+  .bbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#F3F7FA;border-bottom:1px solid var(--line)}
+  .bbar .dot{width:11px;height:11px;border-radius:50%;background:#D5DFE6}
+  .bbar .url{margin-inline-start:10px;flex:1;background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 12px;font-size:12px;color:var(--ink3);direction:ltr;text-align:left}
+  .dash{padding:18px 18px 20px;direction:rtl;text-align:right}
+  .dash h3{margin:0 0 2px;font-size:17px}
+  .dash .dsub{color:var(--ink3);font-size:12.5px;margin:0 0 14px}
+  .srow{display:flex;align-items:center;gap:12px;padding:12px 10px;border-top:1px solid #EEF3F6}
+  .srow .av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#0A7FB0,#004E6E);color:#fff;display:grid;place-items:center;font-weight:800;font-size:13px;flex:0 0 auto}
+  .srow .info{flex:1}
+  .srow .nm{font-weight:800;font-size:14px}
+  .srow .mt{color:var(--ink3);font-size:12px}
+  .pill{font-size:11px;font-weight:700;color:#1C7A43;background:#E6F6EC;border-radius:999px;padding:3px 10px}
+  .trash{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:12.5px;color:var(--bad);background:var(--badbg);border:1.5px solid #F3C9C4;border-radius:10px;padding:8px 12px;cursor:default;animation:glow 2s ease-in-out infinite}
+  .trash svg{width:16px;height:16px;stroke:var(--bad);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .confirm{margin:14px 10px 0;border:1px solid #F0D3CF;background:linear-gradient(180deg,#fff,#FFF7F6);border-radius:14px;padding:14px 16px}
+  .confirm .ct{font-weight:800;color:var(--bad);display:flex;align-items:center;gap:8px;font-size:14px}
+  .confirm .cb{display:flex;gap:8px;margin-top:12px;justify-content:flex-start}
+  .btn{border-radius:10px;padding:8px 16px;font-weight:800;font-size:12.5px}
+  .btn.d{background:var(--bad);color:#fff}.btn.g{background:#EEF3F6;color:var(--ink2)}
+
+  /* Info cards */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:620px){.cards{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 14px 30px -24px rgba(14,54,74,.6)}
+  .card h3{margin:0 0 10px;font-size:16px;display:flex;align-items:center;gap:8px}
+  .card.keep h3{color:#1C7A43}.card.del2 h3{color:var(--bad)}
+  .card ul{margin:0;padding-inline-start:20px}.card li{color:var(--ink2);margin:5px 0}
+  .tag{display:inline-block;font-size:11px;font-weight:800;border-radius:999px;padding:3px 10px}
+  .card.keep .tag{background:#E6F6EC;color:#1C7A43}.card.del2 .tag{background:var(--badbg);color:var(--bad)}
+
+  .foot{margin-top:46px;text-align:center;color:var(--ink3);font-size:13px}
+  a{color:var(--accent)}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+
+  /* Text pages (support, terms) */
+  .doc{display:grid;gap:16px}
+  .doc .card h2{margin:0 0 6px;font-size:19px;color:var(--ink)}
+  .doc .card p{margin:0;color:var(--ink2)}
+  .doc .card ul{margin:6px 0 0;padding-inline-start:20px;color:var(--ink2)}
+  .doc .card li{margin:4px 0}
+  .doc a{color:var(--accent);font-weight:600}
+  .contact{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+  .chip{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;background:var(--ground);border:1px solid var(--line);border-radius:999px;padding:8px 16px;text-decoration:none;color:var(--ink)!important}
+  .hero .ic{background:#E1EFF6!important;color:var(--accent)!important}
+  .hero .ic svg{stroke:var(--accent)!important}
+  .links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;margin-top:30px;font-size:14px}
+  .links a{color:var(--ink2);text-decoration:none;border-bottom:1px solid var(--line)}
+</style>
+</head>
+<body>
+<input class="lang-in" type="radio" name="lang" id="lang-ar" checked>
+<input class="lang-in" type="radio" name="lang" id="lang-en">
+<main>
+  <div class="pvlang"><label class="pvl" for="lang-ar">العربية</label><label class="pvl" for="lang-en">English</label></div>
+  <div class="hero rise">
+    <div class="ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></div>
+    <div class="i18n ar"><h1>شروط استخدام باصك</h1><p class="lead">آخر تحديث: 19 أكتوبر 2026</p></div>
+    <div class="i18n en"><h1>Basak Terms of Use</h1><p class="lead">Last updated: 19 October 2026</p></div>
+    <p class="meta">تطبيق باصك · Basak · 19 Oct 2026</p>
+  </div>
+  <div class="i18n ar doc"><div class="card rise"><h2>الخدمة</h2><p>«باصك» منصة تربط طلاب الجامعات بشركات نقل تدير خطوط باصات. الاشتراك خدمة نقل فعلية تقدّمها شركة النقل التي تختارها، وهي المسؤولة عن الرحلات ومواعيدها وأسعارها.</p></div><div class="card rise"><h2>حسابك</h2><ul><li>سجّل ببيانات صحيحة، وبرقم هاتف يخصّك.</li><li>حافظ على سرية كلمة المرور. أنت مسؤول عما يحدث بحسابك.</li><li>بطاقة الاشتراك ورمزها لك وحدك، ولا يجوز إعطاؤها لغيرك.</li></ul></div><div class="card rise"><h2>الدفع</h2><p>يتم الدفع لشركة النقل مباشرة بالتحويل (مثل InstaPay أو المحافظ الإلكترونية أو التحويل البنكي) مع رفع صورة الإيصال، أو نقداً في الباص للاشتراك اليومي. لا يتم أي دفع داخل التطبيق. تراجع الشركة الإيصال وتفعّل الاشتراك أو ترفضه مع ذكر السبب. سياسة الاسترداد تخص شركة النقل.</p></div><div class="card rise"><h2>العروض</h2><p>قد تظهر لك عروض من محلات وخدمات قريبة من جامعتك. العرض يقدّمه صاحبه وفق شروطه المكتوبة، و«باصك» لا يشارك بياناتك الشخصية مع أصحاب العروض.</p></div><div class="card rise"><h2>الاستخدام المقبول</h2><p>لا يجوز رفع إيصالات غير صحيحة، أو انتحال شخصية غيرك، أو محاولة الوصول إلى بيانات الآخرين أو تعطيل الخدمة. يحق للشركة أو لإدارة باصك إيقاف الحساب المخالف.</p></div><div class="card rise"><h2>المسؤولية</h2><p>نبذل جهدنا لتعمل الخدمة دون انقطاع، لكنها تُقدَّم كما هي. شركة النقل مسؤولة عن الرحلات نفسها، ولا تتحمّل باصك مسؤولية التأخير أو الإلغاء من جانب الشركة.</p></div><div class="card rise"><h2>إنهاء الحساب</h2><p>يمكنك حذف حسابك في أي وقت من التطبيق (حسابي ← حذف الحساب). انظر <a href="/privacy#privacy">سياسة الخصوصية</a>.</p></div><div class="card rise"><h2>التواصل</h2><p><a href="mailto:basy1102000@gmail.com">basy1102000@gmail.com</a> · واتساب <a href="https://wa.me/201551296905" dir="ltr">+20 155 129 6905</a></p></div></div>
+  <div class="i18n en doc"><div class="card rise"><h2>The service</h2><p>Basak connects university students with bus companies that run bus lines. A subscription is a real-world transport service provided by the company you choose, which is responsible for trips, times and prices.</p></div><div class="card rise"><h2>Your account</h2><ul><li>Register with accurate details and a phone number that is yours.</li><li>Keep your password private; you are responsible for activity on your account.</li><li>Your subscription card and its code are yours alone and may not be shared.</li></ul></div><div class="card rise"><h2>Payment</h2><p>You pay the bus company directly by transfer (InstaPay, e-wallets or bank transfer) and upload a photo of the receipt, or pay cash on the bus for a single day. Nothing is paid inside the app. The company reviews the receipt and activates or rejects the subscription with a reason. Refunds are the company&#39;s policy.</p></div><div class="card rise"><h2>Offers</h2><p>You may see offers from shops and services near your university. Each offer is made by its merchant on its stated terms; Basak does not share your personal data with merchants.</p></div><div class="card rise"><h2>Acceptable use</h2><p>Uploading false receipts, impersonating others, trying to access other people&#39;s data or disrupting the service is not allowed. The company or Basak may suspend an account that does.</p></div><div class="card rise"><h2>Liability</h2><p>We work to keep the service running, but it is provided as is. The bus company is responsible for the trips themselves; Basak is not liable for delays or cancellations by the company.</p></div><div class="card rise"><h2>Ending your account</h2><p>You can delete your account at any time in the app (Profile → Delete account). See the <a href="/privacy#privacy">privacy policy</a>.</p></div><div class="card rise"><h2>Contact</h2><p><a href="mailto:basy1102000@gmail.com">basy1102000@gmail.com</a> · WhatsApp <a href="https://wa.me/201551296905">+20 155 129 6905</a></p></div></div>
+  <div class="i18n ar"><div class="links"><a href="/privacy#privacy">سياسة الخصوصية</a><a href="/terms">شروط الاستخدام</a><a href="/support">الدعم</a><a href="/delete-account">حذف الحساب</a></div></div>
+  <div class="i18n en"><div class="links"><a href="/privacy#privacy">Privacy policy</a><a href="/terms">Terms of use</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></div></div>
+  <div class="foot">
+    <div class="i18n ar">تطبيق باصك — منصة اشتراكات الباصات الجامعية · للتواصل: <a href="mailto:basy1102000@gmail.com">basy1102000@gmail.com</a></div>
+    <div class="i18n en">Basak — university bus subscription platform · Contact: <a href="mailto:basy1102000@gmail.com">basy1102000@gmail.com</a></div>
+  </div>
+</main>
+</body>
+</html>
