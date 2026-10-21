@@ -9,6 +9,14 @@
       "destination": "/delete-account.html"
     },
     {
+      "source": "/support",
+      "destination": "/support.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
